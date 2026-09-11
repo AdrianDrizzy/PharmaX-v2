@@ -16,6 +16,7 @@ public partial class frmMain : PhxFormBase, IMainView
     {
         InitializeComponent();
         WireMenu();
+        WireMenuHover();
         WireHome();
     }
 
@@ -78,6 +79,61 @@ public partial class frmMain : PhxFormBase, IMainView
             if (item.Tag is not string key) continue;
 
             item.Click += (_, _) => MenuSelected?.Invoke(this, key);
+        }
+    }
+
+    /// <summary>
+    /// Opens a top-level menu on hover, whether or not the menu bar is
+    /// already active.
+    /// </summary>
+    /// <remarks>
+    /// A MenuStrip only tracks the mouse once something has been
+    /// clicked: until then hovering Dispensary highlights it but shows
+    /// nothing, so the operator has to click, and a second click on the
+    /// same heading closes it again. Staff read that as the menu not
+    /// working. Showing the drop-down on MouseEnter makes the first
+    /// heading behave like every one after it.
+    /// </remarks>
+    private void WireMenuHover()
+    {
+        foreach (var top in mnuMain.Items.OfType<ToolStripMenuItem>())
+        {
+            if (top.DropDownItems.Count == 0) continue;
+
+            top.MouseEnter += (sender, _) =>
+            {
+                var hovered = (ToolStripMenuItem)sender!;
+
+                // A disabled heading has nothing to show, and an already
+                // open one must not be reopened: ShowDropDown on the
+                // open item would close it on the way past.
+                if (!hovered.Enabled || hovered.DropDown.Visible) return;
+
+                // The menu bar has to be in menu mode before a drop-down
+                // opened from code will stay up. Without this the strip
+                // shows it and dismisses it in the same breath, which
+                // looks exactly like the click-to-open problem this is
+                // here to fix. Focus is what puts it in that mode, and
+                // the shell has nothing else that wants the keyboard.
+                if (!mnuMain.ContainsFocus) mnuMain.Focus();
+
+                CloseOtherMenus(hovered);
+                hovered.Select();
+                hovered.ShowDropDown();
+            };
+        }
+    }
+
+    /// <summary>
+    /// Leaves at most one drop-down open, so sweeping the mouse along the
+    /// bar does not leave a trail of them behind.
+    /// </summary>
+    private void CloseOtherMenus(ToolStripMenuItem keep)
+    {
+        foreach (var other in mnuMain.Items.OfType<ToolStripMenuItem>())
+        {
+            if (!ReferenceEquals(other, keep) && other.DropDown.Visible)
+                other.HideDropDown();
         }
     }
 
