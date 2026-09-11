@@ -21,7 +21,18 @@ public interface IPosView : Mvp.IView
     IReadOnlyList<PaymentDto>? PromptPayment(decimal amountDue);
     string? PromptVoidReason();
 
+    /// <summary>
+    /// Asks the operator to find a product by name or code and returns
+    /// the code of the one they chose, or null if they gave up.
+    /// </summary>
+    /// <param name="term">
+    /// What they have already typed, if anything, so a search that began
+    /// as a scan attempt does not start from an empty box.
+    /// </param>
+    string? PromptProductSearch(string? term);
+
     event EventHandler<string>? CodeScanned;
+    event EventHandler? ProductSearchRequested; // F2
     event EventHandler? QuantityRequested;      // F4
     event EventHandler? LineDiscountRequested;  // F5
     event EventHandler? VoidLineRequested;      // Esc

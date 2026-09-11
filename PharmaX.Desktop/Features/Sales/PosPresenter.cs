@@ -31,6 +31,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     protected override void Subscribe()
     {
         View.CodeScanned += (_, code) => _ = OnScanAsync(code);
+        View.ProductSearchRequested += (_, _) => _ = OnSearchAsync(null);
         View.QuantityRequested += (_, _) => _ = OnQuantityAsync();
         View.LineDiscountRequested += (_, _) => _ = OnDiscountAsync();
         View.VoidLineRequested += (_, _) => _ = OnVoidAsync();
@@ -59,8 +60,57 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         View.FocusScan();
     });
 
+    /// <summary>
+    /// One box for both ways of finding an item. Anything typed or
+    /// scanned is tried as a code or barcode first, because that is what
+    /// the great majority of entries at a till are.
+    /// </summary>
+    /// <remarks>
+    /// Only a code that matched nothing falls through to the search:
+    /// POS-001 is "no product for that code", whereas a discontinued
+    /// product or a batch with no stock did identify something and must
+    /// still be reported rather than quietly reopened as a search.
+    /// </remarks>
     private Task OnScanAsync(string code) => GuardAsync(async () =>
     {
+        var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
+
+        if (result.IsFailure)
+        {
+            if (string.Equals(result.Error.Code, "POS-001",
+                              StringComparison.Ordinal))
+            {
+                await SearchAsync(code);
+                return;
+            }
+
+            View.ShowError(result.Error.Message);
+            View.FocusScan();
+            return;
+        }
+
+        await RefreshAsync();
+    });
+
+    private Task OnSearchAsync(string? term) =>
+        GuardAsync(() => SearchAsync(term));
+
+    /// <summary>
+    /// Finds a product by name and sells it by its code, so a searched
+    /// item and a scanned one reach the domain by the same route.
+    /// </summary>
+    private async Task SearchAsync(string? term)
+    {
+        var code = View.PromptProductSearch(term);
+
+        // Cancelled. The operator has already seen what did and did not
+        // match, so an error on top of that would only be noise.
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            View.FocusScan();
+            return;
+        }
+
         var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
 
         if (result.IsFailure)
@@ -71,7 +121,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         }
 
         await RefreshAsync();
-    });
+    }
 
     private Task OnQuantityAsync() => GuardAsync(async () =>
     {

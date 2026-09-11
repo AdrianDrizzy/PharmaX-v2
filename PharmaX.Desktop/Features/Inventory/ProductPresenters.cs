@@ -20,6 +20,14 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
         View.RefreshRequested += (_, _) => _ = LoadAsync();
         View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
         View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
+
+        View.ChooseRequested += (_, _) =>
+        {
+            // In picker mode the caller reads the selection off the form,
+            // so all this has to do is close with a success result.
+            if (View.SelectedId is not null) View.CloseView(true);
+            else View.ShowInfo("Choose a product first.");
+        };
     }
 
     public override Task InitialiseAsync() => LoadAsync();

@@ -41,10 +41,18 @@ public partial class frmProductList : PhxFormBase, IProductListView
         btnEdit.Click += (_, _) => EditRequested?.Invoke(this, EventArgs.Empty);
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
-        btnClose.Click += (_, _) => CloseView(true);
+        btnChoose.Click += (_, _) =>
+            ChooseRequested?.Invoke(this, EventArgs.Empty);
+        btnClose.Click += (_, _) => CloseView(IsPickerMode ? false : true);
 
         grdProducts.DoubleClick += (_, _) =>
-            EditRequested?.Invoke(this, EventArgs.Empty);
+        {
+            // A double click means "this one" in both modes; which one
+            // it is decides whether that opens the editor or answers
+            // the screen that asked for a product.
+            if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
+            else EditRequested?.Invoke(this, EventArgs.Empty);
+        };
     }
 
     /// Runtime. Resolved by the container.
@@ -54,10 +62,44 @@ public partial class frmProductList : PhxFormBase, IProductListView
         _presenter.Attach(this);
     }
 
+    public bool IsPickerMode { get; private set; }
+
+    /// <summary>
+    /// Called before ShowDialog by a screen that wants to pick a product
+    /// rather than maintain the list - the till looking one up by name
+    /// instead of scanning it, most of all.
+    /// </summary>
+    /// <param name="term">
+    /// What the operator had already typed, so a search that started in
+    /// the scan box carries on here rather than starting again.
+    /// </param>
+    public void UseAsPicker(string? term = null)
+    {
+        IsPickerMode = true;
+        Text = "PharmaX - Find product";
+        btnChoose.Visible = true;
+        AcceptButton = btnChoose;
+
+        // Maintenance is not on offer to a cashier who only wanted to
+        // find something to sell.
+        btnAdd.Visible = false;
+        btnEdit.Visible = false;
+
+        if (!string.IsNullOrWhiteSpace(term)) txtSearch.Text = term.Trim();
+    }
+
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
+
+        // Typing continues where the operator left off, and the first
+        // match is already selected, so a picked-up search needs one
+        // keystroke to accept rather than a trip to the mouse.
+        if (!IsPickerMode) return;
+
+        txtSearch.Focus();
+        txtSearch.SelectionStart = txtSearch.TextLength;
     }
 
     private void Restart()
@@ -70,6 +112,15 @@ public partial class frmProductList : PhxFormBase, IProductListView
 
     public Guid? SelectedId => grdProducts.CurrentRow?.DataBoundItem
         is ProductListItemDto dto ? dto.Id : null;
+
+    /// <summary>
+    /// The chosen product's code, which is what a till needs: the sale
+    /// service resolves a line by code or barcode, exactly as it does
+    /// for a scan, so a picked product and a scanned one take the same
+    /// path through the domain.
+    /// </summary>
+    public string? SelectedCode => grdProducts.CurrentRow?.DataBoundItem
+        is ProductListItemDto dto ? dto.Code : null;
 
     public void ShowProducts(IReadOnlyList<ProductListItemDto> products)
     {
@@ -96,4 +147,5 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public event EventHandler? AddRequested;
     public event EventHandler? EditRequested;
     public event EventHandler? RefreshRequested;
+    public event EventHandler? ChooseRequested;
 }

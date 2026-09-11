@@ -2,6 +2,7 @@ using System.Globalization;
 using PharmaX.Application.Sales.Dtos;
 using PharmaX.Application.Security;
 using PharmaX.Desktop.Controls;
+using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Login;
 using PharmaX.Desktop.Mvp;
 
@@ -11,6 +12,7 @@ public partial class frmPOS : PhxFormBase, IPosView
 {
     private readonly PosPresenter? _presenter;
     private readonly IAuthenticationService? _auth;
+    private readonly ViewFactory? _views;
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.SaleCreate;
@@ -25,11 +27,13 @@ public partial class frmPOS : PhxFormBase, IPosView
     }
 
     /// Runtime. Resolved by the container.
-    public frmPOS(PosPresenter presenter, IAuthenticationService auth)
+    public frmPOS(PosPresenter presenter, IAuthenticationService auth,
+                  ViewFactory views)
         : this()
     {
         _presenter = presenter;
         _auth = auth;
+        _views = views;
         _presenter.Attach(this);
     }
 
@@ -52,6 +56,8 @@ public partial class frmPOS : PhxFormBase, IPosView
     {
         switch (e.KeyCode)
         {
+            case PosKeyMap.Search:
+                ProductSearchRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.Quantity:
                 QuantityRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.LineDiscount:
@@ -190,9 +196,28 @@ public partial class frmPOS : PhxFormBase, IPosView
         frmTextPrompt.Ask(this, "Void line",
                           "Why is this line being voided?");
 
+    /// <summary>
+    /// The product list, in picker mode, rather than a lookup grid built
+    /// a second time here: it already searches on code and description,
+    /// pages, and shows price and stock on hand, which is exactly what
+    /// the operator needs to see before selling something.
+    /// </summary>
+    public string? PromptProductSearch(string? term)
+    {
+        if (_views is null) return null;
+
+        using var picker = _views.Create<frmProductList>();
+        picker.UseAsPicker(term);
+
+        return picker.ShowDialog(this) == DialogResult.OK
+            ? picker.SelectedCode
+            : null;
+    }
+
     // ---- Events ----------------------------------------------------------
 
     public event EventHandler<string>? CodeScanned;
+    public event EventHandler? ProductSearchRequested;
     public event EventHandler? QuantityRequested;
     public event EventHandler? LineDiscountRequested;
     public event EventHandler? VoidLineRequested;

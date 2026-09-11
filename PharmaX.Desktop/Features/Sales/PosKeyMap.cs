@@ -7,6 +7,7 @@ namespace PharmaX.Desktop.Features.Sales;
 /// </summary>
 public static class PosKeyMap
 {
+    public const Keys Search = Keys.F2;
     public const Keys Quantity = Keys.F4;
     public const Keys LineDiscount = Keys.F5;
     public const Keys Payment = Keys.F6;
@@ -17,6 +18,7 @@ public static class PosKeyMap
     /// What the function bar shows, in the order it shows it.
     public static IReadOnlyList<(Keys Key, string Label)> Bar { get; } = new[]
     {
+        (Search, "F2 Find item"),
         (Quantity, "F4 Quantity"),
         (LineDiscount, "F5 Discount"),
         (Payment, "F6 Pay"),

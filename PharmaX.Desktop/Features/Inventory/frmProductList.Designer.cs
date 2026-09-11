@@ -14,6 +14,7 @@ partial class frmProductList
     private Button btnAdd = null!;
     private Button btnEdit = null!;
     private Button btnRefresh = null!;
+    private Button btnChoose = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -39,6 +40,7 @@ partial class frmProductList
         btnAdd = new Button();
         btnEdit = new Button();
         btnRefresh = new Button();
+        btnChoose = new Button();
         btnClose = new Button();
         SuspendLayout();
 
@@ -94,15 +96,24 @@ partial class frmProductList
         btnRefresh.Text = "&Refresh";
         btnRefresh.UseVisualStyleBackColor = true;
 
+        // Hidden until UseAsPicker shows it, so the maintenance screen
+        // does not offer a "choose" that would have nobody to answer to.
+        btnChoose.Location = new Point(300, 8);
+        btnChoose.Size = new Size(110, 30);
+        btnChoose.TabIndex = 4;
+        btnChoose.Text = "C&hoose";
+        btnChoose.UseVisualStyleBackColor = true;
+        btnChoose.Visible = false;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(730, 8);
         btnClose.Size = new Size(90, 30);
-        btnClose.TabIndex = 4;
+        btnClose.TabIndex = 5;
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
 
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnRefresh, btnEdit, btnAdd });
+            { btnClose, btnChoose, btnRefresh, btnEdit, btnAdd });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
         pnlBottom.Name = "pnlBottom";

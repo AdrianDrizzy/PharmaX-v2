@@ -37,21 +37,112 @@ public class PosPresenterTests
         return presenter;
     }
 
+    /// <summary>
+    /// The till takes a name as readily as a barcode: anything that
+    /// matched no code becomes a search seeded with whatever was typed,
+    /// so the operator carries on rather than starting again.
+    /// </summary>
     [Fact]
-    public async Task Unknown_barcode_shows_an_error_and_returns_focus()
+    public async Task An_unmatched_entry_becomes_a_search_for_what_was_typed()
+    {
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.AddLineAsync(Arg.Any<Guid>(), "panado", 1m)
+              .Returns(Result<SaleLineDto>.Fail("POS-001",
+                  "No product for code panado."));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.CodeScanned += Raise.Event<EventHandler<string>>(this, "panado");
+
+        _view.Received().PromptProductSearch("panado");
+    }
+
+    [Fact]
+    public async Task A_product_chosen_by_name_is_sold_by_its_code()
+    {
+        var sale = SaleWithOneLine();
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(sale));
+        _sales.GetAsync(sale.Id).Returns(Result<SaleDto>.Ok(sale));
+
+        _sales.AddLineAsync(sale.Id, "panado", 1m)
+              .Returns(Result<SaleLineDto>.Fail("POS-001",
+                  "No product for code panado."));
+
+        _view.PromptProductSearch("panado").Returns("PAN500");
+
+        _sales.AddLineAsync(sale.Id, "PAN500", 1m)
+              .Returns(Result<SaleLineDto>.Ok(sale.Lines[0]));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.CodeScanned += Raise.Event<EventHandler<string>>(this, "panado");
+
+        await _sales.Received().AddLineAsync(sale.Id, "PAN500", 1m);
+        _view.DidNotReceive().ShowError(Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// Giving up on the search is not an error: the operator has just
+    /// seen what did and did not match.
+    /// </summary>
+    [Fact]
+    public async Task Abandoning_the_search_returns_focus_without_complaining()
     {
         _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
         _sales.AddLineAsync(Arg.Any<Guid>(), "9999", 1m)
               .Returns(Result<SaleLineDto>.Fail("POS-001",
                   "No product for code 9999."));
 
+        _view.PromptProductSearch(Arg.Any<string>()).Returns((string?)null);
+
         var sut = CreateSut();
         await sut.InitialiseAsync();
 
         _view.CodeScanned += Raise.Event<EventHandler<string>>(this, "9999");
 
-        _view.Received().ShowError("No product for code 9999.");
         _view.Received().FocusScan();
+        _view.DidNotReceive().ShowError(Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// The guard on the fall-through. A discontinued product, or one
+    /// with no sellable batch, did identify something: that has to be
+    /// reported rather than reopened as a search, or the operator is
+    /// sent hunting for an item the till has already refused to sell.
+    /// </summary>
+    [Fact]
+    public async Task A_refusal_that_found_the_product_is_reported_not_searched()
+    {
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.AddLineAsync(Arg.Any<Guid>(), "PAN500", 1m)
+              .Returns(Result<SaleLineDto>.Fail("POS-002",
+                  "Panado 500mg is discontinued and cannot be sold."));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.CodeScanned += Raise.Event<EventHandler<string>>(this, "PAN500");
+
+        _view.Received().ShowError(
+            "Panado 500mg is discontinued and cannot be sold.");
+
+        _view.Received().FocusScan();
+        _view.DidNotReceive().PromptProductSearch(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task F2_opens_the_search_with_nothing_typed()
+    {
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ProductSearchRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        _view.Received().PromptProductSearch(null);
     }
 
     [Fact]

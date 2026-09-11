@@ -39,7 +39,17 @@ public partial class ScanBar : UserControl
     public string Prompt
     {
         get => lblPrompt.Text;
-        set => lblPrompt.Text = value;
+        set
+        {
+            lblPrompt.Text = value;
+
+            // The prompt differs by screen, so the label takes the width
+            // its own text needs. A fixed width clips the longer ones,
+            // and a clipped prompt is the kind of defect nobody reports
+            // and everybody works around.
+            lblPrompt.Width = Math.Max(90,
+                TextRenderer.MeasureText(value, lblPrompt.Font).Width + 8);
+        }
     }
 
     private void OnKeyPress(object? sender, KeyPressEventArgs e)

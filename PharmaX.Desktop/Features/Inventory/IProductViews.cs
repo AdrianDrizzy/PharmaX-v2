@@ -14,6 +14,7 @@ public interface IProductListView : IView
     event EventHandler? AddRequested;
     event EventHandler? EditRequested;
     event EventHandler? RefreshRequested;
+    event EventHandler? ChooseRequested;
 }
 
 public interface IProductEditView : IView

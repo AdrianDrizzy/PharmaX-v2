@@ -97,7 +97,7 @@ partial class frmPOS
         scanBar.Dock = DockStyle.Top;
         scanBar.Height = 52;
         scanBar.Name = "scanBar";
-        scanBar.Prompt = "Scan";
+        scanBar.Prompt = "Scan / name";
 
         // ---- Who is being served -----------------------------------------
         lblCustomer.AutoSize = false;
