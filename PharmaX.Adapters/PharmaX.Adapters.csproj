@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- net8.0-windows because printing and device interop need Windows-only
+       APIs (Section 3.3). Keeping that dependency out of Application and
+       Domain is the reason this project exists at all. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>PharmaX.Adapters</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PharmaX.Domain\PharmaX.Domain.csproj" />
+    <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />
+  </ItemGroup>
+
+</Project>

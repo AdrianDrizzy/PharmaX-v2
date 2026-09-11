@@ -1,0 +1,200 @@
+using PharmaX.Application.Sales;
+using PharmaX.Application.Sales.Dtos;
+using PharmaX.Application.Security;
+using PharmaX.Desktop.Mvp;
+using PharmaX.Domain.Security;
+
+namespace PharmaX.Desktop.Features.Sales;
+
+public sealed class PosPresenter : PresenterBase<IPosView>
+{
+    private readonly ISaleService _sales;
+    private readonly IPermissionService _permissions;
+    private readonly IReceiptPrinter _receipts;
+    private readonly ICashDrawer _drawer;
+    private readonly ReceiptHeaderFactory _headers;
+
+    private Guid _saleId;
+    private SaleDto? _sale;
+
+    public PosPresenter(ISaleService sales, IPermissionService permissions,
+        IReceiptPrinter receipts, ICashDrawer drawer,
+        ReceiptHeaderFactory headers)
+    {
+        _sales = sales;
+        _permissions = permissions;
+        _receipts = receipts;
+        _drawer = drawer;
+        _headers = headers;
+    }
+
+    protected override void Subscribe()
+    {
+        View.CodeScanned += (_, code) => _ = OnScanAsync(code);
+        View.QuantityRequested += (_, _) => _ = OnQuantityAsync();
+        View.LineDiscountRequested += (_, _) => _ = OnDiscountAsync();
+        View.VoidLineRequested += (_, _) => _ = OnVoidAsync();
+        View.PaymentRequested += (_, _) => _ = OnPaymentAsync();
+        View.HoldRequested += (_, _) => _ = OnHoldAsync();
+        View.CloseRequested += (_, _) => View.CloseView(true);
+    }
+
+    public override Task InitialiseAsync() => StartNewSaleAsync();
+
+    private Task StartNewSaleAsync() => GuardAsync(async () =>
+    {
+        var result = await _sales.OpenAsync();
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            View.CloseView(false);
+            return;
+        }
+
+        _sale = result.Value;
+        _saleId = _sale.Id;
+        View.ClearSale();
+        View.ShowTotals(_sale.Totals);
+        View.FocusScan();
+    });
+
+    private Task OnScanAsync(string code) => GuardAsync(async () =>
+    {
+        var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            View.FocusScan();
+            return;
+        }
+
+        await RefreshAsync();
+    });
+
+    private Task OnQuantityAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedLineNo is not int lineNo) return;
+
+        var line = _sale!.Lines.Single(l => l.LineNo == lineNo);
+        var quantity = View.PromptQuantity(line.Quantity);
+        if (quantity is null) return;
+
+        var result = await _sales.SetLineQuantityAsync(
+            _saleId, lineNo, quantity.Value);
+
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+
+        await RefreshAsync();
+    });
+
+    private Task OnDiscountAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedLineNo is not int lineNo) return;
+
+        var line = _sale!.Lines.Single(l => l.LineNo == lineNo);
+        var amount = View.PromptDiscount(line.LineTotal);
+        if (amount is null) return;
+
+        Guid? authoriser = null;
+
+        // The presenter decides that a supervisor is needed and asks the
+        // view to collect one. It never evaluates the rule itself.
+        if (_permissions.Check(PermissionCode.SaleDiscountAboveLimit)
+                == PermissionOutcome.RequiresSupervisor)
+        {
+            authoriser = View.PromptSupervisor(
+                "This discount is above your limit.");
+
+            if (authoriser is null)
+            {
+                View.ShowError("Discount not applied.");
+                return;
+            }
+        }
+
+        var result = await _sales.ApplyLineDiscountAsync(
+            _saleId, lineNo, amount.Value, authoriser);
+
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+        await RefreshAsync();
+    });
+
+    private Task OnVoidAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedLineNo is not int lineNo) return;
+
+        var reason = View.PromptVoidReason();
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        var result = await _sales.VoidLineAsync(_saleId, lineNo, reason);
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+
+        await RefreshAsync();
+    });
+
+    private Task OnHoldAsync() => GuardAsync(() =>
+    {
+        // Parked rather than cancelled: the basket stays open in the
+        // database and the next sale starts clean over the top of it.
+        View.ShowInfo("Sale held. Recall it from the till session screen.");
+        return StartNewSaleAsync();
+    });
+
+    private Task OnPaymentAsync() => GuardAsync(async () =>
+    {
+        if (_sale is null || _sale.Lines.Count == 0)
+        {
+            View.ShowError("Add at least one item before taking payment.");
+            return;
+        }
+
+        var payments = View.PromptPayment(_sale.Totals.Total);
+        if (payments is null) return;
+
+        var result = await _sales.FinaliseAsync(_saleId, payments);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        View.ShowDocumentNumber(result.Value.DocumentNumber);
+
+        // Finalise, then print. The other way round leaves a printed
+        // receipt for a sale that never committed, which is the worse of
+        // the two failures (Section 20.2).
+        await PrintAsync(payments);
+        await StartNewSaleAsync();
+    });
+
+    private async Task PrintAsync(IReadOnlyList<PaymentDto> payments)
+    {
+        var final = await _sales.GetAsync(_saleId);
+        if (final.IsFailure) return;
+
+        if (payments.Any(p => string.Equals(p.TenderType, "Cash",
+                StringComparison.OrdinalIgnoreCase)))
+            _drawer.Open();
+
+        var outcome = _receipts.Print(final.Value, _headers.Build());
+
+        if (outcome != PrintOutcome.Printed)
+            View.ShowError(
+                "The sale is complete but the receipt did not print. "
+                + "Reprint it from the till session screen.");
+    }
+
+    private async Task RefreshAsync()
+    {
+        var result = await _sales.GetAsync(_saleId);
+        if (result.IsFailure) return;
+
+        _sale = result.Value;
+        View.ShowLines(_sale.Lines);
+        View.ShowTotals(_sale.Totals);
+        View.FocusScan();
+    }
+}

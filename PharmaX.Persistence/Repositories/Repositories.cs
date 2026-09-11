@@ -1,0 +1,602 @@
+using Microsoft.EntityFrameworkCore;
+using PharmaX.Application.Abstractions;
+using PharmaX.Application.Dispensing;
+using PharmaX.Application.Inventory;
+using PharmaX.Application.Repositories;
+using PharmaX.Domain.Batches;
+using PharmaX.Domain.Dispensing;
+using PharmaX.Domain.Inventory;
+using PharmaX.Domain.Patients;
+using PharmaX.Domain.Primitives;
+using PharmaX.Domain.Sales;
+using PharmaX.Domain.Security;
+using PharmaX.Domain.Suppliers;
+using PharmaX.Domain.Tills;
+
+namespace PharmaX.Persistence.Repositories;
+
+public sealed class SaleRepository : ISaleRepository
+{
+    private readonly PharmaXDbContext _db;
+    private readonly PharmaXOptions _options;
+
+    public SaleRepository(PharmaXDbContext db, PharmaXOptions options)
+    {
+        _db = db;
+        _options = options;
+    }
+
+    public Guid CurrentBranchId => Guid.Parse(_options.Workstation.BranchId);
+    public Guid CurrentWorkstationId =>
+        Guid.Parse(_options.Workstation.WorkstationId);
+
+    public async Task<Sale?> GetAsync(Guid id, CancellationToken ct = default) =>
+        await _db.Sales
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public async Task AddAsync(Sale sale, CancellationToken ct = default) =>
+        await _db.Sales.AddAsync(sale, ct);
+
+    public async Task<IReadOnlyList<Sale>> ForSessionAsync(
+        Guid tillSessionId, CancellationToken ct = default) =>
+        await _db.Sales
+            .Include(s => s.Payments)
+            .Where(s => s.TillSessionId == tillSessionId)
+            .OrderBy(s => s.OccurredAtUtc)
+            .ToListAsync(ct);
+
+    public async Task<Sale?> ByDocumentNumberAsync(string documentNumber,
+        CancellationToken ct = default) =>
+        await _db.Sales
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .FirstOrDefaultAsync(s => s.DocumentNumber == documentNumber, ct);
+}
+
+public sealed class ProductRepository : IProductRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public ProductRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Product?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Products
+            .Include(p => p.Prices)
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    public async Task<Product?> FindByCodeOrBarcodeAsync(string code,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+
+        var normalised = code.Trim().ToUpperInvariant();
+
+        // The code is indexed and unique, so try it first: the great
+        // majority of scans at the till are a product code.
+        var byCode = await _db.Products
+            .Include(p => p.Prices)
+            .FirstOrDefaultAsync(p => p.Code == normalised, ct);
+
+        if (byCode is not null) return byCode;
+
+        // Barcodes are a primitive collection, so this is a scan of a
+        // short table rather than an index seek. Acceptable because it
+        // only runs when the code lookup already missed.
+        var candidates = await _db.Products
+            .Include(p => p.Prices)
+            .Where(p => p.IsActive)
+            .ToListAsync(ct);
+
+        return candidates.Find(p => p.MatchesCode(code));
+    }
+
+    public async Task<IReadOnlyList<Product>> SearchAsync(string term,
+        int take = 200, CancellationToken ct = default) =>
+        await Matching(term)
+            .OrderBy(p => p.Description)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<int> CountAsync(string term,
+        CancellationToken ct = default) =>
+        await Matching(term).CountAsync(ct);
+
+    public async Task AddAsync(Product product, CancellationToken ct = default)
+        => await _db.Products.AddAsync(product, ct);
+
+    /// The one place the search predicate is written, so the page and
+    /// the count can never disagree about what matched.
+    private IQueryable<Product> Matching(string term)
+    {
+        var query = _db.Products.AsNoTracking().AsQueryable();
+
+        if (string.IsNullOrWhiteSpace(term)) return query;
+
+        var pattern = $"%{term.Trim()}%";
+
+        return query.Where(p =>
+            EF.Functions.Like(p.Description, pattern)
+            || EF.Functions.Like(p.Code, pattern));
+    }
+}
+
+public sealed class BatchRepository : IBatchRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public BatchRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Batch?> GetAsync(Guid id, CancellationToken ct = default)
+        => await _db.Batches.FirstOrDefaultAsync(b => b.Id == id, ct);
+
+    public async Task<IReadOnlyList<Batch>> ForProductAsync(Guid productId,
+        CancellationToken ct = default) =>
+        await _db.Batches
+            .Where(b => b.ProductId == productId)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Batch>> ExpiringBeforeAsync(
+        DateOnly expiringBefore, CancellationToken ct = default) =>
+        await _db.Batches
+            .Where(b => b.Status == BatchStatus.Available)
+            .Where(b => b.QuantityOnHand > 0m)
+            .Where(b => b.ExpiryDate < expiringBefore)
+            .OrderBy(b => b.ExpiryDate)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(Batch batch, CancellationToken ct = default) =>
+        await _db.Batches.AddAsync(batch, ct);
+}
+
+public sealed class PatientRepository : IPatientRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public PatientRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Patient?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Patients.FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    public async Task<Patient?> ByFileNumberAsync(string fileNumber,
+        CancellationToken ct = default) =>
+        await _db.Patients
+            .FirstOrDefaultAsync(p => p.FileNumber == fileNumber, ct);
+
+    public async Task<IReadOnlyList<Patient>> SearchAsync(string term,
+        int take = 100, CancellationToken ct = default)
+    {
+        var pattern = $"%{term?.Trim()}%";
+
+        return await _db.Patients
+            .AsNoTracking()
+            .Where(p => p.IsActive)
+            .Where(p => EF.Functions.Like(p.Surname, pattern)
+                        || EF.Functions.Like(p.FileNumber, pattern))
+            .OrderBy(p => p.Surname).ThenBy(p => p.FirstNames)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task<ClinicalProfile?> ClinicalProfileAsync(Guid patientId,
+        CancellationToken ct = default) =>
+        await _db.ClinicalProfiles
+            .Include(c => c.Allergies)
+            .FirstOrDefaultAsync(c => c.PatientId == patientId, ct);
+
+    public async Task AddAsync(Patient patient, CancellationToken ct = default)
+        => await _db.Patients.AddAsync(patient, ct);
+
+    public async Task AddClinicalProfileAsync(ClinicalProfile profile,
+        CancellationToken ct = default) =>
+        await _db.ClinicalProfiles.AddAsync(profile, ct);
+
+    public async Task<IReadOnlySet<Guid>> WithAllergiesAsync(
+        IEnumerable<Guid> patientIds, CancellationToken ct = default)
+    {
+        var ids = patientIds.ToList();
+
+        if (ids.Count == 0) return new HashSet<Guid>();
+
+        // One query for the whole page rather than a profile per row: a
+        // list of names must not pull a medical history each.
+        var found = await _db.ClinicalProfiles
+            .AsNoTracking()
+            .Where(c => ids.Contains(c.PatientId))
+            .Where(c => c.Allergies.Any())
+            .Select(c => c.PatientId)
+            .ToListAsync(ct);
+
+        return found.ToHashSet();
+    }
+}
+
+public sealed class UserRepository : IUserRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public UserRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<User?> ByUsernameAsync(string username,
+        CancellationToken ct = default)
+    {
+        var normalised = username?.Trim().ToLowerInvariant() ?? "";
+
+        return await _db.Users
+            .FirstOrDefaultAsync(u => u.Username == normalised, ct);
+    }
+
+    public async Task<User?> GetAsync(Guid id, CancellationToken ct = default)
+        => await _db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+
+    public async Task AddAsync(User user, CancellationToken ct = default) =>
+        await _db.Users.AddAsync(user, ct);
+
+    public async Task<IReadOnlyList<User>> ListAsync(
+        bool includeInactive = false, CancellationToken ct = default)
+    {
+        var query = _db.Users.AsNoTracking().AsQueryable();
+
+        if (!includeInactive) query = query.Where(u => u.IsActive);
+
+        return await query.OrderBy(u => u.Username).ToListAsync(ct);
+    }
+}
+
+public sealed class TillSessionRepository : ITillSessionRepository
+{
+    private readonly PharmaXDbContext _db;
+    private readonly PharmaXOptions _options;
+
+    public TillSessionRepository(PharmaXDbContext db, PharmaXOptions options)
+    {
+        _db = db;
+        _options = options;
+    }
+
+    public async Task<TillSession?> CurrentAsync(CancellationToken ct = default)
+    {
+        var workstationId = Guid.Parse(_options.Workstation.WorkstationId);
+
+        return await _db.TillSessions
+            .Where(s => s.WorkstationId == workstationId)
+            .Where(s => s.Status != TillSessionStatus.Closed)
+            .OrderByDescending(s => s.OpenedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<TillSession?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.TillSessions.FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public async Task AddAsync(TillSession session,
+        CancellationToken ct = default) =>
+        await _db.TillSessions.AddAsync(session, ct);
+
+    public async Task<IReadOnlyList<Denomination>> DenominationsAsync(
+        string? currency = null, CancellationToken ct = default)
+    {
+        var code = currency ?? Money.DefaultCurrency;
+
+        return await _db.Denominations
+            .AsNoTracking()
+            .Where(d => d.Currency == code)
+            .OrderBy(d => d.SortOrder)
+            .ToListAsync(ct);
+    }
+
+    public async Task AddDeclarationAsync(TillDeclaration declaration,
+        CancellationToken ct = default) =>
+        await _db.TillDeclarations.AddAsync(declaration, ct);
+}
+
+public sealed class DispensingRepository : IDispensingRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public DispensingRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Domain.Dispensing.Dispensing?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Dispensings
+            .Include(d => d.Lines)
+            .Include(d => d.Warnings)
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+
+    public async Task<Domain.Dispensing.Dispensing?> ByWarningAsync(
+        Guid warningId, CancellationToken ct = default) =>
+        await _db.Dispensings
+            .Include(d => d.Lines)
+            .Include(d => d.Warnings)
+            .FirstOrDefaultAsync(d => d.Warnings.Any(w => w.Id == warningId),
+                                 ct);
+
+    public async Task AddAsync(Domain.Dispensing.Dispensing dispensing,
+        CancellationToken ct = default) =>
+        await _db.Dispensings.AddAsync(dispensing, ct);
+}
+
+public sealed class ScriptRepository : IScriptRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public ScriptRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Script?> GetAsync(Guid id, CancellationToken ct = default)
+        => await _db.Scripts
+            .Include(s => s.Items)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public async Task<IReadOnlyList<Script>> ForPatientAsync(Guid patientId,
+        CancellationToken ct = default) =>
+        await _db.Scripts
+            .Include(s => s.Items)
+            .Where(s => s.PatientId == patientId)
+            .OrderByDescending(s => s.PrescribedOn)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(Script script, CancellationToken ct = default) =>
+        await _db.Scripts.AddAsync(script, ct);
+}
+
+/// <summary>
+/// Reads the role-to-permission grants. Synchronous on purpose: a
+/// permission check happens on every screen open and every override, and
+/// the grants for one user are small enough to hold for the session.
+/// </summary>
+public sealed class PermissionRepository : IPermissionRepository
+{
+    private readonly PharmaXDbContext _db;
+    private readonly Dictionary<Guid, IReadOnlyList<string>> _cache = new();
+
+    /// Permissions a supervisor may authorise on the spot rather than the
+    /// system simply refusing. Everything else is a flat no.
+    private static readonly HashSet<string> Escalatable = new(StringComparer.Ordinal)
+    {
+        Domain.Security.PermissionCode.SaleDiscountAboveLimit,
+        Domain.Security.PermissionCode.ReturnAuthorise,
+        Domain.Security.PermissionCode.SessionCloseOtherUser,
+        Domain.Security.PermissionCode.PriceChange
+    };
+
+    public PermissionRepository(PharmaXDbContext db) => _db = db;
+
+    public bool UserHas(Guid userId, string permissionCode) =>
+        ForUser(userId).Contains(permissionCode, StringComparer.Ordinal);
+
+    public bool IsSupervisorEscalatable(string permissionCode) =>
+        Escalatable.Contains(permissionCode);
+
+    public IReadOnlyList<string> ForUser(Guid userId)
+    {
+        if (_cache.TryGetValue(userId, out var cached)) return cached;
+
+        var user = _db.Users.AsNoTracking()
+                            .FirstOrDefault(u => u.Id == userId);
+
+        if (user is null)
+        {
+            _cache[userId] = Array.Empty<string>();
+            return _cache[userId];
+        }
+
+        var roles = _db.Roles.AsNoTracking().ToList();
+
+        var granted = roles
+            .Where(r => user.IsInRole(r.Name))
+            .SelectMany(r => r.PermissionCodes)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        _cache[userId] = granted;
+        return granted;
+    }
+}
+
+/// <summary>
+/// Appends a stock movement to the current unit of work. It does not save:
+/// the movement commits with the sale that caused it or not at all.
+/// </summary>
+public sealed class StockMovementWriter : IStockMovementWriter
+{
+    private readonly PharmaXDbContext _db;
+
+    public StockMovementWriter(PharmaXDbContext db) => _db = db;
+
+    public void Add(StockMovement movement) => _db.StockMovements.Add(movement);
+}
+
+public sealed class SupplierRepository : ISupplierRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public SupplierRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Supplier?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public async Task<Supplier?> ByCodeAsync(string code,
+        CancellationToken ct = default)
+    {
+        var normalised = code?.Trim().ToUpperInvariant() ?? "";
+
+        return await _db.Suppliers
+            .FirstOrDefaultAsync(s => s.Code == normalised, ct);
+    }
+
+    public async Task<IReadOnlyList<Supplier>> ListAsync(
+        bool includeInactive = false, CancellationToken ct = default)
+    {
+        var query = _db.Suppliers.AsNoTracking().AsQueryable();
+
+        if (!includeInactive) query = query.Where(s => s.IsActive);
+
+        return await query.OrderBy(s => s.Name).ToListAsync(ct);
+    }
+
+    public async Task AddAsync(Supplier supplier,
+        CancellationToken ct = default) =>
+        await _db.Suppliers.AddAsync(supplier, ct);
+}
+
+public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public PurchaseOrderRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<PurchaseOrder?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.PurchaseOrders
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == id, ct);
+
+    public async Task<IReadOnlyList<PurchaseOrder>> OutstandingAsync(
+        Guid? supplierId = null, CancellationToken ct = default)
+    {
+        var query = _db.PurchaseOrders
+            .Include(o => o.Lines)
+            .Where(o => o.Status == PurchaseOrderStatus.Sent
+                        || o.Status == PurchaseOrderStatus.PartiallyReceived);
+
+        if (supplierId is Guid id)
+            query = query.Where(o => o.SupplierId == id);
+
+        return await query.OrderBy(o => o.OrderedOn).ToListAsync(ct);
+    }
+
+    public async Task AddAsync(PurchaseOrder order,
+        CancellationToken ct = default) =>
+        await _db.PurchaseOrders.AddAsync(order, ct);
+}
+
+public sealed class GoodsReceiptRepository : IGoodsReceiptRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public GoodsReceiptRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<GoodsReceipt?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.GoodsReceipts
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
+
+    public async Task<IReadOnlyList<GoodsReceipt>> RecentAsync(int take = 100,
+        CancellationToken ct = default) =>
+        await _db.GoodsReceipts
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .OrderByDescending(r => r.ReceivedOn)
+            .ThenByDescending(r => r.CreatedAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(GoodsReceipt receipt,
+        CancellationToken ct = default) =>
+        await _db.GoodsReceipts.AddAsync(receipt, ct);
+}
+
+public sealed class StocktakeRepository : IStocktakeRepository
+{
+    private readonly PharmaXDbContext _db;
+    private readonly PharmaXOptions _options;
+
+    public StocktakeRepository(PharmaXDbContext db, PharmaXOptions options)
+    {
+        _db = db;
+        _options = options;
+    }
+
+    public async Task<Stocktake?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Stocktakes
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public async Task<Stocktake?> OpenCountAsync(
+        CancellationToken ct = default)
+    {
+        var branchId = Guid.Parse(_options.Workstation.BranchId);
+
+        return await _db.Stocktakes
+            .Include(s => s.Lines)
+            .Where(s => s.BranchId == branchId)
+            .Where(s => s.Status == StocktakeStatus.Counting)
+            .OrderByDescending(s => s.OpenedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Stocktake>> RecentAsync(int take = 50,
+        CancellationToken ct = default) =>
+        await _db.Stocktakes
+            .AsNoTracking()
+            .Include(s => s.Lines)
+            .OrderByDescending(s => s.OpenedAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(Stocktake stocktake,
+        CancellationToken ct = default) =>
+        await _db.Stocktakes.AddAsync(stocktake, ct);
+}
+
+public sealed class ReturnRepository : IReturnRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public ReturnRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<SaleReturn?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.SaleReturns
+            .Include(r => r.Lines)
+            .Include(r => r.Refunds)
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
+
+    public async Task<IReadOnlyList<SaleReturn>> RecentAsync(int take = 100,
+        CancellationToken ct = default) =>
+        await _db.SaleReturns
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .OrderByDescending(r => r.OccurredAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyDictionary<int, decimal>>
+        ReturnedQuantitiesAsync(Guid saleId, CancellationToken ct = default)
+    {
+        // Filtered in the database, summed here: SQLite cannot apply
+        // Sum to a decimal, and the workstation database is always
+        // SQLite (NET-002). The rows are one sale's returns, so there
+        // is nothing to gain from pushing the arithmetic down anyway.
+        var lines = await _db.SaleReturns
+            .AsNoTracking()
+            .Where(r => r.OriginalSaleId == saleId)
+            .Where(r => r.Status == ReturnStatus.Finalised)
+            .SelectMany(r => r.Lines)
+            .Select(l => new { l.OriginalLineNo, l.Quantity })
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(l => l.OriginalLineNo)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+    }
+
+    public async Task<IReadOnlyList<SaleReturn>> ForSessionAsync(
+        Guid tillSessionId, CancellationToken ct = default) =>
+        await _db.SaleReturns
+            .AsNoTracking()
+            .Include(r => r.Refunds)
+            .Where(r => r.TillSessionId == tillSessionId)
+            .OrderBy(r => r.OccurredAtUtc)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(SaleReturn saleReturn,
+        CancellationToken ct = default) =>
+        await _db.SaleReturns.AddAsync(saleReturn, ct);
+}

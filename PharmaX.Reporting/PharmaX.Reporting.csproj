@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PharmaX.Reporting</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PharmaX.Domain\PharmaX.Domain.csproj" />
+    <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />
+
+    <!-- Section 4.1 lists only Domain and Application here, but the report
+         definitions in Section 29.3 query PharmaXDbContext directly, and a
+         reporting engine that cannot reach the database reports nothing.
+         The two cannot both hold; this follows the code. Reporting stays a
+         read-only consumer: it has no repository writes and no SaveChanges. -->
+    <ProjectReference Include="..\PharmaX.Persistence\PharmaX.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="QuestPDF" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="CsvHelper" />
+  </ItemGroup>
+
+</Project>

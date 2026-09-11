@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PharmaX.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Section 4.4: the innermost layers compile clean or not at all. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors></WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <!-- Section 4.1: PharmaX.Domain references nothing. Not one project,
+       not one NuGet package. LayerRuleTests enforces this. -->
+
+</Project>

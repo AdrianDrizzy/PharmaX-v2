@@ -1,0 +1,9 @@
+# Generated migrations are never hand-edited (Section 9.5), so analyser
+# advice about them can only ever be noise: acting on it would mean
+# editing a file another developer's database has already applied.
+[*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.IDE0300.severity = none

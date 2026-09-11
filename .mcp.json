@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "winforms-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@fnrhombus/winforms-mcp"
+      ],
+      "env": {}
+    }
+  }
+}

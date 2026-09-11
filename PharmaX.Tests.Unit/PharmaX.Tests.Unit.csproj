@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- net8.0-windows, not net8.0, so that the presenter tests of Section
+       17.6 can reference PharmaX.Desktop. Section 4.1 lists only Domain
+       and Application here, but a presenter test that cannot see the
+       presenter is not a test, and Section 17.6 calls it "the proof that
+       the architecture works". No form is constructed by any test in
+       this project; LayerRuleTests enforces that presenters stay free of
+       Windows Forms types. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>PharmaX.Tests.Unit</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- Underscored test names read as sentences, which is the
+         point of them. CA1707 is right about members and wrong
+         about test names. -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PharmaX.Domain\PharmaX.Domain.csproj" />
+    <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />
+    <ProjectReference Include="..\PharmaX.Desktop\PharmaX.Desktop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

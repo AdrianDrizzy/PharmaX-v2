@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PharmaX.Tests.Integration</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- Underscored test names read as sentences, which is the
+         point of them. CA1707 is right about members and wrong
+         about test names. -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PharmaX.Domain\PharmaX.Domain.csproj" />
+    <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />
+    <ProjectReference Include="..\PharmaX.Persistence\PharmaX.Persistence.csproj" />
+    <ProjectReference Include="..\PharmaX.Sync\PharmaX.Sync.csproj" />
+
+    <!-- So that the report catalogue can be checked against the
+         definitions that are actually registered. A preset naming a
+         definition nobody wrote is a menu item that throws. -->
+    <ProjectReference Include="..\PharmaX.Reporting\PharmaX.Reporting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

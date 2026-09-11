@@ -1,0 +1,219 @@
+using PharmaX.Application.Abstractions;
+using PharmaX.Application.Patients.Dtos;
+using PharmaX.Application.Repositories;
+using PharmaX.Application.Results;
+using PharmaX.Application.Security;
+using PharmaX.Domain.Patients;
+using PharmaX.Domain.Security;
+
+namespace PharmaX.Application.Patients;
+
+public interface IPatientService
+{
+    Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(string term,
+        CancellationToken ct = default);
+
+    Task<Result<PatientDto>> GetAsync(Guid id, CancellationToken ct = default);
+
+    Task<Result<Guid>> CreateAsync(PatientEditDto edit,
+                                   CancellationToken ct = default);
+
+    Task<Result> UpdateAsync(Guid id, PatientEditDto edit,
+                             CancellationToken ct = default);
+
+    Task<Result> DeactivateAsync(Guid id, CancellationToken ct = default);
+}
+
+public sealed class PatientService : IPatientService
+{
+    private readonly IPatientRepository _patients;
+    private readonly IDocumentNumbering _numbering;
+    private readonly IPermissionService _permissions;
+    private readonly IAuditWriter _audit;
+    private readonly IOutbox _outbox;
+    private readonly IUnitOfWork _uow;
+    private readonly IClock _clock;
+
+    public PatientService(IPatientRepository patients,
+        IDocumentNumbering numbering, IPermissionService permissions,
+        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow, IClock clock)
+    {
+        _patients = patients;
+        _numbering = numbering;
+        _permissions = permissions;
+        _audit = audit;
+        _outbox = outbox;
+        _uow = uow;
+        _clock = clock;
+    }
+
+    public async Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(
+        string term, CancellationToken ct = default)
+    {
+        // A patient list is clinical information, so reading it needs the
+        // dispensing permission rather than the product one.
+        _permissions.Demand(PermissionCode.ScriptAuthorise);
+
+        var patients = await _patients.SearchAsync(term, ct: ct);
+
+        var allergic = await _patients
+            .WithAllergiesAsync(patients.Select(p => p.Id), ct);
+
+        IReadOnlyList<PatientListItemDto> items = patients
+            .Select(p => PatientListItemDto.From(p, _clock.Today,
+                                                 allergic.Contains(p.Id)))
+            .ToList();
+
+        return Result<IReadOnlyList<PatientListItemDto>>.Ok(items);
+    }
+
+    public async Task<Result<PatientDto>> GetAsync(Guid id,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptAuthorise);
+
+        var patient = await _patients.GetAsync(id, ct);
+        if (patient is null)
+            return Result<PatientDto>.Fail("PAT-000", "Patient not found.");
+
+        var profile = await _patients.ClinicalProfileAsync(id, ct);
+
+        return Result<PatientDto>.Ok(
+            PatientDto.From(patient, profile, _clock.Today));
+    }
+
+    public async Task<Result<Guid>> CreateAsync(PatientEditDto edit,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+
+        _permissions.Demand(PermissionCode.ScriptAuthorise);
+
+        if (Validate(edit, _clock.Today) is Error problem)
+            return Result<Guid>.Fail(problem.Code, problem.Message);
+
+        // Allocated, not typed: a file number the operator invents is a
+        // number two patients eventually share.
+        var fileNumber = await _numbering.NextAsync("PAT", ct);
+
+        var patient = Patient.Create(fileNumber, edit.Surname,
+            edit.FirstNames, edit.DateOfBirth, edit.IdNumber);
+
+        patient.UpdateContact(edit.Telephone, edit.Email);
+
+        await _patients.AddAsync(patient, ct);
+
+        var profile = ClinicalProfile.For(patient.Id);
+        Apply(profile, edit);
+        patient.LinkClinicalProfile(profile.Id);
+
+        await _patients.AddClinicalProfileAsync(profile, ct);
+
+        _audit.Applied("pat.patient.create", "Patient", patient.Id,
+            $"File {fileNumber}");
+        _outbox.Append("Patient", patient.Id,
+            $"{{\"id\":\"{patient.Id}\",\"file\":\"{fileNumber}\"}}");
+
+        await _uow.SaveChangesAsync(ct);
+        return Result<Guid>.Ok(patient.Id);
+    }
+
+    public async Task<Result> UpdateAsync(Guid id, PatientEditDto edit,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+
+        _permissions.Demand(PermissionCode.ScriptAuthorise);
+
+        if (Validate(edit, _clock.Today) is Error problem)
+            return Result.Fail(problem.Code, problem.Message);
+
+        var patient = await _patients.GetAsync(id, ct);
+        if (patient is null) return Result.Fail("PAT-000", "Patient not found.");
+
+        patient.Amend(edit.Surname, edit.FirstNames, edit.IdNumber,
+                      edit.DateOfBirth);
+        patient.UpdateContact(edit.Telephone, edit.Email);
+
+        var profile = await _patients.ClinicalProfileAsync(id, ct);
+
+        if (profile is null)
+        {
+            profile = ClinicalProfile.For(patient.Id);
+            patient.LinkClinicalProfile(profile.Id);
+            await _patients.AddClinicalProfileAsync(profile, ct);
+        }
+
+        Apply(profile, edit);
+
+        // Recorded because a changed allergy list changes what the
+        // dispensing screen will and will not stop (DSP-007).
+        _audit.Applied("pat.patient.update", "Patient", patient.Id,
+            $"{edit.Allergies.Count} allergy record(s)");
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
+    }
+
+    public async Task<Result> DeactivateAsync(Guid id,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptAuthorise);
+
+        var patient = await _patients.GetAsync(id, ct);
+        if (patient is null) return Result.Fail("PAT-000", "Patient not found.");
+
+        // Never deleted: a deleted patient takes their dispensing history
+        // with them, and that history is a legal record.
+        patient.Deactivate();
+
+        _audit.Applied("pat.patient.deactivate", "Patient", patient.Id);
+        await _uow.SaveChangesAsync(ct);
+
+        return Result.Ok();
+    }
+
+    private static void Apply(ClinicalProfile profile, PatientEditDto edit)
+    {
+        profile.UpdateVitals(edit.WeightKg, edit.IsPregnant,
+                             edit.IsBreastfeeding);
+        profile.UpdateNotes(edit.ClinicalNotes);
+        profile.ReplaceAllergies(edit.Allergies
+            .Select(a => (a.Substance, a.Severity, a.Reaction)));
+        profile.ReplaceChronicConditions(edit.ChronicConditions);
+    }
+
+    private static Error? Validate(PatientEditDto edit, DateOnly today)
+    {
+        if (string.IsNullOrWhiteSpace(edit.Surname))
+            return new Error("PAT-001", "A patient needs a surname.");
+
+        if (string.IsNullOrWhiteSpace(edit.FirstNames))
+            return new Error("PAT-002", "A patient needs a first name.");
+
+        if (edit.DateOfBirth is DateOnly born && born > today)
+            return new Error("PAT-003",
+                "A date of birth cannot be in the future.");
+
+        if (edit.WeightKg is decimal weight && weight is <= 0m or > 500m)
+            return new Error("PAT-004",
+                "A weight must be between 0 and 500 kilograms.");
+
+        // Severity drives whether an assistant may acknowledge a warning
+        // or whether a pharmacist has to, so it cannot be free text.
+        var severities = new[] { "Mild", "Moderate", "Severe" };
+
+        var wrong = edit.Allergies
+            .Where(a => !severities.Contains(a.Severity,
+                                             StringComparer.Ordinal))
+            .Select(a => a.Substance)
+            .ToList();
+
+        if (wrong.Count > 0)
+            return new Error("PAT-005",
+                $"Allergy severity must be Mild, Moderate or Severe: "
+                + $"{string.Join(", ", wrong)}.");
+
+        return null;
+    }
+}
