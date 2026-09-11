@@ -80,6 +80,10 @@ public static class DependencyInjection
         services.AddScoped<IStockMovementWriter, StockMovementWriter>();
 
         services.AddScoped<IProductRepository, ProductRepository>();
+        services.AddScoped<Application.Sales.IQuotationRepository,
+                           Repositories.QuotationRepository>();
+        services.AddScoped<Application.Patients.IPatientMergeRepository,
+                           Repositories.PatientMergeRepository>();
         services.AddScoped<Application.Reference.IReferenceRepository,
                            Repositories.ReferenceRepository>();
         services.AddScoped<Application.Reference.ITariffRepository,

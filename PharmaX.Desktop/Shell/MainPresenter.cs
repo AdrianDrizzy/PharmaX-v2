@@ -168,6 +168,18 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "schemes":
                 ShowReferenceList(ReferenceKind.MedicalAidScheme);
                 break;
+            case "tariffs":
+                _views.ShowDialog<frmTariffList>((Form)View);
+                break;
+            case "merge-patients":
+                _views.ShowDialog<frmPatientMerge>((Form)View);
+                break;
+            case "labels":
+                _views.ShowDialog<frmLabels>((Form)View);
+                break;
+            case "quotation":
+                _views.ShowDialog<frmQuotation>((Form)View);
+                break;
 
             // What this till is set to, and what it is doing. Two views
             // of the same read-only list.

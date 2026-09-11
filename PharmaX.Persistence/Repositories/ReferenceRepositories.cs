@@ -168,3 +168,33 @@ public sealed class TariffRepository : ITariffRepository
     public async Task AddAsync(Tariff tariff, CancellationToken ct = default)
         => await _db.Tariffs.AddAsync(tariff, ct);
 }
+
+/// <summary>
+/// Quotations, newest first. Lines come with them: a quotation is read
+/// to be looked at or printed, and never without its lines.
+/// </summary>
+public sealed class QuotationRepository : Application.Sales.IQuotationRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public QuotationRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Domain.Sales.Quotation?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Quotations
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == id, ct);
+
+    public async Task<IReadOnlyList<Domain.Sales.Quotation>> RecentAsync(
+        int take = 100, CancellationToken ct = default) =>
+        await _db.Quotations
+            .Include(q => q.Lines)
+            .OrderByDescending(q => q.QuotedOn)
+            .ThenByDescending(q => q.QuotationNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(Domain.Sales.Quotation quotation,
+        CancellationToken ct = default) =>
+        await _db.Quotations.AddAsync(quotation, ct);
+}

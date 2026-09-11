@@ -96,6 +96,24 @@ public sealed class Script : AuditableEntity
             : ScriptStatus.PartiallyDispensed;
     }
 
+    /// <summary>
+    /// Moves this script to another patient file.
+    /// </summary>
+    /// <remarks>
+    /// Only for merging two files that turned out to be the same person.
+    /// A script is evidence of what was prescribed to whom, so this is
+    /// not a correction tool: the merge service is the one caller, and
+    /// it writes an audit entry naming both files.
+    /// </remarks>
+    public void ReassignTo(Guid patientId)
+    {
+        if (patientId == Guid.Empty)
+            throw new DomainException(
+                "A script cannot be moved to no patient at all.");
+
+        PatientId = patientId;
+    }
+
     public void Cancel(string reason)
     {
         if (string.IsNullOrWhiteSpace(reason))

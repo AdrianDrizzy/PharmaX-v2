@@ -314,6 +314,14 @@ public sealed class DispensingRepository : IDispensingRepository
             .FirstOrDefaultAsync(d => d.Warnings.Any(w => w.Id == warningId),
                                  ct);
 
+    public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
+        ForPatientAsync(Guid patientId, CancellationToken ct = default) =>
+        await _db.Dispensings
+            .Include(d => d.Lines)
+            .Where(d => d.PatientId == patientId)
+            .OrderByDescending(d => d.IssuedAtUtc)
+            .ToListAsync(ct);
+
     public async Task AddAsync(Domain.Dispensing.Dispensing dispensing,
         CancellationToken ct = default) =>
         await _db.Dispensings.AddAsync(dispensing, ct);

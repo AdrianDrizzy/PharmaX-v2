@@ -138,4 +138,17 @@ public sealed class Dispensing : AuditableEntity
             throw new DomainException(
                 "This dispensing has been issued and cannot be changed.");
     }
+
+    /// <summary>
+    /// Moves this dispensing record to another patient file, as part of
+    /// merging two files for the same person. See Script.ReassignTo.
+    /// </summary>
+    public void ReassignTo(Guid patientId)
+    {
+        if (patientId == Guid.Empty)
+            throw new DomainException(
+                "A dispensing cannot be moved to no patient at all.");
+
+        PatientId = patientId;
+    }
 }

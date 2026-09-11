@@ -288,6 +288,11 @@ public interface IDispensingRepository
     Task<Domain.Dispensing.Dispensing?> ByWarningAsync(Guid warningId,
         CancellationToken ct = default);
 
+    /// Everything dispensed to one patient, which is what a reprint
+    /// starts from: the person, then which of their items to print again.
+    Task<IReadOnlyList<Domain.Dispensing.Dispensing>> ForPatientAsync(
+        Guid patientId, CancellationToken ct = default);
+
     Task AddAsync(Domain.Dispensing.Dispensing dispensing,
                   CancellationToken ct = default);
 }

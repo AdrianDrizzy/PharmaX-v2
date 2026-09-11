@@ -44,6 +44,7 @@ public static class DependencyInjection
         // Sales
         s.AddTransient<frmPOS>();
         s.AddTransient<PosPresenter>();
+        s.AddTransient<frmQuotation>();
         s.AddTransient<frmReturn>();
         s.AddTransient<ReturnPresenter>();
 
@@ -52,6 +53,7 @@ public static class DependencyInjection
         s.AddTransient<DispensePresenter>();
         s.AddTransient<frmScriptList>();
         s.AddTransient<ScriptListPresenter>();
+        s.AddTransient<frmLabels>();
         s.AddTransient<frmScriptEdit>();
         s.AddTransient<ScriptEditPresenter>();
 
@@ -76,6 +78,7 @@ public static class DependencyInjection
         // Patients
         s.AddTransient<frmPatientList>();
         s.AddTransient<PatientListPresenter>();
+        s.AddTransient<frmPatientMerge>();
         s.AddTransient<frmPatientEdit>();
         s.AddTransient<PatientEditPresenter>();
 
@@ -105,6 +108,10 @@ public static class DependencyInjection
         s.AddTransient<ReferenceListPresenter>();
         s.AddTransient<frmReferenceEdit>();
         s.AddTransient<ReferenceEditPresenter>();
+        s.AddTransient<frmTariffList>();
+        s.AddTransient<TariffListPresenter>();
+        s.AddTransient<frmTariffEdit>();
+        s.AddTransient<TariffEditPresenter>();
 
         return s;
     }

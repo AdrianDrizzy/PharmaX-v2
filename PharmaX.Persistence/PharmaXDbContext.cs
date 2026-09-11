@@ -60,6 +60,10 @@ public sealed class PharmaXDbContext : DbContext
         Set<MedicalAidScheme>();
     public DbSet<Tariff> Tariffs => Set<Tariff>();
 
+    // A priced list for a customer who has not bought anything: no stock
+    // moves and no receipt number is consumed.
+    public DbSet<Quotation> Quotations => Set<Quotation>();
+
     public DbSet<Domain.Dispensing.Dispensing> Dispensings =>
         Set<Domain.Dispensing.Dispensing>();
 
