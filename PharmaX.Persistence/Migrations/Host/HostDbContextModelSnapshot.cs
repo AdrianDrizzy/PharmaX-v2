@@ -436,6 +436,137 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.ToTable("ScriptItem", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("BatchNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsPosted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Narration")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("PostedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateOnly>("PostingDate")
+                        .HasColumnType("date");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchNumber")
+                        .IsUnique();
+
+                    b.HasIndex("Source", "PostingDate");
+
+                    b.ToTable("JournalBatch", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AccountCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<bool>("IsDebit")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid>("JournalBatchId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Narration")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Finance.JournalLine.Amount#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("varchar(3)")
+                                .HasColumnName("Currency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JournalBatchId", "LineNo")
+                        .IsUnique();
+
+                    b.ToTable("JournalLine", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Finance.LedgerAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AccountType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("LedgerAccount", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Inventory.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2511,6 +2642,15 @@ namespace PharmaX.Persistence.Migrations.Host
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalLine", b =>
+                {
+                    b.HasOne("PharmaX.Domain.Finance.JournalBatch", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("JournalBatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Inventory.ProductPrice", b =>
                 {
                     b.HasOne("PharmaX.Domain.Inventory.Product", null)
@@ -2682,6 +2822,11 @@ namespace PharmaX.Persistence.Migrations.Host
             modelBuilder.Entity("PharmaX.Domain.Dispensing.Script", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalBatch", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("PharmaX.Domain.Inventory.Product", b =>

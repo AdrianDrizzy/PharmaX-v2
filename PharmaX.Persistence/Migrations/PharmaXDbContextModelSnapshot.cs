@@ -431,6 +431,137 @@ namespace PharmaX.Persistence.Migrations
                     b.ToTable("ScriptItem", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BatchNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsPosted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Narration")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PostedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("PostingDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchNumber")
+                        .IsUnique();
+
+                    b.HasIndex("Source", "PostingDate");
+
+                    b.ToTable("JournalBatch", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AccountCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDebit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("JournalBatchId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Narration")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Finance.JournalLine.Amount#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Currency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JournalBatchId", "LineNo")
+                        .IsUnique();
+
+                    b.ToTable("JournalLine", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Finance.LedgerAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AccountType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("LedgerAccount", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Inventory.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2506,6 +2637,15 @@ namespace PharmaX.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalLine", b =>
+                {
+                    b.HasOne("PharmaX.Domain.Finance.JournalBatch", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("JournalBatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Inventory.ProductPrice", b =>
                 {
                     b.HasOne("PharmaX.Domain.Inventory.Product", null)
@@ -2673,6 +2813,11 @@ namespace PharmaX.Persistence.Migrations
             modelBuilder.Entity("PharmaX.Domain.Dispensing.Script", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Finance.JournalBatch", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("PharmaX.Domain.Inventory.Product", b =>

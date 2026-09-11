@@ -9,6 +9,7 @@ public sealed class PharmaXOptions
     public NumberingOptions Numbering { get; init; } = new();
     public FeatureFlags Features { get; init; } = new();
     public LoggingOptions Logging { get; init; } = new();
+    public AccountingOptions Accounting { get; init; } = new();
     public DevelopmentOptions Development { get; init; } = new();
 }
 
@@ -115,4 +116,44 @@ public sealed class LoggingOptions
 
     public string ResolvedDirectory =>
         Environment.ExpandEnvironmentVariables(Directory);
+}
+
+/// <summary>
+/// The ledger accounts a day's takings post to.
+/// </summary>
+/// <remarks>
+/// Configuration rather than constants because every pharmacy's
+/// accountant has their own chart, and a hard-coded account code posts
+/// somebody else's trial balance into the wrong row. The defaults match
+/// the chart PharmaX seeds, so an installation that has not been told
+/// otherwise still balances.
+/// </remarks>
+public sealed class AccountingOptions
+{
+    public string Cash { get; init; } = "1000";
+    public string Card { get; init; } = "1010";
+    public string Eft { get; init; } = "1020";
+    public string AccountsReceivable { get; init; } = "1100";
+    public string MedicalAidReceivable { get; init; } = "1110";
+    public string Voucher { get; init; } = "1200";
+    public string SalesIncome { get; init; } = "4000";
+    public string VatOutput { get; init; } = "2200";
+    public string Rounding { get; init; } = "4900";
+
+    /// <summary>
+    /// Where a tender lands. An unrecognised tender goes to cash rather
+    /// than to nothing at all: a journal that refuses to balance because
+    /// somebody added a tender type is worse than one posting a line an
+    /// accountant can see and move.
+    /// </summary>
+    public string CodeFor(Domain.Sales.TenderType tender) => tender switch
+    {
+        Domain.Sales.TenderType.Cash => Cash,
+        Domain.Sales.TenderType.Card => Card,
+        Domain.Sales.TenderType.Eft => Eft,
+        Domain.Sales.TenderType.Account => AccountsReceivable,
+        Domain.Sales.TenderType.MedicalAid => MedicalAidReceivable,
+        Domain.Sales.TenderType.Voucher => Voucher,
+        _ => Cash
+    };
 }

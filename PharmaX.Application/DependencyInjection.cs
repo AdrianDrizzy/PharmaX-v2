@@ -23,6 +23,8 @@ public static class DependencyInjection
         s.AddScoped<IDispensingService, DispensingService>();
         s.AddScoped<IScriptService, ScriptService>();
         s.AddScoped<IProductService, ProductService>();
+        s.AddScoped<Finance.IDayEndPostingService,
+                    Finance.DayEndPostingService>();
         s.AddScoped<Sales.IQuotationService, Sales.QuotationService>();
         s.AddScoped<Dispensing.ILabelReprintService,
                     Dispensing.LabelReprintService>();

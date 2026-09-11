@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Security;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Tills;
@@ -34,6 +35,7 @@ public sealed class ReferenceDataSeeder
         await SeedAdministratorAsync(ct);
         await SeedDenominationsAsync(ct);
         await SeedFirstNumberBlockAsync(ct);
+        await SeedChartOfAccountsAsync(ct);
 
         await _db.SaveChangesAsync(ct);
     }
@@ -188,7 +190,8 @@ public sealed class ReferenceDataSeeder
         var till = _options.Workstation.TillNumber;
 
         foreach (var series in new[]
-                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK" })
+                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK",
+                   "QUO", "JNL" })
         {
             var exists = await _db.DocumentNumberBlocks
                 .AnyAsync(b => b.Series == series
@@ -208,5 +211,37 @@ public sealed class ReferenceDataSeeder
                 NextValue = 1
             });
         }
+    }
+
+    /// <summary>
+    /// The handful of ledger accounts a day's takings post to.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately minimal. This is not the pharmacy's chart of
+    /// accounts - their accountant owns that - it is the set PharmaX
+    /// itself posts to, with the codes the AccountingOptions defaults
+    /// name, so that a fresh installation balances before anybody has
+    /// configured anything. A site with its own codes overrides them in
+    /// configuration and renames these.
+    /// </remarks>
+    private async Task SeedChartOfAccountsAsync(CancellationToken ct)
+    {
+        if (await _db.LedgerAccounts.AnyAsync(ct)) return;
+
+        var accounts = new (string Code, string Name, LedgerAccountType Type)[]
+        {
+            ("1000", "Cash on hand", LedgerAccountType.Asset),
+            ("1010", "Card clearing", LedgerAccountType.Asset),
+            ("1020", "EFT clearing", LedgerAccountType.Asset),
+            ("1100", "Trade debtors", LedgerAccountType.Asset),
+            ("1110", "Medical aid debtors", LedgerAccountType.Asset),
+            ("1200", "Vouchers redeemed", LedgerAccountType.Asset),
+            ("2200", "VAT output", LedgerAccountType.Liability),
+            ("4000", "Sales", LedgerAccountType.Income),
+            ("4900", "Rounding differences", LedgerAccountType.Income)
+        };
+
+        foreach (var (code, name, type) in accounts)
+            _db.LedgerAccounts.Add(LedgerAccount.Create(code, name, type));
     }
 }

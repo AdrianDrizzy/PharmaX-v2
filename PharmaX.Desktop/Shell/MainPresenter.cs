@@ -5,6 +5,7 @@ using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
 using PharmaX.Desktop.Features.Admin;
 using PharmaX.Desktop.Features.Dispensing;
+using PharmaX.Desktop.Features.Finance;
 using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Patients;
 using PharmaX.Desktop.Features.Reference;
@@ -183,6 +184,11 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 
             // What this till is set to, and what it is doing. Two views
             // of the same read-only list.
+            // A day's takings, turned into a balanced journal.
+            case "day-end":
+                _views.ShowDialog<frmDayEnd>((Form)View);
+                break;
+
             case "control-variables":
                 ShowSystemInfo(SystemInfoMode.ControlVariables);
                 break;
