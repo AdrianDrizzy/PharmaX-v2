@@ -86,7 +86,37 @@ public sealed class PresetCatalogue : IPresetCatalogue
             "ReversedScripts",
             new Dictionary<string, string?>(),
             new[] { "pharmacist", "reason" },
-            PermissionCode.ReportClinical)
+            PermissionCode.ReportClinical),
+
+        // The stock ledger, sliced three ways. These are the Inventory
+        // menu's Transfers, Breakages and Stock entries: the staff know
+        // them by those names, and they are the same rows under
+        // different movement types.
+        new("inv.stock.transactions", "Stock Transactions",
+            "StockMovements",
+            new Dictionary<string, string?>(),
+            new[] { "movementType" },
+            PermissionCode.ReportOperational),
+
+        new("inv.stock.transfers", "Transfers",
+            "StockMovements",
+            new Dictionary<string, string?>
+                { ["movementTypes"] = "TransferIn,TransferOut" },
+            Array.Empty<string>(),
+            PermissionCode.ReportOperational),
+
+        new("inv.stock.breakages", "Breakages and Disposals",
+            "StockMovements",
+            new Dictionary<string, string?>
+                { ["movementTypes"] = "Disposal,Adjustment" },
+            Array.Empty<string>(),
+            PermissionCode.ReportOperational),
+
+        new("inv.price.changes", "Price Changes",
+            "PriceChanges",
+            new Dictionary<string, string?>(),
+            new[] { "operator" },
+            PermissionCode.ReportManagement)
 
         // ... one entry per name in specification Appendix B.
     };
@@ -147,7 +177,20 @@ public sealed class PresetCatalogue : IPresetCatalogue
                 Array.Empty<SlicerOptionDto>()),
 
             ["withinDays"] = new("withinDays", "Expiring within (days)",
-                "number", Array.Empty<SlicerOptionDto>())
+                "number", Array.Empty<SlicerOptionDto>()),
+
+            ["movementType"] = new("movementType", "Movement type",
+                "lookup", new[]
+                {
+                    new SlicerOptionDto("Receipt", "Receipt"),
+                    new SlicerOptionDto("Issue", "Sale or issue"),
+                    new SlicerOptionDto("Return", "Return"),
+                    new SlicerOptionDto("Adjustment", "Adjustment"),
+                    new SlicerOptionDto("TransferOut", "Transfer out"),
+                    new SlicerOptionDto("TransferIn", "Transfer in"),
+                    new SlicerOptionDto("StockTake", "Stock take"),
+                    new SlicerOptionDto("Disposal", "Breakage or disposal")
+                })
         };
 
     public IReadOnlyList<ReportPresetDto> All() =>

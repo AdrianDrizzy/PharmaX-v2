@@ -124,7 +124,53 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 ShowStocktakes(startNew: false);
                 break;
             case "reports":
-                _views.ShowDialog<frmReports>((Form)View);
+                ShowReport(preset: null);
+                break;
+
+            // Menu entries the staff know by an incumbent name that the
+            // report catalogue already answers. Opening the report
+            // screen on the right preset reuses the engine rather than
+            // building a second list over the same rows.
+            case "stock":
+                ShowReport("inv.stock.on-hand");
+                break;
+            case "expired-stock":
+                ShowReport("inv.stock.expiring");
+                break;
+            case "transfers":
+                ShowReport("inv.stock.transfers");
+                break;
+            case "breakages":
+                ShowReport("inv.stock.breakages");
+                break;
+            case "price-changes":
+                ShowReport("inv.price.changes");
+                break;
+            case "vat-codes":
+                ShowReport("pos.vat.summary");
+                break;
+            case "transaction-types":
+                ShowReport("inv.stock.transactions");
+                break;
+
+            // What this till is set to, and what it is doing. Two views
+            // of the same read-only list.
+            case "control-variables":
+                ShowSystemInfo(SystemInfoMode.ControlVariables);
+                break;
+            case "system-console":
+                ShowSystemInfo(SystemInfoMode.SystemConsole);
+                break;
+
+            // A reprint starts where the pharmacist starts: the person.
+            case "reprint-script":
+                ShowScriptsForChosenPatient();
+                break;
+
+            // Stock coming back from a patient is credited on the same
+            // screen as anything else returned over the counter.
+            case "drug-returns":
+                _views.ShowDialog<frmReturn>((Form)View);
                 break;
             case "till":
                 _views.ShowDialog<frmTillSession>((Form)View);
@@ -210,6 +256,24 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             + $"Signed in as {_user.Username}");
 
     private bool Confirmed(string question) => View.Confirm(question);
+
+    /// <summary>
+    /// Opens the report screen, on a named preset where the menu entry
+    /// stands for one particular report.
+    /// </summary>
+    private void ShowReport(string? preset)
+    {
+        using var reports = _views.Create<frmReports>();
+        reports.OpenOnPreset = preset;
+        reports.ShowDialog((Form)View);
+    }
+
+    private void ShowSystemInfo(SystemInfoMode mode)
+    {
+        using var window = _views.Create<frmSystemInfo>();
+        window.Mode = mode;
+        window.ShowDialog((Form)View);
+    }
 
     private void ShowStocktakes(bool startNew)
     {

@@ -76,6 +76,18 @@ public partial class frmReports : PhxFormBase, IReportsView
     public string? SelectedPresetKey =>
         trePresets.SelectedNode?.Tag as string;
 
+    /// <summary>
+    /// The preset to land on, set by a caller before ShowDialog.
+    /// </summary>
+    /// <remarks>
+    /// Several menu entries are a report the staff already know by
+    /// another name - Inventory's "Stock" is Stock On Hand, and
+    /// "Expired Stock" is Stock Expiring. Opening this screen on the
+    /// right report is what makes those entries lead somewhere useful
+    /// without a second copy of a list that already exists.
+    /// </remarks>
+    public string? OpenOnPreset { get; set; }
+
     public void ShowPresets(IReadOnlyList<ReportPresetDto> presets)
     {
         ArgumentNullException.ThrowIfNull(presets);
@@ -97,6 +109,37 @@ public partial class frmReports : PhxFormBase, IReportsView
 
         trePresets.ExpandAll();
         trePresets.EndUpdate();
+
+        SelectRequestedPreset();
+    }
+
+    /// <summary>
+    /// Selects the node the caller asked to open on, if it is there.
+    /// </summary>
+    /// <remarks>
+    /// Selecting the node raises AfterSelect, so the presenter loads
+    /// that report's slicers exactly as it would had the operator
+    /// clicked it. A key that matches nothing leaves the tree alone
+    /// rather than throwing: a stale menu entry should still open the
+    /// report screen.
+    /// </remarks>
+    private void SelectRequestedPreset()
+    {
+        if (string.IsNullOrWhiteSpace(OpenOnPreset)) return;
+
+        foreach (TreeNode group in trePresets.Nodes)
+        {
+            foreach (TreeNode node in group.Nodes)
+            {
+                if (node.Tag is not string key
+                    || !string.Equals(key, OpenOnPreset,
+                                      StringComparison.Ordinal)) continue;
+
+                trePresets.SelectedNode = node;
+                node.EnsureVisible();
+                return;
+            }
+        }
     }
 
     public void ShowSlicers(IReadOnlyList<SlicerDto> slicers)

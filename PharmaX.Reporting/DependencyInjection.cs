@@ -25,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<IReportDefinition, StockOnHandReport>();
         services.AddScoped<IReportDefinition, CashUpReport>();
         services.AddScoped<IReportDefinition, ReversedScriptsReport>();
+        services.AddScoped<IReportDefinition, StockMovementsReport>();
+        services.AddScoped<IReportDefinition, PriceChangesReport>();
 
         services.AddSingleton<IReportExporter, PdfExporter>();
         services.AddSingleton<IReportExporter, ExcelExporter>();
