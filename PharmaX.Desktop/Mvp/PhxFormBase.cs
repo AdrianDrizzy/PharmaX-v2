@@ -11,6 +11,7 @@ public class PhxFormBase : Form, IView
 {
     private Label? _offlineBanner;
 
+
     protected IConnectivityMonitor? Connectivity { get; private set; }
 
     /// Override in a derived form to require a permission to open it.
@@ -58,6 +59,64 @@ public class PhxFormBase : Form, IView
 
         if (Connectivity is not null) RenderBanner(Connectivity.State);
         KeyPreview = true;
+
+        FitWindowToContents();
+    }
+
+    /// <summary>
+    /// Grows the window if the contents have ended up bigger than it is.
+    /// </summary>
+    /// <remarks>
+    /// The designers are hand-written and position controls at absolute
+    /// coordinates chosen at one scale, while the window is drawn at
+    /// whatever the display is set to - a pharmacy PC at 125 or 150 per
+    /// cent is ordinary. The controls scale; the ClientSize the designer
+    /// wrote does not, so the contents outgrow the frame and the bottom
+    /// and right of the screen are simply cut off. The sign-in window
+    /// lost its logo, both boxes and both buttons that way.
+    ///
+    /// Measuring the children and growing to fit is the one fix that
+    /// holds for every screen and every display, and it only ever grows:
+    /// a window that was already big enough is left exactly as its
+    /// designer laid it out. Runs last, once the theme font and the
+    /// offline banner are both in place, because both change what the
+    /// contents measure.
+    /// </remarks>
+    private void FitWindowToContents()
+    {
+        // The shell is maximized and owns the screen; a dialog is what
+        // this is for.
+        if (WindowState != FormWindowState.Normal) return;
+
+        // Several passes: the layout has to be settled before the
+        // children can be measured, and giving the window more room
+        // re-flows anchored and auto-sizing children, which can ask for
+        // a little more again. It converges in two; three is slack.
+        for (var pass = 0; pass < 3; pass++)
+        {
+            PerformLayout();
+
+            var needed = Size.Empty;
+
+            foreach (Control child in Controls)
+            {
+                // A filled child takes the size it is given, so it can
+                // never be the reason the window is too small.
+                if (!child.Visible || child.Dock == DockStyle.Fill) continue;
+
+                needed.Width = Math.Max(needed.Width,
+                    child.Right + child.Margin.Right);
+                needed.Height = Math.Max(needed.Height,
+                    child.Bottom + child.Margin.Bottom);
+            }
+
+            if (needed.Width <= ClientSize.Width
+                && needed.Height <= ClientSize.Height) return;
+
+            ClientSize = new Size(
+                Math.Max(ClientSize.Width, needed.Width + Padding.Right),
+                Math.Max(ClientSize.Height, needed.Height + Padding.Bottom));
+        }
     }
 
     /// <remarks>
@@ -113,13 +172,22 @@ public class PhxFormBase : Form, IView
     {
         var label = new Label
         {
+            AutoSize = false,
             Dock = DockStyle.Top,
             Font = PhxTheme.Emphasis,
-            Height = 28,
-            Padding = new Padding(0, 1, 0, 0),
+            Padding = new Padding(0, 4, 0, 4),
             TextAlign = ContentAlignment.MiddleCenter,
             Visible = false
         };
+
+        // Height measured from the font, not the fixed 28 pixels this
+        // used to carry. That number was chosen against a 96-DPI display
+        // and on a pharmacy PC at 125 or 150 per cent the banner's own
+        // text no longer fitted inside it - the tops and tails of the
+        // letters were sliced off on the sign-in window, which is the
+        // first thing anyone sees. Width is left to the dock so the band
+        // still runs the full way across.
+        label.Height = label.PreferredHeight + label.Padding.Vertical;
 
         Controls.Add(label);
         return label;
