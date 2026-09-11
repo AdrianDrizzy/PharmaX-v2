@@ -72,11 +72,23 @@ public partial class frmMain : PhxFormBase, IMainView
     /// Every menu item carries its key in Tag, so one handler serves the
     /// whole menu and the presenter never learns what a ToolStripItem is.
     /// </summary>
+    /// <remarks>
+    /// A heading's Tag names a permission group, so that EnableMenu can
+    /// grey out the whole of Dispensary or Administration at once; it is
+    /// not something the presenter can be asked to open. Wiring headings
+    /// as commands too meant that clicking Dispensary, Inventory,
+    /// Stocktake or Administration - just to read the menu - raised a
+    /// command the presenter had no case for and answered with "That
+    /// part of PharmaX is not built yet", and that clicking Point of
+    /// Sale or Reports, whose group keys happen to match a real command,
+    /// opened that screen over the menu the operator was reading.
+    /// </remarks>
     private void WireMenu()
     {
         foreach (var item in AllMenuItems(mnuMain.Items))
         {
             if (item.Tag is not string key) continue;
+            if (item is ToolStripMenuItem { HasDropDownItems: true }) continue;
 
             item.Click += (_, _) => MenuSelected?.Invoke(this, key);
         }
