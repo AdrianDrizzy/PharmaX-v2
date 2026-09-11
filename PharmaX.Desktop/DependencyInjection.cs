@@ -4,6 +4,7 @@ using PharmaX.Desktop.Features.Dispensing;
 using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Login;
 using PharmaX.Desktop.Features.Patients;
+using PharmaX.Desktop.Features.Reference;
 using PharmaX.Desktop.Features.Reports;
 using PharmaX.Desktop.Features.Sales;
 using PharmaX.Desktop.Features.Suppliers;
@@ -97,6 +98,13 @@ public static class DependencyInjection
         s.AddTransient<frmSystemSetup>();
         s.AddTransient<frmSystemInfo>();
         s.AddTransient<SystemInfoPresenter>();
+
+        // Maintained lists: departments, manufacturers, branches and
+        // medical aid societies all use the one pair of screens.
+        s.AddTransient<frmReferenceList>();
+        s.AddTransient<ReferenceListPresenter>();
+        s.AddTransient<frmReferenceEdit>();
+        s.AddTransient<ReferenceEditPresenter>();
 
         return s;
     }

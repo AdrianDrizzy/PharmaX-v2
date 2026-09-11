@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using PharmaX.Domain.Batches;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
+using PharmaX.Domain.Reference;
 using PharmaX.Domain.Sales;
 using PharmaX.Domain.Security;
 using PharmaX.Domain.Suppliers;
@@ -49,6 +50,15 @@ public sealed class PharmaXDbContext : DbContext
 
     public DbSet<Domain.Dispensing.Script> Scripts =>
         Set<Domain.Dispensing.Script>();
+
+    // The maintained lists behind the Inventory, Administration and
+    // Dispensary maintenance screens.
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<Manufacturer> Manufacturers => Set<Manufacturer>();
+    public DbSet<Branch> Branches => Set<Branch>();
+    public DbSet<MedicalAidScheme> MedicalAidSchemes =>
+        Set<MedicalAidScheme>();
+    public DbSet<Tariff> Tariffs => Set<Tariff>();
 
     public DbSet<Domain.Dispensing.Dispensing> Dispensings =>
         Set<Domain.Dispensing.Dispensing>();

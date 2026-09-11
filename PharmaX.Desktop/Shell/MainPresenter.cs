@@ -1,11 +1,13 @@
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Offline;
+using PharmaX.Application.Reference;
 using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
 using PharmaX.Desktop.Features.Admin;
 using PharmaX.Desktop.Features.Dispensing;
 using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Patients;
+using PharmaX.Desktop.Features.Reference;
 using PharmaX.Desktop.Features.Reports;
 using PharmaX.Desktop.Features.Sales;
 using PharmaX.Desktop.Features.Suppliers;
@@ -153,6 +155,20 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 ShowReport("inv.stock.transactions");
                 break;
 
+            // The maintained lists. One screen, told which list it is.
+            case "departments":
+                ShowReferenceList(ReferenceKind.Department);
+                break;
+            case "manufacturers":
+                ShowReferenceList(ReferenceKind.Manufacturer);
+                break;
+            case "branches":
+                ShowReferenceList(ReferenceKind.Branch);
+                break;
+            case "schemes":
+                ShowReferenceList(ReferenceKind.MedicalAidScheme);
+                break;
+
             // What this till is set to, and what it is doing. Two views
             // of the same read-only list.
             case "control-variables":
@@ -266,6 +282,13 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         using var reports = _views.Create<frmReports>();
         reports.OpenOnPreset = preset;
         reports.ShowDialog((Form)View);
+    }
+
+    private void ShowReferenceList(ReferenceKind kind)
+    {
+        using var list = _views.Create<frmReferenceList>();
+        list.Prepare(kind);
+        list.ShowDialog((Form)View);
     }
 
     private void ShowSystemInfo(SystemInfoMode mode)

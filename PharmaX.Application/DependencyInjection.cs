@@ -23,6 +23,9 @@ public static class DependencyInjection
         s.AddScoped<IDispensingService, DispensingService>();
         s.AddScoped<IScriptService, ScriptService>();
         s.AddScoped<IProductService, ProductService>();
+        s.AddScoped<Reference.IReferenceDataService,
+                    Reference.ReferenceDataService>();
+        s.AddScoped<Reference.ITariffService, Reference.TariffService>();
         s.AddScoped<IPatientService, PatientService>();
         s.AddScoped<IStockService, StockService>();
         s.AddScoped<IStocktakeService, StocktakeService>();

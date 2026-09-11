@@ -31,6 +31,15 @@ public sealed class Product : AuditableEntity
     public string? PackSize { get; private set; }
     public Guid? DefaultSupplierId { get; private set; }
 
+    /// <summary>
+    /// What part of the shop this belongs to, and who makes it. Both
+    /// optional: a pharmacy that keeps no department list still sells
+    /// things, and the sales and stock reports already slice by
+    /// department where one is set.
+    /// </summary>
+    public Guid? DepartmentId { get; private set; }
+    public Guid? ManufacturerId { get; private set; }
+
     public IReadOnlyList<string> Barcodes => _barcodes;
     public IReadOnlyList<ProductPrice> Prices => _prices;
 
@@ -71,6 +80,17 @@ public sealed class Product : AuditableEntity
             throw new DomainException("A product requires a description.");
 
         Description = description.Trim();
+    }
+
+    /// <summary>
+    /// Files the product under a department and a manufacturer, or under
+    /// neither. Null clears the setting rather than being ignored, so a
+    /// product filed in the wrong department can be taken out of it.
+    /// </summary>
+    public void Classify(Guid? departmentId, Guid? manufacturerId)
+    {
+        DepartmentId = departmentId == Guid.Empty ? null : departmentId;
+        ManufacturerId = manufacturerId == Guid.Empty ? null : manufacturerId;
     }
 
     public void AddBarcode(string barcode)
