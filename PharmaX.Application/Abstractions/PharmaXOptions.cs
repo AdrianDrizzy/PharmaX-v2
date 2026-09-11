@@ -36,7 +36,7 @@ public sealed class PharmacyOptions
     /// </remarks>
     public string Currency { get; init; } = "USD";
 
-    public string TradingName { get; init; } = "PharmaX Pharmacy";
+    public string TradingName { get; init; } = "PharmaX";
     public string RegisteredName { get; init; } = "";
     public string Address { get; init; } = "";
     public string VatNumber { get; init; } = "";
