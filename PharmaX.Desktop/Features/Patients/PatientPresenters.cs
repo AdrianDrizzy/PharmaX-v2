@@ -31,6 +31,11 @@ public interface IPatientEditView : IView
     Guid? PatientId { get; }
 
     void ShowPatient(PatientDto patient);
+
+    /// The schemes a patient can belong to, filled before ShowPatient.
+    void ShowSchemes(IReadOnlyList<Application.Reference.ReferenceItemDto>
+        schemes);
+
     PatientEditDto Collect();
 
     event EventHandler? SaveRequested;
@@ -113,9 +118,14 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 public sealed class PatientEditPresenter : PresenterBase<IPatientEditView>
 {
     private readonly IPatientService _patients;
+    private readonly Application.Reference.IReferenceDataService _reference;
 
-    public PatientEditPresenter(IPatientService patients) =>
+    public PatientEditPresenter(IPatientService patients,
+        Application.Reference.IReferenceDataService reference)
+    {
         _patients = patients;
+        _reference = reference;
+    }
 
     protected override void Subscribe()
     {
@@ -125,6 +135,15 @@ public sealed class PatientEditPresenter : PresenterBase<IPatientEditView>
 
     public override Task InitialiseAsync() => GuardAsync(async () =>
     {
+        // The scheme list first, and for a new patient as well as an
+        // existing one: somebody adding a patient at the counter is
+        // usually holding their medical aid card.
+        var schemes = await _reference.ListAsync(
+            Application.Reference.ReferenceKind.MedicalAidScheme,
+            includeInactive: false);
+
+        if (schemes.IsSuccess) View.ShowSchemes(schemes.Value);
+
         if (View.PatientId is not Guid id) return;   // adding a new one
 
         var result = await _patients.GetAsync(id);

@@ -1,6 +1,7 @@
 using System.Globalization;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Repositories;
+using PharmaX.Domain.Claims;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Sales;
@@ -46,6 +47,28 @@ public interface IJournalPoster
     /// </summary>
     Task PostCashUpAsync(TillSession session, Money expected,
                          Money counted, CancellationToken ct = default);
+
+    /// <summary>
+    /// A scheme's share of a dispensing, recognised the moment the
+    /// medicine leaves.
+    /// </summary>
+    /// <param name="splits">
+    /// The VAT split of the scheme's share, a line at a time. Passed in
+    /// rather than worked out here because a script can mix rates - a
+    /// zero-rated medicine beside a standard-rated one - and only the
+    /// caller knows which product each part of the claim came from.
+    /// </param>
+    Task PostClaimAsync(MedicalAidClaim claim, string schemeName,
+        IReadOnlyList<Domain.Pricing.VatSplit> splits,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// A scheme's remittance: what it paid, and what the pharmacy has
+    /// given up on.
+    /// </summary>
+    Task PostRemittanceAsync(string schemeName, Money paid, Money writtenOff,
+        DateOnly receivedOn, string? reference,
+        CancellationToken ct = default);
 }
 
 public sealed class JournalPoster : IJournalPoster
@@ -185,6 +208,60 @@ public sealed class JournalPoster : IJournalPoster
             batch.AddLine(LedgerCode.CashShortOrOver, amount,
                           isDebit: false);
         }
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostClaimAsync(MedicalAidClaim claim,
+        string schemeName, IReadOnlyList<Domain.Pricing.VatSplit> splits,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+        ArgumentNullException.ThrowIfNull(splits);
+
+        if (!Enabled || claim.Claimed.IsZero) return;
+
+        var batch = await OpenAsync("CLAIM",
+            $"Claim {claim.ClaimNumber} on {schemeName}", ct);
+
+        // Revenue is earned when the medicine leaves the shelf, not when
+        // the scheme gets round to paying. Without this entry the books
+        // recorded only the patient's co-payment - for a dispensary, a
+        // small fraction of what it actually earned.
+        batch.AddLine(LedgerCode.MedicalAidDebtors, claim.Claimed,
+                      isDebit: true);
+
+        AddRevenue(batch, splits, isDebit: false);
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostRemittanceAsync(string schemeName, Money paid,
+        Money writtenOff, DateOnly receivedOn, string? reference,
+        CancellationToken ct = default)
+    {
+        if (!Enabled) return;
+
+        var cleared = paid + writtenOff;
+        if (cleared.IsZero) return;
+
+        var batch = JournalBatch.Create(
+            await _numbering.NextAsync("JNL", ct), receivedOn, "REMIT",
+            $"Remittance from {schemeName}"
+            + (string.IsNullOrWhiteSpace(reference)
+                ? "" : $", {reference}"));
+
+        if (!paid.IsZero)
+            batch.AddLine(LedgerCode.Bank, paid, isDebit: true);
+
+        // What the scheme was never going to pay is a cost of trading
+        // with them, booked where a manager can see which scheme costs
+        // the most.
+        if (!writtenOff.IsZero)
+            batch.AddLine(LedgerCode.ClaimsWrittenOff, writtenOff,
+                          isDebit: true, "Short payment");
+
+        batch.AddLine(LedgerCode.MedicalAidDebtors, cleared, isDebit: false);
 
         await PostAsync(batch, ct);
     }

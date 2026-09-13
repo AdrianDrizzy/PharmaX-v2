@@ -35,8 +35,15 @@ public sealed record PatientDto(
     string? Email, bool IsActive, decimal? WeightKg, bool IsPregnant,
     bool IsBreastfeeding, string? ClinicalNotes,
     IReadOnlyList<AllergyDto> Allergies,
-    IReadOnlyList<string> ChronicConditions)
+    IReadOnlyList<string> ChronicConditions,
+    Guid? MedicalAidSchemeId = null, string? MembershipNumber = null,
+    string? DependantCode = null)
 {
+    /// True where there is a scheme to bill for what is dispensed.
+    public bool IsOnMedicalAid =>
+        MedicalAidSchemeId is not null
+        && !string.IsNullOrWhiteSpace(MembershipNumber);
+
     public static PatientDto From(Patient p, ClinicalProfile? profile,
                                   DateOnly today)
     {
@@ -49,7 +56,8 @@ public sealed record PatientDto(
             profile?.IsBreastfeeding ?? false, profile?.Notes,
             profile?.Allergies.Select(AllergyDto.From).ToList()
                 ?? new List<AllergyDto>(),
-            profile?.ChronicConditions.ToList() ?? new List<string>());
+            profile?.ChronicConditions.ToList() ?? new List<string>(),
+            p.MedicalAidSchemeId, p.MembershipNumber, p.DependantCode);
     }
 }
 
@@ -63,4 +71,9 @@ public sealed record PatientEditDto(
     DateOnly? DateOfBirth, string? Telephone, string? Email,
     decimal? WeightKg, bool IsPregnant, bool IsBreastfeeding,
     string? ClinicalNotes, IReadOnlyList<AllergyDto> Allergies,
-    IReadOnlyList<string> ChronicConditions);
+    IReadOnlyList<string> ChronicConditions,
+
+    // Who pays. Null where the patient pays for themselves, which the
+    // dispensing screen reads as "everything is a co-payment".
+    Guid? MedicalAidSchemeId = null, string? MembershipNumber = null,
+    string? DependantCode = null);

@@ -1,4 +1,6 @@
+using PharmaX.Application.Claims;
 using PharmaX.Application.Finance;
+using PharmaX.Application.Reference;
 using PharmaX.Domain.Finance;
 
 namespace PharmaX.Desktop.Features.Finance;
@@ -69,4 +71,34 @@ public interface ITrialBalanceView : Mvp.IView
 
     event EventHandler? RefreshRequested;
     event EventHandler? DrillDownRequested;
+}
+
+/// <summary>
+/// What the medical aid schemes owe, and where their remittances are
+/// recorded.
+/// </summary>
+public interface IClaimsView : Mvp.IView
+{
+    /// Null means every scheme. A remittance needs one named.
+    Guid? SelectedSchemeId { get; }
+
+    DateOnly ReceivedOn { get; }
+    string Reference { get; }
+    Guid? SelectedClaimId { get; }
+
+    void ShowSchemes(IReadOnlyList<ReferenceItemDto> schemes);
+    void ShowClaims(IReadOnlyList<ClaimDto> claims);
+    void ShowAgeAnalysis(IReadOnlyList<SchemeAgeDto> analysis);
+
+    /// The rows the operator filled in from the remittance advice.
+    IReadOnlyList<RemittanceLineDto> CollectRemittance();
+
+    string? PromptRejectReason();
+    void ClearRemittance();
+
+    event EventHandler? RefreshRequested;
+    event EventHandler? SchemeChanged;
+    event EventHandler? SettleRequested;
+    event EventHandler? RejectRequested;
+    event EventHandler? AgeAnalysisRequested;
 }

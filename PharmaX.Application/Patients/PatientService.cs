@@ -101,6 +101,12 @@ public sealed class PatientService : IPatientService
 
         patient.UpdateContact(edit.Telephone, edit.Email);
 
+        // Who pays. Set here rather than on a screen of its own, because
+        // the membership number is captured at the counter at the same
+        // moment as the telephone number.
+        patient.SetMedicalAid(edit.MedicalAidSchemeId,
+                              edit.MembershipNumber, edit.DependantCode);
+
         await _patients.AddAsync(patient, ct);
 
         var profile = ClinicalProfile.For(patient.Id);
@@ -134,6 +140,12 @@ public sealed class PatientService : IPatientService
         patient.Amend(edit.Surname, edit.FirstNames, edit.IdNumber,
                       edit.DateOfBirth);
         patient.UpdateContact(edit.Telephone, edit.Email);
+
+        // Who pays. Set here rather than on a screen of its own, because
+        // the membership number is captured at the counter at the same
+        // moment as the telephone number.
+        patient.SetMedicalAid(edit.MedicalAidSchemeId,
+                              edit.MembershipNumber, edit.DependantCode);
 
         var profile = await _patients.ClinicalProfileAsync(id, ct);
 

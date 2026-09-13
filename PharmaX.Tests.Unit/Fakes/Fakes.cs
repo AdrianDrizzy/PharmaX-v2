@@ -3,6 +3,7 @@ using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Claims;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Sales;
@@ -608,5 +609,52 @@ public sealed class InMemoryLedgerRepository : ILedgerRepository
             .ToList();
 
         return Task.FromResult(entries);
+    }
+}
+
+/// Claims in a list, for the tests that bill a scheme.
+public sealed class InMemoryClaimRepository : IClaimRepository
+{
+    private readonly List<MedicalAidClaim> _claims = new();
+
+    public IReadOnlyList<MedicalAidClaim> All => _claims;
+
+    public MedicalAidClaim Add(MedicalAidClaim claim)
+    {
+        _claims.Add(claim);
+        return claim;
+    }
+
+    public Task<MedicalAidClaim?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        Task.FromResult(_claims.Find(c => c.Id == id));
+
+    public Task<MedicalAidClaim?> ByNumberAsync(string claimNumber,
+        CancellationToken ct = default) =>
+        Task.FromResult(_claims.Find(c =>
+            string.Equals(c.ClaimNumber, claimNumber,
+                          StringComparison.Ordinal)));
+
+    public Task<MedicalAidClaim?> ForDispensingAsync(Guid dispensingId,
+        CancellationToken ct = default) =>
+        Task.FromResult(_claims.Find(c => c.DispensingId == dispensingId));
+
+    public Task<IReadOnlyList<MedicalAidClaim>> OutstandingAsync(
+        Guid? schemeId = null, CancellationToken ct = default)
+    {
+        IReadOnlyList<MedicalAidClaim> found = _claims
+            .Where(c => c.IsOpen)
+            .Where(c => schemeId is null || c.SchemeId == schemeId)
+            .OrderBy(c => c.ClaimedOn)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task AddAsync(MedicalAidClaim claim,
+        CancellationToken ct = default)
+    {
+        Add(claim);
+        return Task.CompletedTask;
     }
 }

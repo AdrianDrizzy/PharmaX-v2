@@ -22,6 +22,35 @@ public sealed class Patient : AuditableEntity
     public Guid? ClinicalProfileId { get; private set; }
     public bool IsActive { get; private set; } = true;
 
+    /// <summary>
+    /// The scheme that pays most of this patient's bill, if any.
+    /// </summary>
+    /// <remarks>
+    /// Kept here rather than on the clinical profile: which scheme
+    /// somebody belongs to is a billing fact, and the whole point of
+    /// separating the profile is that a screen showing a name and a
+    /// membership number should not have to load a medical history.
+    /// </remarks>
+    public Guid? MedicalAidSchemeId { get; private set; }
+
+    public string? MembershipNumber { get; private set; }
+
+    /// <summary>
+    /// Which member of the family this is, as the scheme numbers them -
+    /// "00" for the principal member, "01" upwards for dependants.
+    /// </summary>
+    /// <remarks>
+    /// A string rather than a number because schemes issue codes with
+    /// leading zeroes and the odd letter, and a claim quoting "1" where
+    /// the scheme expects "01" comes back rejected.
+    /// </remarks>
+    public string? DependantCode { get; private set; }
+
+    /// True where there is a scheme to claim from.
+    public bool IsOnMedicalAid =>
+        MedicalAidSchemeId is not null
+        && !string.IsNullOrWhiteSpace(MembershipNumber);
+
     public string FullName => $"{FirstNames} {Surname}".Trim();
 
     private Patient() { }
@@ -41,6 +70,37 @@ public sealed class Patient : AuditableEntity
             DateOfBirth = dateOfBirth,
             IdNumber = idNumber
         };
+    }
+
+    /// <summary>
+    /// Records who pays for this patient, or that nobody does.
+    /// </summary>
+    /// <remarks>
+    /// Clearing the scheme clears the membership with it. A membership
+    /// number left behind on a patient who has left their scheme is the
+    /// kind of thing that gets claimed against months later and
+    /// rejected.
+    /// </remarks>
+    public void SetMedicalAid(Guid? schemeId, string? membershipNumber,
+                              string? dependantCode)
+    {
+        if (schemeId is null)
+        {
+            MedicalAidSchemeId = null;
+            MembershipNumber = null;
+            DependantCode = null;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(membershipNumber))
+            throw new DomainException(
+                "A medical aid membership needs a membership number.");
+
+        MedicalAidSchemeId = schemeId;
+        MembershipNumber = membershipNumber.Trim();
+        DependantCode = string.IsNullOrWhiteSpace(dependantCode)
+            ? null
+            : dependantCode.Trim();
     }
 
     public int? AgeOn(DateOnly today)

@@ -4,6 +4,7 @@ using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Claims;
 using PharmaX.Domain.Dispensing;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
@@ -833,4 +834,47 @@ public sealed class LedgerRepository : ILedgerRepository
         public JournalBatch Batch { get; init; } = null!;
         public JournalLine Line { get; init; } = null!;
     }
+}
+
+/// <summary>
+/// What the medical aid schemes owe.
+/// </summary>
+public sealed class ClaimRepository : IClaimRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public ClaimRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<MedicalAidClaim?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims.FirstOrDefaultAsync(c => c.Id == id, ct);
+
+    public async Task<MedicalAidClaim?> ByNumberAsync(string claimNumber,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims
+            .FirstOrDefaultAsync(c => c.ClaimNumber == claimNumber, ct);
+
+    public async Task<MedicalAidClaim?> ForDispensingAsync(Guid dispensingId,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims
+            .FirstOrDefaultAsync(c => c.DispensingId == dispensingId, ct);
+
+    /// <remarks>
+    /// Filtered on status in the database rather than by reading every
+    /// claim the pharmacy has ever made: a busy dispensary raises
+    /// hundreds a month and only the open ones are ever worked.
+    /// </remarks>
+    public async Task<IReadOnlyList<MedicalAidClaim>> OutstandingAsync(
+        Guid? schemeId = null, CancellationToken ct = default) =>
+        await _db.MedicalAidClaims
+            .Where(c => c.Status == ClaimStatus.Outstanding
+                     || c.Status == ClaimStatus.PartPaid)
+            .Where(c => schemeId == null || c.SchemeId == schemeId)
+            .OrderBy(c => c.ClaimedOn)
+            .ThenBy(c => c.ClaimNumber)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(MedicalAidClaim claim,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims.AddAsync(claim, ct);
 }

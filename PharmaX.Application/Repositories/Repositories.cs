@@ -1,4 +1,5 @@
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Claims;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
@@ -272,6 +273,31 @@ public sealed record AccountTotals(string AccountCode, decimal Debits,
 public sealed record LedgerEntry(DateOnly PostingDate, string BatchNumber,
     string Source, string AccountCode, decimal Debit, decimal Credit,
     string? Narration);
+
+public interface IClaimRepository
+{
+    Task<MedicalAidClaim?> GetAsync(Guid id, CancellationToken ct = default);
+
+    Task<MedicalAidClaim?> ByNumberAsync(string claimNumber,
+                                         CancellationToken ct = default);
+
+    /// <summary>
+    /// The claim already raised for a dispensing, if there is one.
+    /// </summary>
+    /// <remarks>
+    /// Issuing is idempotent and runs in a transaction, but a retry that
+    /// got as far as saving would otherwise bill the scheme twice for
+    /// one script.
+    /// </remarks>
+    Task<MedicalAidClaim?> ForDispensingAsync(Guid dispensingId,
+        CancellationToken ct = default);
+
+    /// Claims still owed, oldest first. One scheme, or every scheme.
+    Task<IReadOnlyList<MedicalAidClaim>> OutstandingAsync(
+        Guid? schemeId = null, CancellationToken ct = default);
+
+    Task AddAsync(MedicalAidClaim claim, CancellationToken ct = default);
+}
 
 public interface IPermissionRepository
 {

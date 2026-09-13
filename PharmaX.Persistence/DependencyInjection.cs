@@ -145,6 +145,7 @@ public static class DependencyInjection
         services.AddScoped<IScriptRepository, ScriptRepository>();
         services.AddScoped<IStocktakeRepository, StocktakeRepository>();
         services.AddScoped<ILedgerRepository, LedgerRepository>();
+        services.AddScoped<IClaimRepository, ClaimRepository>();
         services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<IPurchaseOrderRepository,
             PurchaseOrderRepository>();

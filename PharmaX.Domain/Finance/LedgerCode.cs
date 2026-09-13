@@ -21,6 +21,19 @@ public static class LedgerCode
     public const string Bank = "1000";
     public const string CashOnHand = "1010";
     public const string TradeDebtors = "1100";
+
+    /// <summary>
+    /// What the medical aid schemes owe, kept apart from what patients
+    /// owe.
+    /// </summary>
+    /// <remarks>
+    /// A pharmacy chases a scheme and chases a patient in completely
+    /// different ways, on completely different timescales, and the age
+    /// analysis that matters is the one per scheme. Folding both into
+    /// Trade Debtors would hide the largest debtor the pharmacy has
+    /// behind a column of small ones.
+    /// </remarks>
+    public const string MedicalAidDebtors = "1150";
     public const string StockOnHand = "1200";
 
     public const string TradeCreditors = "2000";
@@ -33,6 +46,18 @@ public static class LedgerCode
 
     public const string Purchases = "5000";
     public const string StockWrittenOff = "5100";
+
+    /// <summary>
+    /// The part of a claim the scheme was never going to pay.
+    /// </summary>
+    /// <remarks>
+    /// Short payment is normal rather than exceptional: a scheme pays
+    /// its own tariff and not the pharmacy's price. Booking the
+    /// difference here rather than quietly reducing the claim is what
+    /// lets a manager see which scheme costs them the most to trade
+    /// with.
+    /// </remarks>
+    public const string ClaimsWrittenOff = "5200";
     public const string CashShortOrOver = "5900";
 
     /// <summary>
@@ -49,6 +74,7 @@ public static class LedgerCode
         (Bank, "Bank", LedgerAccountType.Asset),
         (CashOnHand, "Cash on Hand", LedgerAccountType.Asset),
         (TradeDebtors, "Trade Debtors", LedgerAccountType.Asset),
+        (MedicalAidDebtors, "Medical Aid Debtors", LedgerAccountType.Asset),
         (StockOnHand, "Stock on Hand", LedgerAccountType.Asset),
 
         (TradeCreditors, "Trade Creditors", LedgerAccountType.Liability),
@@ -61,6 +87,7 @@ public static class LedgerCode
 
         (Purchases, "Purchases", LedgerAccountType.Expense),
         (StockWrittenOff, "Stock Written Off", LedgerAccountType.Expense),
+        (ClaimsWrittenOff, "Claims Written Off", LedgerAccountType.Expense),
         (CashShortOrOver, "Cash Short or Over", LedgerAccountType.Expense)
     };
 

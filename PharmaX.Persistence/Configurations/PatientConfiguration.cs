@@ -19,6 +19,14 @@ public sealed class PatientConfiguration : IEntityTypeConfiguration<Patient>
         b.Property(x => x.IdNumber).HasMaxLength(20);
         b.Property(x => x.Telephone).HasMaxLength(30);
         b.Property(x => x.Email).HasMaxLength(150);
+
+        // Bounded rather than left as unlimited text: a membership
+        // number goes on every claim, and an unbounded column cannot be
+        // indexed and is stored off-row for no reason.
+        b.Property(x => x.MembershipNumber).HasMaxLength(40);
+        b.Property(x => x.DependantCode).HasMaxLength(10);
+
+        b.Ignore(x => x.IsOnMedicalAid);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.Ignore(x => x.FullName);

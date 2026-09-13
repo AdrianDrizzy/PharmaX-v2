@@ -87,6 +87,11 @@ public class PharmaXDbContext : DbContext
     public DbSet<Domain.Finance.JournalLine> JournalLines =>
         Set<Domain.Finance.JournalLine>();
 
+    // What the medical aid schemes owe for what has already been
+    // dispensed - for a dispensary, the largest debtor it has.
+    public DbSet<Domain.Claims.MedicalAidClaim> MedicalAidClaims =>
+        Set<Domain.Claims.MedicalAidClaim>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         ArgumentNullException.ThrowIfNull(b);

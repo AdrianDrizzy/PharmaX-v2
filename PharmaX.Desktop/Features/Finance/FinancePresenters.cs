@@ -1,5 +1,7 @@
 using System.Globalization;
+using PharmaX.Application.Claims;
 using PharmaX.Application.Finance;
+using PharmaX.Application.Reference;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Finance;
@@ -227,5 +229,123 @@ public sealed class TrialBalancePresenter : PresenterBase<ITrialBalanceView>
         }
 
         View.ShowEntries(code, result.Value);
+    });
+}
+
+public sealed class ClaimsPresenter : PresenterBase<IClaimsView>
+{
+    private readonly IClaimService _claims;
+    private readonly IReferenceDataService _reference;
+
+    public ClaimsPresenter(IClaimService claims,
+                           IReferenceDataService reference)
+    {
+        _claims = claims;
+        _reference = reference;
+    }
+
+    protected override void Subscribe()
+    {
+        View.RefreshRequested += (_, _) => _ = LoadAsync();
+        View.SchemeChanged += (_, _) => _ = LoadAsync();
+        View.SettleRequested += (_, _) => _ = OnSettleAsync();
+        View.RejectRequested += (_, _) => _ = OnRejectAsync();
+        View.AgeAnalysisRequested += (_, _) => _ = OnAgeAnalysisAsync();
+    }
+
+    public override Task InitialiseAsync() => GuardAsync(async () =>
+    {
+        var schemes = await _reference.ListAsync(
+            ReferenceKind.MedicalAidScheme, includeInactive: false);
+
+        if (schemes.IsSuccess) View.ShowSchemes(schemes.Value);
+
+        await Load();
+    });
+
+    private Task LoadAsync() => GuardAsync(Load);
+
+    private async Task Load()
+    {
+        var result = await _claims.OutstandingAsync(View.SelectedSchemeId);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        View.ShowClaims(result.Value);
+    }
+
+    private Task OnSettleAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedSchemeId is not Guid schemeId)
+        {
+            View.ShowInfo("Choose the scheme the remittance came from. "
+                          + "One remittance settles one scheme's claims.");
+            return;
+        }
+
+        var lines = View.CollectRemittance();
+
+        if (lines.Count == 0)
+        {
+            View.ShowInfo("Type what each claim was paid, or use Pay in "
+                          + "Full, before recording the remittance.");
+            return;
+        }
+
+        var result = await _claims.SettleAsync(schemeId, View.ReceivedOn,
+            View.Reference, lines);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        View.ShowInfo(string.Format(CultureInfo.CurrentCulture,
+            "{0} claim(s) settled. {1} received, {2} written off.",
+            result.Value.Claims, Format.Money(result.Value.Paid),
+            Format.Money(result.Value.WrittenOff)));
+
+        View.ClearRemittance();
+        await Load();
+    });
+
+    private Task OnRejectAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedClaimId is not Guid claimId)
+        {
+            View.ShowInfo("Choose the claim the scheme refused.");
+            return;
+        }
+
+        var reason = View.PromptRejectReason();
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        var result = await _claims.RejectAsync(claimId, reason);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        await Load();
+    });
+
+    private Task OnAgeAnalysisAsync() => GuardAsync(async () =>
+    {
+        var result = await _claims.AgeAnalysisAsync();
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        View.ShowAgeAnalysis(result.Value);
     });
 }

@@ -109,6 +109,7 @@ partial class frmMain
             Menu("&Accounts", "accounts",
                 Item("Trial Balance", "trial-balance"),
                 Item("Journal Entry", "journal"),
+                Item("Medical Aid Claims", "claims"),
                 Item("Chart of Accounts", "chart-of-accounts")),
 
             Menu("&Reports", "reports",

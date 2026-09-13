@@ -94,6 +94,123 @@ namespace PharmaX.Persistence.Migrations
                     b.ToTable("Batch", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Claims.MedicalAidClaim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClaimNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("ClaimedOn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DependantCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DispensingId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MembershipNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<Guid>("SchemeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("SettledAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WriteOffReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Claimed", "PharmaX.Domain.Claims.MedicalAidClaim.Claimed#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Claimed");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("ClaimedCurrency");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("Settled", "PharmaX.Domain.Claims.MedicalAidClaim.Settled#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Settled");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("SettledCurrency");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("WrittenOff", "PharmaX.Domain.Claims.MedicalAidClaim.WrittenOff#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("WrittenOff");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("WrittenOffCurrency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClaimNumber")
+                        .IsUnique();
+
+                    b.HasIndex("DispensingId")
+                        .IsUnique();
+
+                    b.HasIndex("SchemeId", "Status");
+
+                    b.HasIndex("Status", "ClaimedOn");
+
+                    b.ToTable("MedicalAidClaim", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Dispensing.ClinicalWarning", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1111,6 +1228,10 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<DateOnly?>("DateOfBirth")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DependantCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Email")
                         .HasMaxLength(150)
                         .HasColumnType("TEXT");
@@ -1131,6 +1252,13 @@ namespace PharmaX.Persistence.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("MedicalAidSchemeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MembershipNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()

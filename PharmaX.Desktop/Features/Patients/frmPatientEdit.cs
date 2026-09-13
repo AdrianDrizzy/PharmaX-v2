@@ -1,5 +1,6 @@
 using System.Globalization;
 using PharmaX.Application.Patients.Dtos;
+using PharmaX.Application.Reference;
 using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
@@ -38,6 +39,53 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
     public Guid? PatientId { get; private set; }
 
     /// <summary>
+    /// Fills the scheme list. Called before ShowPatient, so that the
+    /// patient's own scheme has something to be selected in.
+    /// </summary>
+    public void ShowSchemes(IReadOnlyList<ReferenceItemDto> schemes)
+    {
+        ArgumentNullException.ThrowIfNull(schemes);
+
+        cboScheme.Items.Clear();
+
+        // The empty row is the point: a cash patient is the default, and
+        // a list with no way back to "nobody pays this" would trap the
+        // first patient somebody set a scheme on by mistake.
+        cboScheme.Items.Add(new SchemeChoice(null, "(none - cash patient)"));
+
+        foreach (var scheme in schemes)
+            cboScheme.Items.Add(new SchemeChoice(scheme.Id,
+                $"{scheme.Code}  {scheme.Name}"));
+
+        cboScheme.SelectedIndex = 0;
+    }
+
+    private void SelectScheme(Guid? schemeId)
+    {
+        for (var i = 0; i < cboScheme.Items.Count; i++)
+        {
+            if (cboScheme.Items[i] is SchemeChoice choice
+                && choice.Id == schemeId)
+            {
+                cboScheme.SelectedIndex = i;
+                return;
+            }
+        }
+
+        // A scheme that has since been removed from the list leaves the
+        // patient on "none" rather than on somebody else's scheme.
+        if (cboScheme.Items.Count > 0) cboScheme.SelectedIndex = 0;
+    }
+
+    private Guid? ChosenScheme =>
+        cboScheme.SelectedItem is SchemeChoice choice ? choice.Id : null;
+
+    private sealed record SchemeChoice(Guid? Id, string Text)
+    {
+        public override string ToString() => Text;
+    }
+
+    /// <summary>
     /// Called by the list screen before ShowDialog. Null means a new
     /// patient, whose file number the service allocates.
     /// </summary>
@@ -68,6 +116,13 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
 
         if (patient.DateOfBirth is DateOnly born)
             dtpDateOfBirth.Value = born.ToDateTime(TimeOnly.MinValue);
+
+        // The scheme list arrives separately, from ShowSchemes, which
+        // the presenter calls first. Selecting by id rather than by name
+        // so that two schemes with similar names cannot be confused.
+        SelectScheme(patient.MedicalAidSchemeId);
+        txtMembershipNumber.Text = patient.MembershipNumber ?? "";
+        txtDependantCode.Text = patient.DependantCode ?? "";
 
         txtWeight.Amount = patient.WeightKg;
         chkPregnant.Checked = patient.IsPregnant;
@@ -105,7 +160,10 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
         ChronicConditions: txtChronicConditions.Lines
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
-            .ToList());
+            .ToList(),
+        MedicalAidSchemeId: ChosenScheme,
+        MembershipNumber: Blank(txtMembershipNumber.Text),
+        DependantCode: Blank(txtDependantCode.Text));
 
     private IReadOnlyList<AllergyDto> CollectAllergies()
     {
