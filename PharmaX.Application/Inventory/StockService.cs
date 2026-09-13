@@ -63,6 +63,13 @@ public sealed class StockService : IStockService
     {
         ArgumentNullException.ThrowIfNull(sale);
 
+        // A collection takes money for medicine that already left the
+        // shelf when the pharmacist issued the dispensing. Applying the
+        // lines again here would issue the same stock twice and leave
+        // every one of those products short by the amount dispensed -
+        // a discrepancy nobody could explain at the next stocktake.
+        if (sale.IsCollection) return;
+
         foreach (var line in sale.Lines.Where(l => !l.IsVoided))
         {
             var product = await _products.GetAsync(line.ProductId, ct);

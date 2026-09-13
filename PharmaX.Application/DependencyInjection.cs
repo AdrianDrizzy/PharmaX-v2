@@ -19,6 +19,8 @@ public static class DependencyInjection
         s.AddScoped<IPermissionService, PermissionService>();
         s.AddScoped<IUserService, UserService>();
         s.AddScoped<ISaleService, SaleService>();
+        s.AddScoped<ICollectionService, CollectionService>();
+        s.AddScoped<Alerts.IStockAlertService, Alerts.StockAlertService>();
         s.AddScoped<IReturnService, ReturnService>();
         s.AddScoped<IDispensingService, DispensingService>();
         s.AddScoped<IScriptService, ScriptService>();

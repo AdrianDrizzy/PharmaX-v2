@@ -1,4 +1,5 @@
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Batches;
@@ -197,6 +198,21 @@ public sealed class InMemoryProductRepository : IProductRepository
     public Task<Product?> GetAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_products.Find(p => p.Id == id));
 
+    /// The same rule as the real repository: a product with no reorder
+    /// level has no reorder policy to breach.
+    public Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
+        CancellationToken ct = default)
+    {
+        IReadOnlyList<Product> low = _products
+            .Where(p => p.IsActive)
+            .Where(p => p.ReorderLevel > 0m)
+            .Where(p => p.QuantityOnHand <= p.ReorderLevel)
+            .OrderBy(p => p.Description, StringComparer.Ordinal)
+            .ToList();
+
+        return Task.FromResult(low);
+    }
+
     public Task<Product?> FindByCodeOrBarcodeAsync(string code,
         CancellationToken ct = default) =>
         Task.FromResult(_products.Find(p => p.MatchesCode(code)));
@@ -244,18 +260,33 @@ public sealed class InMemoryBatchRepository : IBatchRepository
         return Task.FromResult(found);
     }
 
+    /// <remarks>
+    /// The same three filters as the real repository. A fake that
+    /// returned quarantined or empty batches too would let an alert test
+    /// pass against behaviour the database does not have.
+    /// </remarks>
     public Task<IReadOnlyList<Batch>> ExpiringBeforeAsync(
         DateOnly expiringBefore, CancellationToken ct = default)
     {
         IReadOnlyList<Batch> found = _batches
-            .Where(b => b.ExpiryDate < expiringBefore).ToList();
+            .Where(b => b.Status == BatchStatus.Available)
+            .Where(b => b.QuantityOnHand > 0m)
+            .Where(b => b.ExpiryDate < expiringBefore)
+            .OrderBy(b => b.ExpiryDate)
+            .ToList();
 
         return Task.FromResult(found);
     }
 
-    public Task AddAsync(Batch batch, CancellationToken ct = default)
+    public Batch Add(Batch batch)
     {
         _batches.Add(batch);
+        return batch;
+    }
+
+    public Task AddAsync(Batch batch, CancellationToken ct = default)
+    {
+        Add(batch);
         return Task.CompletedTask;
     }
 }
@@ -382,5 +413,59 @@ public sealed class InMemoryUserRepository : IUserRepository
             .ToList();
 
         return Task.FromResult(found);
+    }
+}
+
+/// <summary>
+/// Dispensings held in a dictionary, for the sale tests that have to
+/// prove a collection closes the script it paid for.
+/// </summary>
+public sealed class InMemoryDispensingRepository : IDispensingRepository
+{
+    private readonly Dictionary<Guid, PharmaX.Domain.Dispensing.Dispensing> _items
+        = new();
+
+    public PharmaX.Domain.Dispensing.Dispensing Add(
+        PharmaX.Domain.Dispensing.Dispensing dispensing)
+    {
+        _items[dispensing.Id] = dispensing;
+        return dispensing;
+    }
+
+    public Task<PharmaX.Domain.Dispensing.Dispensing?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        Task.FromResult(_items.GetValueOrDefault(id));
+
+    public Task<PharmaX.Domain.Dispensing.Dispensing?> ByWarningAsync(Guid warningId,
+        CancellationToken ct = default) =>
+        Task.FromResult(_items.Values.FirstOrDefault(
+            d => d.Warnings.Any(w => w.Id == warningId)));
+
+    public Task<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>> ForPatientAsync(
+        Guid patientId, CancellationToken ct = default)
+    {
+        IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing> found = _items.Values
+            .Where(d => d.PatientId == patientId)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>>
+        AwaitingCollectionAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing> found = _items.Values
+            .Where(d => d.AwaitsCollection)
+            .OrderBy(d => d.IssuedAtUtc)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task AddAsync(PharmaX.Domain.Dispensing.Dispensing dispensing,
+        CancellationToken ct = default)
+    {
+        Add(dispensing);
+        return Task.CompletedTask;
     }
 }

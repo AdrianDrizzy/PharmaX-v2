@@ -49,6 +49,10 @@ public static class DependencyInjection
         // Sales
         s.AddTransient<frmPOS>();
         s.AddTransient<PosPresenter>();
+        s.AddTransient<frmCollect>();
+        s.AddTransient<CollectPresenter>();
+        s.AddTransient<Features.Inventory.frmAlerts>();
+        s.AddTransient<Features.Inventory.AlertPresenter>();
         s.AddTransient<frmQuotation>();
         s.AddTransient<frmReturn>();
         s.AddTransient<ReturnPresenter>();

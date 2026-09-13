@@ -39,6 +39,22 @@ public sealed class Sale : AuditableEntity
     }
 
     public DateTime OccurredAtUtc { get; private set; }
+
+    /// <summary>
+    /// The dispensing this sale is collecting payment for, where it is
+    /// one rather than an ordinary over-the-counter sale.
+    /// </summary>
+    /// <remarks>
+    /// Load-bearing, not decoration. Stock left the shelf when the
+    /// pharmacist issued the dispensing, so a collection must not take
+    /// it again - StockService reads this and leaves the shelf alone.
+    /// It is also what ties the receipt back to the script when a
+    /// patient asks a month later what they paid for.
+    /// </remarks>
+    public Guid? DispensingId { get; private set; }
+
+    /// True where this sale is collecting a dispensing's co-payment.
+    public bool IsCollection => DispensingId is not null;
     public SaleStatus Status { get; private set; } = SaleStatus.Open;
     public bool IsRated => _lines.Exists(l => l.IsRated);
 
@@ -84,6 +100,27 @@ public sealed class Sale : AuditableEntity
             OperatorId = operatorId,
             OccurredAtUtc = occurredAtUtc
         };
+    }
+
+    /// <summary>
+    /// Marks this sale as collecting a dispensing's co-payment.
+    /// </summary>
+    public void CollectFor(Guid dispensingId)
+    {
+        if (Status != SaleStatus.Open)
+            throw new DomainException(
+                "Only an open sale can be tied to a dispensing.");
+
+        if (_lines.Count > 0)
+            throw new DomainException(
+                "A collection cannot be mixed with over-the-counter "
+                + "lines: the stock behind them is accounted for "
+                + "differently.");
+
+        if (dispensingId == Guid.Empty)
+            throw new DomainException("That is not a dispensing.");
+
+        DispensingId = dispensingId;
     }
 
     public SaleLine AddLine(SaleLine line)

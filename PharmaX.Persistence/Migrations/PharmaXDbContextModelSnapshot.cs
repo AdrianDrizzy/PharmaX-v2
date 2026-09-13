@@ -145,6 +145,9 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<Guid>("CapturedBy")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("CollectedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -173,6 +176,9 @@ namespace PharmaX.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("BLOB");
 
+                    b.Property<Guid?>("SaleId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ScriptId")
                         .HasColumnType("TEXT");
 
@@ -192,6 +198,8 @@ namespace PharmaX.Persistence.Migrations
                     b.HasIndex("ScriptId");
 
                     b.HasIndex("PatientId", "IssuedAtUtc");
+
+                    b.HasIndex("Status", "SaleId", "IssuedAtUtc");
 
                     b.ToTable("Dispensing", (string)null);
                 });
@@ -1477,6 +1485,9 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("DispensingId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DocumentNumber")
                         .HasMaxLength(30)
                         .HasColumnType("TEXT");
@@ -1513,6 +1524,9 @@ namespace PharmaX.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DispensingId")
+                        .IsUnique();
 
                     b.HasIndex("BranchId", "OccurredAtUtc");
 

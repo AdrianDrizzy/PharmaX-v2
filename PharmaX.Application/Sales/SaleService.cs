@@ -1,4 +1,5 @@
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
@@ -37,6 +38,7 @@ public sealed class SaleService : ISaleService
     private readonly ISaleRepository _sales;
     private readonly IProductRepository _products;
     private readonly IBatchRepository _batches;
+    private readonly IDispensingRepository _dispensings;
     private readonly IStockService _stock;
     private readonly IDocumentNumbering _numbering;
     private readonly IPermissionService _permissions;
@@ -47,12 +49,13 @@ public sealed class SaleService : ISaleService
     private readonly IClock _clock;
 
     public SaleService(ISaleRepository sales, IProductRepository products,
-        IBatchRepository batches, IStockService stock,
-        IDocumentNumbering numbering, IPermissionService permissions,
-        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
-        ICurrentUser user, IClock clock)
+        IBatchRepository batches, IDispensingRepository dispensings,
+        IStockService stock, IDocumentNumbering numbering,
+        IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
+        IUnitOfWork uow, ICurrentUser user, IClock clock)
     {
         _sales = sales; _products = products; _batches = batches;
+        _dispensings = dispensings;
         _stock = stock; _numbering = numbering; _permissions = permissions;
         _audit = audit; _outbox = outbox; _uow = uow;
         _user = user; _clock = clock;
@@ -95,6 +98,14 @@ public sealed class SaleService : ISaleService
         var sale = await _sales.GetAsync(saleId, ct);
         if (sale is null)
             return Result<SaleLineDto>.Fail("POS-000", "Sale not found.");
+
+        // A collection is the co-payment for one script and nothing
+        // else. Scanning a bottle of shampoo onto it would put stock
+        // through a sale that deliberately does not move any.
+        if (sale.IsCollection)
+            return Result<SaleLineDto>.Fail("POS-014",
+                "This sale is collecting a script. Take the co-payment, "
+                + "then start a new sale for anything else.");
 
         var product = await _products.FindByCodeOrBarcodeAsync(scannedCode, ct);
         if (product is null)
@@ -227,6 +238,14 @@ public sealed class SaleService : ISaleService
         sale.Finalise(number, _clock.UtcNow);
 
         await _stock.ApplyIssueAsync(sale, ct);
+
+        // Paying for a collection is what takes the script out of the
+        // queue the other tills are watching, so it happens here, in the
+        // same transaction as the sale. Left to the screen to do
+        // afterwards, a crash between the two would bill the patient and
+        // still show their script as waiting.
+        await MarkCollectedAsync(sale, ct);
+
         _outbox.Append("Sale", sale.Id, SaleDto.From(sale).ToJson());
         _audit.Applied("pos.sale.create", "Sale", sale.Id);
 
@@ -235,5 +254,27 @@ public sealed class SaleService : ISaleService
 
         return Result<FinaliseDto>.Ok(
             new FinaliseDto(sale.DocumentNumber, sale.Total.Amount));
+    }
+
+    /// <summary>
+    /// Ties a finalised collection back to the dispensing it paid for.
+    /// </summary>
+    /// <remarks>
+    /// Quiet where the dispensing has gone or has already been marked:
+    /// the money has been taken and the drawer is open, and throwing at
+    /// that point would roll back a sale the customer has paid for over
+    /// a bookkeeping link. The unpaid script left behind is visible on
+    /// the collection screen, which is the recoverable failure.
+    /// </remarks>
+    private async Task MarkCollectedAsync(Sale sale, CancellationToken ct)
+    {
+        if (sale.DispensingId is not Guid dispensingId) return;
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+
+        if (dispensing is null || dispensing.SaleId is not null) return;
+
+        dispensing.RecordCollection(sale.Id, _clock.UtcNow);
+        _audit.Applied("dispensing.collected", "Dispensing", dispensingId);
     }
 }

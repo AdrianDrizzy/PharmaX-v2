@@ -16,6 +16,7 @@ public sealed class SaleServiceBuilder
     public InMemorySaleRepository Sales { get; } = new();
     public InMemoryProductRepository Products { get; }
     public InMemoryBatchRepository Batches { get; } = new();
+    public InMemoryDispensingRepository Dispensings { get; } = new();
     public RecordingStockService Stock { get; } = new();
     public FakeDocumentNumbering Numbering { get; } = new();
     public FakeAuditWriter Audit { get; } = new();
@@ -59,6 +60,6 @@ public sealed class SaleServiceBuilder
         new PermissionService(User, Permissions, Audit);
 
     public SaleService Build() =>
-        new(Sales, Products, Batches, Stock, Numbering, PermissionService(),
-            Audit, Outbox, UnitOfWork, User, Clock);
+        new(Sales, Products, Batches, Dispensings, Stock, Numbering,
+            PermissionService(), Audit, Outbox, UnitOfWork, User, Clock);
 }

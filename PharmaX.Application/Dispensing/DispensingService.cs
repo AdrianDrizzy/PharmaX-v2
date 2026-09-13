@@ -293,6 +293,13 @@ public interface IDispensingRepository
     Task<IReadOnlyList<Domain.Dispensing.Dispensing>> ForPatientAsync(
         Guid patientId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Dispensings that have been issued and still owe a co-payment,
+    /// oldest first - the queue a cashier works from.
+    /// </summary>
+    Task<IReadOnlyList<Domain.Dispensing.Dispensing>> AwaitingCollectionAsync(
+        CancellationToken ct = default);
+
     Task AddAsync(Domain.Dispensing.Dispensing dispensing,
                   CancellationToken ct = default);
 }

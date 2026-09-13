@@ -64,6 +64,20 @@ public interface IProductRepository
     /// say how much it is not showing.
     Task<int> CountAsync(string term, CancellationToken ct = default);
 
+    /// <summary>
+    /// Active products at or under their reorder level.
+    /// </summary>
+    /// <remarks>
+    /// Only where a reorder level has actually been set. Product.
+    /// ReorderLevel defaults to zero, and on zero the level rule reads
+    /// "warn me when there are none left" for every line in the
+    /// catalogue - which for a price list loaded without stock is all of
+    /// them. A product with no reorder level has no reorder policy, so
+    /// there is nothing here to breach.
+    /// </remarks>
+    Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
+        CancellationToken ct = default);
+
     Task AddAsync(Product product, CancellationToken ct = default);
 }
 

@@ -11,6 +11,12 @@ public interface IPosView : Mvp.IView
     void ClearSale();
     void FocusScan();
 
+    /// <summary>
+    /// The one thing left to do on a collection: the lines are already
+    /// priced from the script, so there is nothing to scan.
+    /// </summary>
+    void FocusPayment();
+
     int? SelectedLineNo { get; }
 
     // Prompts, kept on the view because they are UI concerns; the

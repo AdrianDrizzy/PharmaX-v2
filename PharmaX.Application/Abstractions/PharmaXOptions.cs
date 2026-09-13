@@ -8,6 +8,7 @@ public sealed class PharmaXOptions
     public ConnectivityOptions Connectivity { get; init; } = new();
     public NumberingOptions Numbering { get; init; } = new();
     public FeatureFlags Features { get; init; } = new();
+    public AlertOptions Alerts { get; init; } = new();
     public LoggingOptions Logging { get; init; } = new();
     public DevelopmentOptions Development { get; init; } = new();
 }
@@ -104,6 +105,37 @@ public sealed class DatabaseOptions
 
     public string ResolvedLocalConnection =>
         Environment.ExpandEnvironmentVariables(LocalConnection);
+}
+
+/// <summary>
+/// When stock counts as a problem worth telling the staff about.
+/// </summary>
+/// <remarks>
+/// Pharmacy-wide rather than per-workstation: whether a batch three
+/// months from expiry is a worry is a property of how the business
+/// buys, not of which till happens to be showing it, and two tills
+/// disagreeing about what is urgent would be worse than either answer.
+/// </remarks>
+public sealed class AlertOptions
+{
+    /// <summary>
+    /// How far ahead an expiry starts being worth mentioning.
+    /// </summary>
+    /// <remarks>
+    /// Ninety days is roughly the point at which something can still be
+    /// sold through, returned to the wholesaler, or swapped - after
+    /// which the pharmacy is going to eat the cost.
+    /// </remarks>
+    public int ExpiryWarningDays { get; init; } = 90;
+
+    /// Inside this, it is no longer a warning but a thing to act on today.
+    public int ExpiryCriticalDays { get; init; } = 30;
+
+    /// <summary>
+    /// Turns the whole alert centre off, for a site that would rather
+    /// run its own stock reports.
+    /// </summary>
+    public bool Enabled { get; init; } = true;
 }
 
 public sealed class ConnectivityOptions

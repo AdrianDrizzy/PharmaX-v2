@@ -25,5 +25,22 @@ public interface IMainView : Mvp.IView
     /// </summary>
     void LogOff();
 
+    /// <summary>
+    /// How many dispensed scripts are waiting at the till, shown in the
+    /// status bar so that a cashier who never opens the collection
+    /// screen still knows somebody is standing at the counter.
+    /// </summary>
+    /// <param name="waiting">Empty where there is nothing waiting.</param>
+    void SetWaiting(string waiting);
+
+    /// <summary>
+    /// How much stock needs attention, shown beside the waiting count.
+    /// </summary>
+    /// <param name="alerts">Empty where nothing is wrong.</param>
+    void SetAlerts(string alerts);
+
     event EventHandler<string>? MenuSelected;
+
+    /// Raised on the shell's own timer, to re-read the count above.
+    event EventHandler? WaitingTick;
 }

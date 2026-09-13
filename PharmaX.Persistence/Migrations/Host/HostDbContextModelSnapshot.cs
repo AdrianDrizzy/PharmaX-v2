@@ -150,6 +150,9 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.Property<Guid>("CapturedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("CollectedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -178,6 +181,9 @@ namespace PharmaX.Persistence.Migrations.Host
                         .IsRequired()
                         .HasColumnType("longblob");
 
+                    b.Property<Guid?>("SaleId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("ScriptId")
                         .HasColumnType("char(36)");
 
@@ -197,6 +203,8 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.HasIndex("ScriptId");
 
                     b.HasIndex("PatientId", "IssuedAtUtc");
+
+                    b.HasIndex("Status", "SaleId", "IssuedAtUtc");
 
                     b.ToTable("Dispensing", (string)null);
                 });
@@ -1482,6 +1490,9 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("DispensingId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("DocumentNumber")
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
@@ -1518,6 +1529,9 @@ namespace PharmaX.Persistence.Migrations.Host
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DispensingId")
+                        .IsUnique();
 
                     b.HasIndex("BranchId", "OccurredAtUtc");
 

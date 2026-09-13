@@ -68,6 +68,18 @@ public partial class frmPOS : PhxFormBase, IPosView
     /// </summary>
     private bool Raise(Keys key)
     {
+        // Everything but paying and closing is meaningless on a script
+        // the pharmacist has already priced, and a key that silently
+        // did nothing would be worse than one that says why.
+        if (_collecting
+            && key is not (PosKeyMap.Payment or PosKeyMap.Close))
+        {
+            ShowInfo("This is a dispensed script. Take the payment, or "
+                     + "send the patient back to the pharmacist to change "
+                     + "it.");
+            return true;
+        }
+
         switch (key)
         {
             case PosKeyMap.Search:
@@ -188,7 +200,61 @@ public partial class frmPOS : PhxFormBase, IPosView
         scanBar.Reset();
     }
 
-    public void FocusScan() => scanBar.TakeFocus();
+    public void FocusScan()
+    {
+        // In collection mode there is nothing to scan, and dropping the
+        // caret into a dead box after every refresh would leave the
+        // cashier typing into nothing.
+        if (_collecting) { FocusPayment(); return; }
+
+        scanBar.TakeFocus();
+    }
+
+    private bool _collecting;
+
+    /// <summary>
+    /// Opens the till on one dispensed script instead of an empty
+    /// basket. Called by the collection queue before ShowDialog.
+    /// </summary>
+    public void CollectFor(Guid dispensingId, string patientName)
+    {
+        _presenter?.Collect(dispensingId);
+        ShowCollection(patientName);
+    }
+
+    private void ShowCollection(string patientName)
+    {
+        _collecting = true;
+
+        Text = string.IsNullOrWhiteSpace(patientName)
+            ? "PharmaX - Collect script"
+            : $"PharmaX - Collect script  -  {patientName}";
+
+        // The basket is the script's, and it is not editable here: the
+        // items came off the shelf in the dispensary and what is owed
+        // was worked out against the medical aid tariff. A cashier who
+        // needs to change any of that sends the patient back to the
+        // pharmacist, which is the correct answer.
+        scanBar.Visible = false;
+
+        foreach (var button in pnlFunctions.Controls.OfType<Button>())
+        {
+            if (button.Tag is not Keys key) continue;
+
+            button.Enabled = key is PosKeyMap.Payment or PosKeyMap.Close;
+        }
+
+        lblCustomer.Text = patientName;
+        lblRated.Visible = true;
+    }
+
+    public void FocusPayment()
+    {
+        var pay = pnlFunctions.Controls.OfType<Button>()
+            .FirstOrDefault(b => b.Tag is Keys key && key == PosKeyMap.Payment);
+
+        pay?.Focus();
+    }
 
     public int? SelectedLineNo =>
         grdLines.CurrentRow?.Cells["LineNo"].Value as int?;

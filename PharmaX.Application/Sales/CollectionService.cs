@@ -1,0 +1,218 @@
+using PharmaX.Application.Abstractions;
+using PharmaX.Application.Dispensing;
+using PharmaX.Application.Repositories;
+using PharmaX.Application.Results;
+using PharmaX.Application.Sales.Dtos;
+using PharmaX.Application.Security;
+using PharmaX.Domain.Primitives;
+using PharmaX.Domain.Sales;
+using PharmaX.Domain.Security;
+
+namespace PharmaX.Application.Sales;
+
+/// <summary>
+/// One dispensing waiting at a till for the patient to pay for it.
+/// </summary>
+public sealed record CollectionDto(Guid DispensingId, string DocumentNumber,
+    string PatientName, string ScriptNumber, int Items, decimal CoPayment,
+    DateTime IssuedAtUtc, string PharmacistName);
+
+/// <summary>
+/// The hand-off from the dispensary to the till.
+/// </summary>
+/// <remarks>
+/// The pharmacist issues and the patient walks to a cashier. Between
+/// those two moments the medicine has left the shelf and no money has
+/// been taken, and every till in the pharmacy needs to see that. This is
+/// what puts it in front of them.
+///
+/// It works because the pharmacy runs on one shared database: the
+/// pharmacist's issue is committed on the machine holding it, and the
+/// tills read the same table. On a standalone installation the queue is
+/// simply that workstation's own dispensings, which is still correct -
+/// there is only one of it.
+/// </remarks>
+public interface ICollectionService
+{
+    /// Everything issued and still owing a co-payment, oldest first.
+    Task<Result<IReadOnlyList<CollectionDto>>> WaitingAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Opens a till sale for one waiting dispensing, priced at what the
+    /// patient owes. Finalise it through ISaleService like any other
+    /// sale; that is what takes it out of the queue.
+    /// </summary>
+    Task<Result<SaleDto>> StartAsync(Guid dispensingId,
+                                     CancellationToken ct = default);
+}
+
+public sealed class CollectionService : ICollectionService
+{
+    private readonly IDispensingRepository _dispensings;
+    private readonly ISaleRepository _sales;
+    private readonly IProductRepository _products;
+    private readonly IPatientRepository _patients;
+    private readonly IScriptRepository _scripts;
+    private readonly IUserRepository _users;
+    private readonly IPermissionService _permissions;
+    private readonly IUnitOfWork _uow;
+    private readonly ICurrentUser _user;
+    private readonly IClock _clock;
+
+    public CollectionService(IDispensingRepository dispensings,
+        ISaleRepository sales, IProductRepository products,
+        IPatientRepository patients, IScriptRepository scripts,
+        IUserRepository users, IPermissionService permissions,
+        IUnitOfWork uow, ICurrentUser user, IClock clock)
+    {
+        _dispensings = dispensings;
+        _sales = sales;
+        _products = products;
+        _patients = patients;
+        _scripts = scripts;
+        _users = users;
+        _permissions = permissions;
+        _uow = uow;
+        _user = user;
+        _clock = clock;
+    }
+
+    public async Task<Result<IReadOnlyList<CollectionDto>>> WaitingAsync(
+        CancellationToken ct = default)
+    {
+        // A cashier's permission rather than a pharmacist's: taking the
+        // money is the whole point of the screen.
+        _permissions.Demand(PermissionCode.SaleCreate);
+
+        var waiting = await _dispensings.AwaitingCollectionAsync(ct);
+        var described = new List<CollectionDto>(waiting.Count);
+
+        foreach (var d in waiting)
+        {
+            var patient = await _patients.GetAsync(d.PatientId, ct);
+            var script = await _scripts.GetAsync(d.ScriptId, ct);
+
+            var pharmacist = d.PharmacistId is Guid id
+                ? await _users.GetAsync(id, ct)
+                : null;
+
+            described.Add(new CollectionDto(
+                DispensingId: d.Id,
+                DocumentNumber: d.DocumentNumber,
+                PatientName: patient?.FullName ?? "(unknown patient)",
+                ScriptNumber: script?.ScriptNumber ?? "",
+                Items: d.Lines.Count,
+                CoPayment: d.CoPaymentTotal.Amount,
+                IssuedAtUtc: d.IssuedAtUtc ?? _clock.UtcNow,
+                PharmacistName: pharmacist?.DisplayName ?? ""));
+        }
+
+        return Result<IReadOnlyList<CollectionDto>>.Ok(described);
+    }
+
+    public async Task<Result<SaleDto>> StartAsync(Guid dispensingId,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.SaleCreate);
+
+        if (_user.TillSessionId is null)
+            return Result<SaleDto>.Fail("POS-013",
+                "Open a till session before taking payment.");
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+
+        if (dispensing is null)
+            return Result<SaleDto>.Fail("DSP-030", "Dispensing not found.");
+
+        // Two cashiers can be looking at the same queue, so this is a
+        // real race rather than a defensive nicety. The message says so,
+        // because "already paid" out of nowhere reads like a fault.
+        if (dispensing.SaleId is not null)
+            return Result<SaleDto>.Fail("DSP-031",
+                $"{dispensing.DocumentNumber} has already been paid for. "
+                + "Another till may have just taken it.");
+
+        if (!dispensing.AwaitsCollection)
+            return Result<SaleDto>.Fail("DSP-032",
+                $"{dispensing.DocumentNumber} is not waiting for payment.");
+
+        var sale = Sale.Open(
+            branchId: _sales.CurrentBranchId,
+            workstationId: _sales.CurrentWorkstationId,
+            tillSessionId: _user.TillSessionId.Value,
+            operatorId: _user.Id,
+            occurredAtUtc: _clock.UtcNow);
+
+        // Before any line: the sale has to know it is a collection so
+        // that finalising it does not issue the stock a second time.
+        sale.CollectFor(dispensing.Id);
+
+        foreach (var line in dispensing.Lines)
+        {
+            // A fully covered item owes nothing and has no business on a
+            // receipt as a zero line.
+            if (line.CoPayment.IsZero) continue;
+
+            sale.AddLine(SaleLine.Create(
+                productId: line.ProductId,
+                description: Describe(line),
+
+                // Quantity one, priced at the whole co-payment for the
+                // item. Dividing the co-payment by thirty tablets and
+                // multiplying it back would round the patient's total
+                // away from the figure the pharmacist quoted, and the
+                // dispensed quantity belongs in the description anyway:
+                // what is being charged for is the item, once.
+                quantity: 1m,
+                unitPrice: line.CoPayment,
+
+                // The product's own rate, not a blanket fifteen percent.
+                // Co-payments are VAT-inclusive, so the rate splits the
+                // figure rather than adding to it, and a good many
+                // medicines are not rated like a tube of hand cream.
+                vatRatePercent: await VatRateOf(line.ProductId, ct),
+                taxCode: "A",
+                priceSource: PriceSource.MedicalAidTariff));
+
+            // Deliberately no batch on the line. The dispensing already
+            // records which batch the patient was given, and that is the
+            // record a recall reads; repeating it here against a
+            // quantity of one would misstate how much of the batch moved
+            // to anything totalling sale lines.
+        }
+
+        await _sales.AddAsync(sale, ct);
+        await _uow.SaveChangesAsync(ct);
+
+        return Result<SaleDto>.Ok(SaleDto.From(sale));
+    }
+
+    /// The item and how much of it, since the line is priced as one.
+    private static string Describe(Domain.Dispensing.DispensingLine line) =>
+        line.Quantity == 1m
+            ? line.Description
+            : $"{line.Description} x {line.Quantity:0.##}";
+
+    private readonly Dictionary<Guid, decimal> _vatRates = new();
+
+    /// <summary>
+    /// The product's VAT rate, looked up once per product.
+    /// </summary>
+    /// <remarks>
+    /// A dispensing line does not carry the rate, so it has to come from
+    /// the catalogue. Cached because a script with several items of the
+    /// same product should not be several queries.
+    /// </remarks>
+    private async Task<decimal> VatRateOf(Guid productId,
+                                          CancellationToken ct)
+    {
+        if (_vatRates.TryGetValue(productId, out var known)) return known;
+
+        var product = await _products.GetAsync(productId, ct);
+        var rate = product?.VatRatePercent ?? 0m;
+
+        _vatRates[productId] = rate;
+        return rate;
+    }
+}

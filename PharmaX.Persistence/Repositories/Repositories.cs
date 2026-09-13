@@ -104,6 +104,21 @@ public sealed class ProductRepository : IProductRepository
         CancellationToken ct = default) =>
         await Matching(term).CountAsync(ct);
 
+    /// <remarks>
+    /// Filtered in the database rather than by pulling the catalogue
+    /// across the network and counting in memory: every workstation runs
+    /// this on a timer all day, and the pharmacy's catalogue is several
+    /// hundred lines of which a handful are ever low.
+    /// </remarks>
+    public async Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
+        CancellationToken ct = default) =>
+        await _db.Products
+            .Where(p => p.IsActive)
+            .Where(p => p.ReorderLevel > 0m)
+            .Where(p => p.QuantityOnHand <= p.ReorderLevel)
+            .OrderBy(p => p.Description)
+            .ToListAsync(ct);
+
     public async Task AddAsync(Product product, CancellationToken ct = default)
         => await _db.Products.AddAsync(product, ct);
 
@@ -341,6 +356,28 @@ public sealed class DispensingRepository : IDispensingRepository
             .Where(d => d.PatientId == patientId)
             .OrderByDescending(d => d.IssuedAtUtc)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Filtered in the database rather than in memory: this runs on
+    /// every refresh of a screen a cashier keeps open all day, and a
+    /// pharmacy with a year of dispensings behind it would otherwise
+    /// pull all of them across the network to find the four that are
+    /// waiting. The co-payment itself is checked on the client, because
+    /// it is a sum over the lines and SQLite cannot total a decimal.
+    /// </remarks>
+    public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
+        AwaitingCollectionAsync(CancellationToken ct = default)
+    {
+        var issued = await _db.Dispensings
+            .Include(d => d.Lines)
+            .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Issued)
+            .Where(d => d.SaleId == null)
+            .OrderBy(d => d.IssuedAtUtc)
+            .ToListAsync(ct);
+
+        return issued.Where(d => d.AwaitsCollection).ToList();
+    }
 
     public async Task AddAsync(Domain.Dispensing.Dispensing dispensing,
         CancellationToken ct = default) =>
