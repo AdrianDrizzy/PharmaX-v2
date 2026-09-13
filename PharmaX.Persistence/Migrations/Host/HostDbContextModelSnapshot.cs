@@ -1132,6 +1132,68 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.ToTable("Account", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Patients.AccountTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Narration")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<DateOnly>("OccurredOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Patients.AccountTransaction.Amount#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("varchar(3)")
+                                .HasColumnName("AmountCurrency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "OccurredOn");
+
+                    b.ToTable("AccountTransaction", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Patients.Allergy", b =>
                 {
                     b.Property<Guid>("Id")

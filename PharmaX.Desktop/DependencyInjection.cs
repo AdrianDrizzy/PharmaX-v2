@@ -63,6 +63,9 @@ public static class DependencyInjection
 
         s.AddTransient<Features.Inventory.frmAlerts>();
         s.AddTransient<Features.Inventory.AlertPresenter>();
+        s.AddTransient<Features.Patients.frmAccountPicker>();
+        s.AddTransient<Features.Patients.frmAccounts>();
+        s.AddTransient<Features.Patients.AccountsPresenter>();
         s.AddTransient<frmQuotation>();
         s.AddTransient<frmReturn>();
         s.AddTransient<ReturnPresenter>();

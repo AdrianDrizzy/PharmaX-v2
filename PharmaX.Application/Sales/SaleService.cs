@@ -2,6 +2,7 @@ using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Finance;
 using PharmaX.Application.Inventory;
+using PharmaX.Application.Patients;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Sales.Dtos;
@@ -30,6 +31,14 @@ public interface ISaleService
     Task<Result> ApplyLineDiscountAsync(Guid saleId, int lineNo,
         decimal amount, Guid? authoriserId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Puts the sale on a patient's account, so it can be tendered to
+    /// one. Refuses an account already on hold rather than letting the
+    /// cashier find out at the payment screen with a queue behind them.
+    /// </summary>
+    Task<Result<AccountDto>> AssignAccountAsync(Guid saleId, Guid accountId,
+        CancellationToken ct = default);
+
     Task<Result<FinaliseDto>> FinaliseAsync(Guid saleId,
         IReadOnlyList<PaymentDto> payments, CancellationToken ct = default);
 }
@@ -41,6 +50,8 @@ public sealed class SaleService : ISaleService
     private readonly IBatchRepository _batches;
     private readonly IDispensingRepository _dispensings;
     private readonly IJournalPoster _journals;
+    private readonly IAccountRepository _accounts;
+    private readonly IAccountService _accountService;
     private readonly IStockService _stock;
     private readonly IDocumentNumbering _numbering;
     private readonly IPermissionService _permissions;
@@ -52,13 +63,15 @@ public sealed class SaleService : ISaleService
 
     public SaleService(ISaleRepository sales, IProductRepository products,
         IBatchRepository batches, IDispensingRepository dispensings,
-        IJournalPoster journals, IStockService stock,
+        IJournalPoster journals, IAccountRepository accounts,
+        IAccountService accountService, IStockService stock,
         IDocumentNumbering numbering, IPermissionService permissions,
         IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
         ICurrentUser user, IClock clock)
     {
         _sales = sales; _products = products; _batches = batches;
         _dispensings = dispensings; _journals = journals;
+        _accounts = accounts; _accountService = accountService;
         _stock = stock; _numbering = numbering; _permissions = permissions;
         _audit = audit; _outbox = outbox; _uow = uow;
         _user = user; _clock = clock;
@@ -216,6 +229,38 @@ public sealed class SaleService : ISaleService
         return Result.Ok();
     }
 
+    public async Task<Result<AccountDto>> AssignAccountAsync(Guid saleId,
+        Guid accountId, CancellationToken ct = default)
+    {
+        var sale = await _sales.GetAsync(saleId, ct);
+
+        if (sale is null)
+            return Result<AccountDto>.Fail("POS-000", "Sale not found.");
+
+        var account = await _accounts.GetAsync(accountId, ct);
+
+        if (account is null)
+            return Result<AccountDto>.Fail("ACC-000", "Account not found.");
+
+        // Said now rather than at the payment screen. A cashier with a
+        // queue behind them should learn that an account is on hold
+        // while the customer is still deciding what to buy.
+        if (account.IsOnHold)
+            return Result<AccountDto>.Fail("ACC-011",
+                $"Account {account.AccountNumber} is on hold: "
+                + $"{account.HoldReason}");
+
+        sale.AssignPatient(account.PatientId ?? Guid.Empty, account.Id);
+
+        await _uow.SaveChangesAsync(ct);
+
+        return Result<AccountDto>.Ok(new AccountDto(account.Id,
+            account.AccountNumber, account.Name, account.PatientId,
+            account.Balance.Amount, account.CreditLimit.Amount,
+            account.Available.Amount, account.IsOnHold, account.HoldReason,
+            account.TermsDays));
+    }
+
     public async Task<Result<FinaliseDto>> FinaliseAsync(Guid saleId,
         IReadOnlyList<PaymentDto> payments, CancellationToken ct = default)
     {
@@ -237,8 +282,16 @@ public sealed class SaleService : ISaleService
             sale.AddPayment(SalePayment.Create(p.TenderType,
                 Domain.Primitives.Money.Of(p.Amount), p.Reference));
 
-        var number = await _numbering.NextAsync("SALE", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Sale, ct);
         sale.Finalise(number, _clock.UtcNow);
+
+        // Anything tendered to an account has to land on somebody's
+        // account. Before this, "Account" was in the till's tender list
+        // and charged nobody: the ledger recorded a debtor and no
+        // patient owed it, so the pharmacy could give away stock on
+        // credit with no record of who had it and no limit on how much.
+        if (await ChargeAccountAsync(sale, ct) is Error refused)
+            return Result<FinaliseDto>.Fail(refused.Code, refused.Message);
 
         await _stock.ApplyIssueAsync(sale, ct);
 
@@ -261,6 +314,51 @@ public sealed class SaleService : ISaleService
 
         return Result<FinaliseDto>.Ok(
             new FinaliseDto(sale.DocumentNumber, sale.Total.Amount));
+    }
+
+    /// <summary>
+    /// Puts the account-tendered part of a sale on the patient's account.
+    /// </summary>
+    /// <remarks>
+    /// Returns the reason rather than throwing, so that a refused charge
+    /// gives the cashier something to read - "over the credit limit" or
+    /// "on hold, and why" - instead of a stack trace. The sale rolls
+    /// back either way, which is the right order: better a till that
+    /// will not complete the sale than a patient owing money nobody
+    /// recorded.
+    /// </remarks>
+    private async Task<Error?> ChargeAccountAsync(Sale sale,
+        CancellationToken ct)
+    {
+        var onAccount = sale.Payments
+            .Where(p => p.Tender == TenderType.Account)
+            .Aggregate(Domain.Primitives.Money.Zero(),
+                       (sum, p) => sum + p.Amount);
+
+        if (onAccount.IsZero) return null;
+
+        if (sale.AccountId is not Guid accountId)
+            return new Error("POS-020",
+                "This sale is tendered to an account but no account has "
+                + "been chosen. Press F3 and find the customer.");
+
+        var account = await _accounts.GetAsync(accountId, ct);
+
+        if (account is null)
+            return new Error("ACC-000", "Account not found.");
+
+        try
+        {
+            await _accountService.ChargeAsync(account, sale, onAccount, ct);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            // On hold, or past the credit limit. Both are the account
+            // doing its job, and both are things the cashier can act on.
+            return new Error("ACC-010", ex.Message);
+        }
+
+        return null;
     }
 
     /// <summary>

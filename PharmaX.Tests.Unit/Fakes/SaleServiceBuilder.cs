@@ -18,6 +18,7 @@ public sealed class SaleServiceBuilder
     public InMemoryBatchRepository Batches { get; } = new();
     public InMemoryDispensingRepository Dispensings { get; } = new();
     public InMemoryLedgerRepository Ledger { get; } = new();
+    public InMemoryAccountRepository Accounts { get; } = new();
 
     /// Whether trading writes journals. On, as on a real installation.
     public bool AutoPost { get; init; } = true;
@@ -75,8 +76,23 @@ public sealed class SaleServiceBuilder
             },
             Clock);
 
+    /// <summary>
+    /// A real account service rather than a substitute, so that a sale
+    /// tendered to an account genuinely moves a balance.
+    /// </summary>
+    public PharmaX.Application.Patients.AccountService AccountService() =>
+        new(Accounts,
+
+            // Patients are only read when opening an account, which a
+            // sale never does.
+            NSubstitute.Substitute.For<PharmaX.Application.Repositories
+                .IPatientRepository>(),
+
+            Journals(), Numbering, PermissionService(), Audit, UnitOfWork,
+            Clock);
+
     public SaleService Build() =>
-        new(Sales, Products, Batches, Dispensings, Journals(), Stock,
-            Numbering, PermissionService(), Audit, Outbox, UnitOfWork,
-            User, Clock);
+        new(Sales, Products, Batches, Dispensings, Journals(), Accounts,
+            AccountService(), Stock, Numbering, PermissionService(), Audit,
+            Outbox, UnitOfWork, User, Clock);
 }

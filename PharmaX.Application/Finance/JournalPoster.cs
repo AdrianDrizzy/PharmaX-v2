@@ -63,6 +63,13 @@ public interface IJournalPoster
         CancellationToken ct = default);
 
     /// <summary>
+    /// Money received off a patient's account.
+    /// </summary>
+    Task PostAccountPaymentAsync(string accountNumber, Money paid,
+        string tenderType, DateOnly receivedOn, string? reference,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// A scheme's remittance: what it paid, and what the pharmacy has
     /// given up on.
     /// </summary>
@@ -236,6 +243,36 @@ public sealed class JournalPoster : IJournalPoster
         await PostAsync(batch, ct);
     }
 
+    public async Task PostAccountPaymentAsync(string accountNumber,
+        Money paid, string tenderType, DateOnly receivedOn,
+        string? reference, CancellationToken ct = default)
+    {
+        if (!Enabled || paid.IsZero) return;
+
+        var batch = JournalBatch.Create(
+            await _numbering.NextAsync(DocumentSeries.Journal, ct), receivedOn, "ACCPAY",
+            $"Payment on account {accountNumber}"
+            + (string.IsNullOrWhiteSpace(reference)
+                ? "" : $", {reference}"));
+
+        // Where the money landed follows the tender, exactly as it does
+        // at a till: cash into the drawer, anything else to the bank.
+        var landed = Enum.TryParse<Domain.Sales.TenderType>(tenderType,
+            ignoreCase: true, out var tender)
+            ? LedgerCode.For(tender)
+            : LedgerCode.Bank;
+
+        // An account settled in cash still goes through the drawer, so
+        // it has to reach the same account the cash-up counts.
+        batch.AddLine(landed, paid, isDebit: true);
+
+        // No VAT here. It was accounted for when the sale was put on the
+        // account; this is only the debtor being settled.
+        batch.AddLine(LedgerCode.TradeDebtors, paid, isDebit: false);
+
+        await PostAsync(batch, ct);
+    }
+
     public async Task PostRemittanceAsync(string schemeName, Money paid,
         Money writtenOff, DateOnly receivedOn, string? reference,
         CancellationToken ct = default)
@@ -246,7 +283,7 @@ public sealed class JournalPoster : IJournalPoster
         if (cleared.IsZero) return;
 
         var batch = JournalBatch.Create(
-            await _numbering.NextAsync("JNL", ct), receivedOn, "REMIT",
+            await _numbering.NextAsync(DocumentSeries.Journal, ct), receivedOn, "REMIT",
             $"Remittance from {schemeName}"
             + (string.IsNullOrWhiteSpace(reference)
                 ? "" : $", {reference}"));
@@ -299,7 +336,7 @@ public sealed class JournalPoster : IJournalPoster
     private async Task<JournalBatch> OpenAsync(string source,
         string narration, CancellationToken ct)
     {
-        var number = await _numbering.NextAsync("JNL", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Journal, ct);
 
         return JournalBatch.Create(number, _clock.Today, source, narration);
     }

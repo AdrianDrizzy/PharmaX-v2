@@ -104,7 +104,7 @@ public sealed class QuotationService : IQuotationService
             return Result<QuotationDto>.Fail("QUO-001",
                 "A quotation needs a customer name to be addressed to.");
 
-        var number = await _numbering.NextAsync("QUO", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Quotation, ct);
 
         var quotation = Quotation.Open(number, customerName, _user.Id,
             Today, validForDays);

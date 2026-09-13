@@ -259,6 +259,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "journal":
                 _views.ShowDialog<frmJournal>((Form)View);
                 break;
+            case "accounts-receivable":
+                _views.ShowDialog<Features.Patients.frmAccounts>((Form)View);
+                break;
             case "claims":
                 _views.ShowDialog<frmClaims>((Form)View);
                 break;

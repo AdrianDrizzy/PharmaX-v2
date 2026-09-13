@@ -127,7 +127,7 @@ public sealed class PurchasingService : IPurchasingService
             resolved.Add((product, line));
         }
 
-        var number = await _numbering.NextAsync("PO", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.PurchaseOrder, ct);
 
         // Expected date defaults to the supplier's own lead time, which
         // is what that field on the supplier record is for.

@@ -274,6 +274,41 @@ public sealed record LedgerEntry(DateOnly PostingDate, string BatchNumber,
     string Source, string AccountCode, decimal Debit, decimal Credit,
     string? Narration);
 
+public interface IAccountRepository
+{
+    Task<Account?> GetAsync(Guid id, CancellationToken ct = default);
+
+    Task<Account?> ByNumberAsync(string accountNumber,
+                                 CancellationToken ct = default);
+
+    /// Accounts by name or number, for the picker at the till.
+    Task<IReadOnlyList<Account>> SearchAsync(string term, int take = 100,
+                                             CancellationToken ct = default);
+
+    /// <summary>
+    /// Everything owing, largest first - the list somebody works through
+    /// when chasing money.
+    /// </summary>
+    Task<IReadOnlyList<Account>> OwingAsync(CancellationToken ct = default);
+
+    Task AddAsync(Account account, CancellationToken ct = default);
+
+    /// The movements on one account, oldest first, so a statement reads
+    /// down the page with a running balance.
+    Task<IReadOnlyList<AccountTransaction>> TransactionsAsync(Guid accountId,
+        DateOnly from, DateOnly until, CancellationToken ct = default);
+
+    Task AddTransactionAsync(AccountTransaction transaction,
+                             CancellationToken ct = default);
+
+    /// <summary>
+    /// What the movements add up to, for checking the stored balance
+    /// against its own history.
+    /// </summary>
+    Task<decimal> MovementTotalAsync(Guid accountId,
+                                     CancellationToken ct = default);
+}
+
 public interface IClaimRepository
 {
     Task<MedicalAidClaim?> GetAsync(Guid id, CancellationToken ct = default);

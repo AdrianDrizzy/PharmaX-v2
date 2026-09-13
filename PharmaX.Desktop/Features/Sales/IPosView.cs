@@ -37,8 +37,15 @@ public interface IPosView : Mvp.IView
     /// </param>
     string? PromptProductSearch(string? term);
 
+    /// <summary>
+    /// Asks the operator to find the account this sale goes on, and
+    /// returns it. Null where they gave up.
+    /// </summary>
+    Application.Patients.AccountDto? PromptAccount();
+
     event EventHandler<string>? CodeScanned;
     event EventHandler? ProductSearchRequested; // F2
+    event EventHandler? CustomerRequested;      // F3
     event EventHandler? QuantityRequested;      // F4
     event EventHandler? LineDiscountRequested;  // F5
     event EventHandler? VoidLineRequested;      // Esc

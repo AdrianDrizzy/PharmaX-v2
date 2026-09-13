@@ -94,7 +94,7 @@ public sealed class PatientService : IPatientService
 
         // Allocated, not typed: a file number the operator invents is a
         // number two patients eventually share.
-        var fileNumber = await _numbering.NextAsync("PAT", ct);
+        var fileNumber = await _numbering.NextAsync(DocumentSeries.Patient, ct);
 
         var patient = Patient.Create(fileNumber, edit.Surname,
             edit.FirstNames, edit.DateOfBirth, edit.IdNumber);

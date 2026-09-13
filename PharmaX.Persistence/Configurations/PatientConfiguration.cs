@@ -160,3 +160,36 @@ public sealed class PatientAttachmentConfiguration
         b.HasIndex(x => x.ScriptId);
     }
 }
+
+public sealed class AccountTransactionConfiguration
+    : IEntityTypeConfiguration<AccountTransaction>
+{
+    public void Configure(EntityTypeBuilder<AccountTransaction> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("AccountTransaction");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Reference).HasMaxLength(60);
+        b.Property(x => x.Narration).HasMaxLength(300);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        b.ComplexProperty(x => x.Amount, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("Amount")
+                                     .HasPrecision(18, 2);
+            m.Property(p => p.Currency).HasColumnName("AmountCurrency")
+                                       .HasMaxLength(3);
+        });
+
+        // Both are the kind read off the kind and the amount, so there
+        // is nothing to store.
+        b.Ignore(x => x.Increases);
+        b.Ignore(x => x.Effect);
+
+        // The statement's own query: one account, in date order.
+        b.HasIndex(x => new { x.AccountId, x.OccurredOn });
+    }
+}

@@ -84,6 +84,8 @@ public partial class frmPOS : PhxFormBase, IPosView
         {
             case PosKeyMap.Search:
                 ProductSearchRequested?.Invoke(this, EventArgs.Empty); break;
+            case PosKeyMap.Customer:
+                CustomerRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.Quantity:
                 QuantityRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.LineDiscount:
@@ -267,6 +269,17 @@ public partial class frmPOS : PhxFormBase, IPosView
 
     // ---- Prompts ---------------------------------------------------------
 
+    public Application.Patients.AccountDto? PromptAccount()
+    {
+        if (_views is null) return null;
+
+        using var picker = _views.Create<Features.Patients.frmAccountPicker>();
+
+        return picker.ShowDialog(this) == DialogResult.OK
+            ? picker.Chosen
+            : null;
+    }
+
     public decimal? PromptQuantity(decimal current) =>
         frmNumberPrompt.Ask(this, "Quantity", "Quantity for this line",
                             current, decimals: 3);
@@ -319,6 +332,7 @@ public partial class frmPOS : PhxFormBase, IPosView
 
     public event EventHandler<string>? CodeScanned;
     public event EventHandler? ProductSearchRequested;
+    public event EventHandler? CustomerRequested;
     public event EventHandler? QuantityRequested;
     public event EventHandler? LineDiscountRequested;
     public event EventHandler? VoidLineRequested;

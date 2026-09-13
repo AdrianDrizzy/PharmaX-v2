@@ -219,13 +219,12 @@ public sealed class ReferenceDataSeeder
     {
         var till = _options.Workstation.TillNumber;
 
-        // JNL is here because the books now number themselves: a sale
-        // finalising takes a SALE number for the receipt and a JNL
-        // number for the journal it posts, and a series with no block
-        // stops the transaction that needed it.
-        foreach (var series in new[]
-                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK",
-                   "JNL" })
+        // Read from DocumentSeries rather than written out again here.
+        // The two lists had drifted three times, each time leaving a
+        // feature that could not run at a site: a journal series with no
+        // block stopped the first sale of the day, and quotations had
+        // been asking for a QUO block nobody had ever seeded.
+        foreach (var series in DocumentSeries.All)
         {
             var exists = await _db.DocumentNumberBlocks
                 .AnyAsync(b => b.Series == series

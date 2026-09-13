@@ -219,7 +219,7 @@ public sealed class DispensingService : IDispensingService
         if (script is null)
             return Result<IssueResultDto>.Fail("DSP-000", "Script not found.");
 
-        var number = await _numbering.NextAsync("DISP", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Dispensing, ct);
         dispensing.Issue(pharmacistId, number, _clock.UtcNow);
         script.RecordDispensing(_clock.Today);
 
@@ -315,7 +315,7 @@ public sealed class DispensingService : IDispensingService
         if (await _claims.ForDispensingAsync(dispensing.Id, ct) is not null)
             return;
 
-        var number = await _numbering.NextAsync("CLM", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Claim, ct);
 
         var claim = ClaimService.Build(number, patient, dispensing,
                                        _clock.Today);

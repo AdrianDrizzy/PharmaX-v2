@@ -147,7 +147,7 @@ public sealed class ScriptService : IScriptService
             resolved.Add((product, item));
         }
 
-        var number = await _numbering.NextAsync("SCR", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Script, ct);
 
         var script = Script.Capture(number, edit.PatientId,
             edit.PrescriberName, edit.PrescribedOn, edit.RepeatsAuthorised,

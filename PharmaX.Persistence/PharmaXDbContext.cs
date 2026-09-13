@@ -41,6 +41,11 @@ public class PharmaXDbContext : DbContext
     public DbSet<PatientAttachment> PatientAttachments =>
         Set<PatientAttachment>();
     public DbSet<ClinicalProfile> ClinicalProfiles => Set<ClinicalProfile>();
+
+    // What patients owe the pharmacy, and the movements behind it.
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<AccountTransaction> AccountTransactions =>
+        Set<AccountTransaction>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();

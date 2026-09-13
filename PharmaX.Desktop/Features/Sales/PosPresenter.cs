@@ -46,6 +46,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     {
         View.CodeScanned += (_, code) => _ = OnScanAsync(code);
         View.ProductSearchRequested += (_, _) => _ = OnSearchAsync(null);
+        View.CustomerRequested += (_, _) => _ = OnCustomerAsync();
         View.QuantityRequested += (_, _) => _ = OnQuantityAsync();
         View.LineDiscountRequested += (_, _) => _ = OnDiscountAsync();
         View.VoidLineRequested += (_, _) => _ = OnVoidAsync();
@@ -144,6 +145,47 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         }
 
         await RefreshAsync();
+    });
+
+    /// <summary>
+    /// Puts the sale on a customer's account.
+    /// </summary>
+    /// <remarks>
+    /// The account is what makes the Account tender mean anything: a
+    /// sale tendered to an account with none chosen is refused at
+    /// finalise, and was silently allowed before accounts existed.
+    /// </remarks>
+    private Task OnCustomerAsync() => GuardAsync(async () =>
+    {
+        if (View.PromptAccount() is not Application.Patients.AccountDto
+            chosen)
+        {
+            View.FocusScan();
+            return;
+        }
+
+        var result = await _sales.AssignAccountAsync(_saleId, chosen.Id);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            View.FocusScan();
+            return;
+        }
+
+        var account = result.Value;
+
+        // What the cashier needs on screen is how much room is left on
+        // the account, because that is what decides whether the sale can
+        // go on it at all.
+        View.ShowCustomer(account.Name,
+            string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                "Account {0}   owes {1}   {2} available",
+                account.AccountNumber, Format.Money(account.Balance),
+                Format.Money(account.Available)),
+            ratedPricing: false);
+
+        View.FocusScan();
     });
 
     private Task OnSearchAsync(string? term) =>

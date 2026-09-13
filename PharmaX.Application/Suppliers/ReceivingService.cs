@@ -152,7 +152,7 @@ public sealed class ReceivingService : IReceivingService
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
-        var number = await _numbering.NextAsync("GRN", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.GoodsReceipt, ct);
 
         var receipt = GoodsReceipt.Create(number, supplier.Id,
             edit.ReceivedOn, _user.Id, edit.PurchaseOrderId,

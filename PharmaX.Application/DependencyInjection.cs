@@ -24,6 +24,7 @@ public static class DependencyInjection
         s.AddScoped<Finance.ILedgerService, Finance.LedgerService>();
         s.AddScoped<Finance.IJournalPoster, Finance.JournalPoster>();
         s.AddScoped<Claims.IClaimService, Claims.ClaimService>();
+        s.AddScoped<Patients.IAccountService, Patients.AccountService>();
         s.AddScoped<IReturnService, ReturnService>();
         s.AddScoped<IDispensingService, DispensingService>();
         s.AddScoped<IScriptService, ScriptService>();

@@ -6,6 +6,7 @@ using PharmaX.Domain.Batches;
 using PharmaX.Domain.Claims;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
+using PharmaX.Domain.Patients;
 using PharmaX.Domain.Sales;
 
 namespace PharmaX.Tests.Unit.Fakes;
@@ -657,4 +658,87 @@ public sealed class InMemoryClaimRepository : IClaimRepository
         Add(claim);
         return Task.CompletedTask;
     }
+}
+
+/// <summary>
+/// Patient accounts in a list, with their movements.
+/// </summary>
+public sealed class InMemoryAccountRepository : IAccountRepository
+{
+    private readonly List<Account> _accounts = new();
+    private readonly List<AccountTransaction> _movements = new();
+
+    public IReadOnlyList<AccountTransaction> Movements => _movements;
+
+    public Account Add(Account account)
+    {
+        _accounts.Add(account);
+        return account;
+    }
+
+    public Task<Account?> GetAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_accounts.Find(a => a.Id == id));
+
+    public Task<Account?> ByNumberAsync(string accountNumber,
+        CancellationToken ct = default) =>
+        Task.FromResult(_accounts.Find(a =>
+            string.Equals(a.AccountNumber, accountNumber,
+                          StringComparison.Ordinal)));
+
+    public Task<IReadOnlyList<Account>> SearchAsync(string term,
+        int take = 100, CancellationToken ct = default)
+    {
+        IReadOnlyList<Account> found = _accounts
+            .Where(a => string.IsNullOrWhiteSpace(term)
+                     || a.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                     || a.AccountNumber.Contains(term,
+                            StringComparison.OrdinalIgnoreCase))
+            .Take(take)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task<IReadOnlyList<Account>> OwingAsync(
+        CancellationToken ct = default)
+    {
+        IReadOnlyList<Account> owing = _accounts
+            .Where(a => a.Balance.Amount > 0m)
+            .OrderByDescending(a => a.Balance.Amount)
+            .ToList();
+
+        return Task.FromResult(owing);
+    }
+
+    public Task AddAsync(Account account, CancellationToken ct = default)
+    {
+        Add(account);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<AccountTransaction>> TransactionsAsync(
+        Guid accountId, DateOnly from, DateOnly until,
+        CancellationToken ct = default)
+    {
+        IReadOnlyList<AccountTransaction> found = _movements
+            .Where(t => t.AccountId == accountId)
+            .Where(t => t.OccurredOn >= from && t.OccurredOn <= until)
+            .OrderBy(t => t.OccurredOn)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task AddTransactionAsync(AccountTransaction transaction,
+        CancellationToken ct = default)
+    {
+        _movements.Add(transaction);
+        return Task.CompletedTask;
+    }
+
+    public Task<decimal> MovementTotalAsync(Guid accountId,
+        CancellationToken ct = default) =>
+        Task.FromResult(_movements
+            .Where(t => t.AccountId == accountId)
+            .Sum(t => t.Effect.Amount));
 }

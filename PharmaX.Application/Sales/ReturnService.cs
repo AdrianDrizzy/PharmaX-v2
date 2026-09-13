@@ -198,7 +198,7 @@ public sealed class ReturnService : IReturnService
                 Domain.Primitives.Money.Of(refund.Amount),
                 refund.Reference));
 
-        var number = await _numbering.NextAsync("RET", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Return, ct);
         saleReturn.Finalise(number, _clock.UtcNow);
 
         await _returns.AddAsync(saleReturn, ct);

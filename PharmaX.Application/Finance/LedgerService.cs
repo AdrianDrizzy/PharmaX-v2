@@ -242,7 +242,7 @@ public sealed class LedgerService : ILedgerService
                     $"Account {code} {account.Name} is no longer in use.");
         }
 
-        var number = await _numbering.NextAsync("JNL", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Journal, ct);
 
         var batch = JournalBatch.Create(number, postingDate, "MANUAL",
                                         narration);

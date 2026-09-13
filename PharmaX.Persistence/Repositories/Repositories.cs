@@ -878,3 +878,92 @@ public sealed class ClaimRepository : IClaimRepository
         CancellationToken ct = default) =>
         await _db.MedicalAidClaims.AddAsync(claim, ct);
 }
+
+/// <summary>
+/// What patients owe the pharmacy.
+/// </summary>
+public sealed class AccountRepository : IAccountRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public AccountRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Account?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Accounts.FirstOrDefaultAsync(a => a.Id == id, ct);
+
+    public async Task<Account?> ByNumberAsync(string accountNumber,
+        CancellationToken ct = default) =>
+        await _db.Accounts
+            .FirstOrDefaultAsync(a => a.AccountNumber == accountNumber, ct);
+
+    public async Task<IReadOnlyList<Account>> SearchAsync(string term,
+        int take = 100, CancellationToken ct = default)
+    {
+        var query = _db.Accounts.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(a => a.AccountNumber.Contains(term)
+                                  || a.Name.Contains(term));
+
+        return await query
+            .OrderBy(a => a.Name)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    /// <remarks>
+    /// Filtered in the database and ordered here, because SQLite cannot
+    /// order by a decimal it has not selected and the rows are the
+    /// handful of accounts that actually owe something.
+    /// </remarks>
+    public async Task<IReadOnlyList<Account>> OwingAsync(
+        CancellationToken ct = default)
+    {
+        var owing = await _db.Accounts
+            .AsNoTracking()
+            .Where(a => a.Balance.Amount > 0m)
+            .ToListAsync(ct);
+
+        return owing
+            .OrderByDescending(a => a.Balance.Amount)
+            .ToList();
+    }
+
+    public async Task AddAsync(Account account,
+        CancellationToken ct = default) =>
+        await _db.Accounts.AddAsync(account, ct);
+
+    public async Task<IReadOnlyList<AccountTransaction>> TransactionsAsync(
+        Guid accountId, DateOnly from, DateOnly until,
+        CancellationToken ct = default) =>
+        await _db.AccountTransactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId)
+            .Where(t => t.OccurredOn >= from && t.OccurredOn <= until)
+            .OrderBy(t => t.OccurredOn)
+            .ThenBy(t => t.CreatedAtUtc)
+            .ToListAsync(ct);
+
+    public async Task AddTransactionAsync(AccountTransaction transaction,
+        CancellationToken ct = default) =>
+        await _db.AccountTransactions.AddAsync(transaction, ct);
+
+    /// <remarks>
+    /// Summed here rather than in SQL for the same reason as everywhere
+    /// else: SQLite will not total a decimal. One account's movements
+    /// are a page of rows, not a table scan.
+    /// </remarks>
+    public async Task<decimal> MovementTotalAsync(Guid accountId,
+        CancellationToken ct = default)
+    {
+        var movements = await _db.AccountTransactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId)
+            .Select(t => new { t.Kind, t.Amount.Amount })
+            .ToListAsync(ct);
+
+        return movements.Sum(m =>
+            m.Kind == AccountEntryKind.Charge ? m.Amount : -m.Amount);
+    }
+}
