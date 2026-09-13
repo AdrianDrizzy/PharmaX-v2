@@ -76,6 +76,17 @@ public class PharmaXDbContext : DbContext
     public DbSet<Domain.Dispensing.Dispensing> Dispensings =>
         Set<Domain.Dispensing.Dispensing>();
 
+    // The books. Journals are written by the pharmacy's own trading and
+    // by hand; the chart is what they post to.
+    public DbSet<Domain.Finance.LedgerAccount> LedgerAccounts =>
+        Set<Domain.Finance.LedgerAccount>();
+
+    public DbSet<Domain.Finance.JournalBatch> JournalBatches =>
+        Set<Domain.Finance.JournalBatch>();
+
+    public DbSet<Domain.Finance.JournalLine> JournalLines =>
+        Set<Domain.Finance.JournalLine>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         ArgumentNullException.ThrowIfNull(b);

@@ -5,6 +5,7 @@ using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Batches;
 using PharmaX.Domain.Dispensing;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
 using PharmaX.Domain.Primitives;
@@ -326,6 +327,19 @@ public sealed class TillSessionRepository : ITillSessionRepository
     public async Task AddDeclarationAsync(TillDeclaration declaration,
         CancellationToken ct = default) =>
         await _db.TillDeclarations.AddAsync(declaration, ct);
+
+    /// <remarks>
+    /// The latest rather than the one marked final: an operator can
+    /// recount, and what closes the till is the last count they stood
+    /// behind.
+    /// </remarks>
+    public async Task<TillDeclaration?> LatestDeclarationAsync(
+        Guid tillSessionId, CancellationToken ct = default) =>
+        await _db.TillDeclarations
+            .Include(d => d.Lines)
+            .Where(d => d.TillSessionId == tillSessionId)
+            .OrderByDescending(d => d.DeclaredAtUtc)
+            .FirstOrDefaultAsync(ct);
 }
 
 public sealed class DispensingRepository : IDispensingRepository
@@ -664,4 +678,150 @@ public sealed class ReturnRepository : IReturnRepository
     public async Task AddAsync(SaleReturn saleReturn,
         CancellationToken ct = default) =>
         await _db.SaleReturns.AddAsync(saleReturn, ct);
+}
+
+/// <summary>
+/// The books.
+/// </summary>
+/// <remarks>
+/// Journal lines carry an account code rather than a foreign key to the
+/// account row, which is deliberate: a posted journal is a historical
+/// record, and it must still read correctly if somebody later
+/// deactivates the account it went to. The cost is that these queries
+/// join on a string, which is what the index on AccountCode is for.
+/// </remarks>
+public sealed class LedgerRepository : ILedgerRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public LedgerRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<LedgerAccount>> AccountsAsync(
+        bool includeInactive = false, CancellationToken ct = default) =>
+        await _db.LedgerAccounts
+            .Where(a => includeInactive || a.IsActive)
+            .OrderBy(a => a.Code)
+            .ToListAsync(ct);
+
+    public async Task<LedgerAccount?> AccountAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.LedgerAccounts.FirstOrDefaultAsync(a => a.Id == id, ct);
+
+    public async Task<LedgerAccount?> AccountByCodeAsync(string code,
+        CancellationToken ct = default) =>
+        await _db.LedgerAccounts.FirstOrDefaultAsync(a => a.Code == code, ct);
+
+    public async Task AddAccountAsync(LedgerAccount account,
+        CancellationToken ct = default) =>
+        await _db.LedgerAccounts.AddAsync(account, ct);
+
+    public async Task<JournalBatch?> BatchAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.JournalBatches
+            .Include(j => j.Lines)
+            .FirstOrDefaultAsync(j => j.Id == id, ct);
+
+    public async Task<IReadOnlyList<JournalBatch>> BatchesAsync(DateOnly from,
+        DateOnly until, CancellationToken ct = default) =>
+        await _db.JournalBatches
+            .AsNoTracking()
+            .Include(j => j.Lines)
+            .Where(j => j.PostingDate >= from && j.PostingDate <= until)
+            .OrderByDescending(j => j.PostingDate)
+            .ThenByDescending(j => j.BatchNumber)
+            .ToListAsync(ct);
+
+    public async Task AddBatchAsync(JournalBatch batch,
+        CancellationToken ct = default) =>
+        await _db.JournalBatches.AddAsync(batch, ct);
+
+    /// <remarks>
+    /// Filtered in the database and summed here. SQLite cannot apply Sum
+    /// to a decimal, and a workstation database is always SQLite, so the
+    /// grouping has to happen in memory either way - which is also why
+    /// the projection takes three columns rather than whole entities.
+    /// </remarks>
+    public async Task<IReadOnlyList<AccountTotals>> TotalsAsync(DateOnly asAt,
+        CancellationToken ct = default)
+    {
+        var lines = await PostedLines()
+            .Where(x => x.Batch.PostingDate <= asAt)
+            .Select(x => new
+            {
+                x.Line.AccountCode,
+                x.Line.IsDebit,
+                x.Line.Amount.Amount
+            })
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(l => l.AccountCode, StringComparer.Ordinal)
+            .Select(g => new AccountTotals(
+                g.Key,
+                g.Where(l => l.IsDebit).Sum(l => l.Amount),
+                g.Where(l => !l.IsDebit).Sum(l => l.Amount)))
+            .OrderBy(t => t.AccountCode, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<LedgerEntry>> EntriesAsync(
+        string accountCode, DateOnly from, DateOnly until,
+        CancellationToken ct = default)
+    {
+        var rows = await PostedLines()
+            .Where(x => x.Line.AccountCode == accountCode)
+            .Where(x => x.Batch.PostingDate >= from)
+            .Where(x => x.Batch.PostingDate <= until)
+            .OrderBy(x => x.Batch.PostingDate)
+            .ThenBy(x => x.Batch.BatchNumber)
+            .ThenBy(x => x.Line.LineNo)
+            .Select(x => new
+            {
+                x.Batch.PostingDate,
+                x.Batch.BatchNumber,
+                x.Batch.Source,
+                x.Line.AccountCode,
+                x.Line.IsDebit,
+                x.Line.Amount.Amount,
+
+                // The line's own narration where it has one, and the
+                // batch's where it has not: a hand-written journal
+                // explains itself line by line, and an automatic one
+                // says the same thing once at the top.
+                Narration = x.Line.Narration ?? x.Batch.Narration
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(r => new LedgerEntry(r.PostingDate, r.BatchNumber,
+                r.Source, r.AccountCode,
+                r.IsDebit ? r.Amount : 0m,
+                r.IsDebit ? 0m : r.Amount,
+                r.Narration))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every line of every posted batch, paired with its batch.
+    /// </summary>
+    /// <remarks>
+    /// Unposted batches are drafts: a half-captured journal must not
+    /// appear in a trial balance, and it is the one place an unbalanced
+    /// set of lines is allowed to exist.
+    /// </remarks>
+    private IQueryable<BatchLine> PostedLines() =>
+        _db.JournalBatches
+            .AsNoTracking()
+            .Where(j => j.IsPosted)
+            .SelectMany(j => j.Lines, (batch, line) => new BatchLine
+            {
+                Batch = batch,
+                Line = line
+            });
+
+    private sealed class BatchLine
+    {
+        public JournalBatch Batch { get; init; } = null!;
+        public JournalLine Line { get; init; } = null!;
+    }
 }

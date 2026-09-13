@@ -1,4 +1,5 @@
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
 using PharmaX.Domain.Sales;
@@ -157,6 +158,14 @@ public interface ITillSessionRepository
 
     Task AddDeclarationAsync(TillDeclaration declaration,
                              CancellationToken ct = default);
+
+    /// <summary>
+    /// The last declaration captured for a session - what the operator
+    /// actually counted, as opposed to what the sales say they should
+    /// have.
+    /// </summary>
+    Task<TillDeclaration?> LatestDeclarationAsync(Guid tillSessionId,
+        CancellationToken ct = default);
 }
 
 public interface IStocktakeRepository
@@ -205,6 +214,51 @@ public interface IGoodsReceiptRepository
 
     Task AddAsync(GoodsReceipt receipt, CancellationToken ct = default);
 }
+
+public interface ILedgerRepository
+{
+    Task<IReadOnlyList<LedgerAccount>> AccountsAsync(
+        bool includeInactive = false, CancellationToken ct = default);
+
+    Task<LedgerAccount?> AccountAsync(Guid id,
+                                      CancellationToken ct = default);
+
+    Task<LedgerAccount?> AccountByCodeAsync(string code,
+                                            CancellationToken ct = default);
+
+    Task AddAccountAsync(LedgerAccount account,
+                         CancellationToken ct = default);
+
+    Task<JournalBatch?> BatchAsync(Guid id, CancellationToken ct = default);
+
+    /// Posted batches in a date range, newest first, for the journal list.
+    Task<IReadOnlyList<JournalBatch>> BatchesAsync(DateOnly from,
+        DateOnly until, CancellationToken ct = default);
+
+    Task AddBatchAsync(JournalBatch batch, CancellationToken ct = default);
+
+    /// <summary>
+    /// The debit and credit totals per account for everything posted up
+    /// to and including a date - the trial balance, summed in the
+    /// database rather than by pulling every journal line across.
+    /// </summary>
+    Task<IReadOnlyList<AccountTotals>> TotalsAsync(DateOnly asAt,
+        CancellationToken ct = default);
+
+    /// Every posted line touching one account, for the detail behind a
+    /// trial balance figure.
+    Task<IReadOnlyList<LedgerEntry>> EntriesAsync(string accountCode,
+        DateOnly from, DateOnly until, CancellationToken ct = default);
+}
+
+/// What one account has been debited and credited altogether.
+public sealed record AccountTotals(string AccountCode, decimal Debits,
+                                   decimal Credits);
+
+/// One posted line, with enough of its batch to read on a screen.
+public sealed record LedgerEntry(DateOnly PostingDate, string BatchNumber,
+    string Source, string AccountCode, decimal Debit, decimal Credit,
+    string? Narration);
 
 public interface IPermissionRepository
 {

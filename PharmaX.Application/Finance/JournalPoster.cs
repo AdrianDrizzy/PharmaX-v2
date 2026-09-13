@@ -1,0 +1,247 @@
+using System.Globalization;
+using PharmaX.Application.Abstractions;
+using PharmaX.Application.Repositories;
+using PharmaX.Domain.Finance;
+using PharmaX.Domain.Primitives;
+using PharmaX.Domain.Sales;
+using PharmaX.Domain.Suppliers;
+using PharmaX.Domain.Tills;
+
+namespace PharmaX.Application.Finance;
+
+/// <summary>
+/// Writes the pharmacy's own trading into the books.
+/// </summary>
+/// <remarks>
+/// Every method here is called from inside the transaction of the thing
+/// it is recording, so a sale that fails to save takes its journal with
+/// it and the books can never describe a sale that did not happen.
+///
+/// The method is periodic inventory rather than perpetual: a delivery is
+/// expensed to Purchases when it is received, and Stock on Hand is
+/// brought to the counted figure by a journal at period end. Perpetual
+/// costing would mean looking up a cost price for every line of every
+/// sale, inside the transaction, at a till with a customer waiting - for
+/// a gross-margin figure that a monthly stock count gives more
+/// accurately anyway. Periodic is what a pharmacy of this size actually
+/// does, and it is why manual journals are part of this feature rather
+/// than an afterthought.
+/// </remarks>
+public interface IJournalPoster
+{
+    /// Money in, revenue and VAT recognised.
+    Task PostSaleAsync(Sale sale, CancellationToken ct = default);
+
+    /// The same entry backwards.
+    Task PostReturnAsync(SaleReturn saleReturn,
+                         CancellationToken ct = default);
+
+    /// Stock bought on credit.
+    Task PostReceiptAsync(GoodsReceipt receipt,
+                          CancellationToken ct = default);
+
+    /// <summary>
+    /// What the drawer was actually short or over by. Posts nothing
+    /// where it balanced, which is most days.
+    /// </summary>
+    Task PostCashUpAsync(TillSession session, Money expected,
+                         Money counted, CancellationToken ct = default);
+}
+
+public sealed class JournalPoster : IJournalPoster
+{
+    private readonly ILedgerRepository _ledger;
+    private readonly IDocumentNumbering _numbering;
+    private readonly PharmaXOptions _options;
+    private readonly IClock _clock;
+
+    public JournalPoster(ILedgerRepository ledger,
+        IDocumentNumbering numbering, PharmaXOptions options, IClock clock)
+    {
+        _ledger = ledger;
+        _numbering = numbering;
+        _options = options;
+        _clock = clock;
+    }
+
+    private bool Enabled => _options.Accounting.AutoPost;
+
+    public async Task PostSaleAsync(Sale sale, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sale);
+
+        if (!Enabled || sale.Total.IsZero) return;
+
+        var batch = await OpenAsync("POS",
+            $"Sale {sale.DocumentNumber}", ct);
+
+        // One debit per tender, so the books say how the money arrived
+        // and the bank reconciliation has something to work with.
+        foreach (var group in sale.Payments
+                     .GroupBy(p => LedgerCode.For(p.Tender)))
+        {
+            var taken = group.Aggregate(Money.Zero(),
+                (sum, p) => sum + p.Amount);
+
+            if (!taken.IsZero) batch.AddLine(group.Key, taken, isDebit: true);
+        }
+
+        // No line for change. BR-POS-01 refuses to finalise a sale
+        // whose tender does not equal its total, so the payments on a
+        // finalised sale add up to exactly what it was worth and the
+        // change has already been worked out at the payment screen. If
+        // that rule is ever relaxed, the batch here stops balancing and
+        // Post throws, which is the right way to find out.
+
+        AddRevenue(batch, sale.Lines.Where(l => !l.IsVoided)
+            .Select(l => l.Vat), isDebit: false);
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostReturnAsync(SaleReturn saleReturn,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(saleReturn);
+
+        if (!Enabled || saleReturn.Total.IsZero) return;
+
+        var batch = await OpenAsync("RTN",
+            $"Refund {saleReturn.DocumentNumber}", ct);
+
+        foreach (var group in saleReturn.Refunds
+                     .GroupBy(r => LedgerCode.For(r.Tender)))
+        {
+            var paid = group.Aggregate(Money.Zero(),
+                (sum, r) => sum + r.Amount);
+
+            // Money out: the mirror of the sale's debit.
+            if (!paid.IsZero) batch.AddLine(group.Key, paid, isDebit: false);
+        }
+
+        // A return line keeps its rate but not its split, so the split
+        // is worked out here the same way the sale line works out its
+        // own - from the inclusive line total.
+        AddRevenue(batch, saleReturn.Lines.Select(l =>
+            Domain.Pricing.VatCalculator.FromInclusive(
+                l.LineTotal, l.VatRatePercent)),
+            isDebit: true);
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostReceiptAsync(GoodsReceipt receipt,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+
+        if (!Enabled || receipt.Total.IsZero) return;
+
+        var batch = await OpenAsync("GRN",
+            $"Goods received {receipt.ReceiptNumber}", ct);
+
+        // Expensed on arrival, not capitalised: see the class remarks on
+        // periodic inventory. The stock figure on the balance sheet is
+        // put right by journal when the shelves are counted.
+        batch.AddLine(LedgerCode.Purchases, receipt.Total, isDebit: true);
+        batch.AddLine(LedgerCode.TradeCreditors, receipt.Total,
+                      isDebit: false);
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostCashUpAsync(TillSession session, Money expected,
+        Money counted, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (!Enabled) return;
+
+        var variance = counted - expected;
+
+        // A till that balanced has nothing to say. Posting a zero
+        // journal every evening would bury the ones that matter.
+        if (variance.IsZero) return;
+
+        var batch = await OpenAsync("CASHUP",
+            string.Format(CultureInfo.CurrentCulture,
+                "Till {0} cash-up, counted {1:0.00} against {2:0.00}",
+                session.TillNumber, counted.Amount, expected.Amount),
+            ct);
+
+        var amount = Money.Of(Math.Abs(variance.Amount), variance.Currency);
+
+        if (variance.IsNegative)
+        {
+            // Short: the drawer holds less than the sales say it should,
+            // so the loss is an expense and the cash account comes down
+            // to the truth.
+            batch.AddLine(LedgerCode.CashShortOrOver, amount, isDebit: true);
+            batch.AddLine(LedgerCode.CashOnHand, amount, isDebit: false);
+        }
+        else
+        {
+            batch.AddLine(LedgerCode.CashOnHand, amount, isDebit: true);
+            batch.AddLine(LedgerCode.CashShortOrOver, amount,
+                          isDebit: false);
+        }
+
+        await PostAsync(batch, ct);
+    }
+
+    /// <summary>
+    /// The revenue side of a sale or a refund: net to Sales, VAT to the
+    /// control account.
+    /// </summary>
+    /// <remarks>
+    /// Summed from the per-line VAT splits rather than taking a
+    /// percentage of the total, because a basket can mix rates - a
+    /// zero-rated medicine and a standard-rated tube of hand cream on
+    /// the same receipt - and one rate applied to the whole would
+    /// misstate what is owed to the revenue authority.
+    /// </remarks>
+    private static void AddRevenue(JournalBatch batch,
+        IEnumerable<Domain.Pricing.VatSplit> splits, bool isDebit)
+    {
+        var net = Money.Zero();
+        var vat = Money.Zero();
+
+        foreach (var split in splits)
+        {
+            net += split.NetAmount;
+            vat += split.VatAmount;
+        }
+
+        if (!net.IsZero)
+            batch.AddLine(LedgerCode.Sales, net, isDebit);
+
+        if (!vat.IsZero)
+            batch.AddLine(LedgerCode.VatControl, vat, isDebit);
+    }
+
+    private async Task<JournalBatch> OpenAsync(string source,
+        string narration, CancellationToken ct)
+    {
+        var number = await _numbering.NextAsync("JNL", ct);
+
+        return JournalBatch.Create(number, _clock.Today, source, narration);
+    }
+
+    /// <summary>
+    /// Posts the batch and files it.
+    /// </summary>
+    /// <remarks>
+    /// Post throws where the lines do not balance, and that is left to
+    /// throw rather than caught. An automatic journal that does not
+    /// balance is a defect in this class, and the right time to find out
+    /// is on the transaction that produced it - not three weeks later in
+    /// a trial balance nobody can tie back.
+    /// </remarks>
+    private async Task PostAsync(JournalBatch batch, CancellationToken ct)
+    {
+        if (batch.Lines.Count == 0) return;
+
+        batch.Post(_clock.UtcNow);
+        await _ledger.AddBatchAsync(batch, ct);
+    }
+}

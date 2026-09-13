@@ -17,6 +17,10 @@ public sealed class SaleServiceBuilder
     public InMemoryProductRepository Products { get; }
     public InMemoryBatchRepository Batches { get; } = new();
     public InMemoryDispensingRepository Dispensings { get; } = new();
+    public InMemoryLedgerRepository Ledger { get; } = new();
+
+    /// Whether trading writes journals. On, as on a real installation.
+    public bool AutoPost { get; init; } = true;
     public RecordingStockService Stock { get; } = new();
     public FakeDocumentNumbering Numbering { get; } = new();
     public FakeAuditWriter Audit { get; } = new();
@@ -59,7 +63,20 @@ public sealed class SaleServiceBuilder
     public IPermissionService PermissionService() =>
         new PermissionService(User, Permissions, Audit);
 
+    /// <summary>
+    /// A real journal poster rather than a substitute, so that every
+    /// sale test also proves the books balanced afterwards.
+    /// </summary>
+    public PharmaX.Application.Finance.JournalPoster Journals() =>
+        new(Ledger, Numbering,
+            new PharmaXOptions
+            {
+                Accounting = new AccountingOptions { AutoPost = AutoPost }
+            },
+            Clock);
+
     public SaleService Build() =>
-        new(Sales, Products, Batches, Dispensings, Stock, Numbering,
-            PermissionService(), Audit, Outbox, UnitOfWork, User, Clock);
+        new(Sales, Products, Batches, Dispensings, Journals(), Stock,
+            Numbering, PermissionService(), Audit, Outbox, UnitOfWork,
+            User, Clock);
 }

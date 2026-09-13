@@ -1,5 +1,6 @@
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Inventory;
+using PharmaX.Application.Finance;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
@@ -40,6 +41,7 @@ public sealed class ReceivingService : IReceivingService
     private readonly ISupplierRepository _suppliers;
     private readonly IPurchaseOrderRepository _orders;
     private readonly IProductRepository _products;
+    private readonly IJournalPoster _journals;
     private readonly IStockService _stock;
     private readonly IDocumentNumbering _numbering;
     private readonly IPermissionService _permissions;
@@ -51,15 +53,16 @@ public sealed class ReceivingService : IReceivingService
 
     public ReceivingService(IGoodsReceiptRepository receipts,
         ISupplierRepository suppliers, IPurchaseOrderRepository orders,
-        IProductRepository products, IStockService stock,
-        IDocumentNumbering numbering, IPermissionService permissions,
-        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
-        ICurrentUser user, IClock clock)
+        IProductRepository products, IJournalPoster journals,
+        IStockService stock, IDocumentNumbering numbering,
+        IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
+        IUnitOfWork uow, ICurrentUser user, IClock clock)
     {
         _receipts = receipts;
         _suppliers = suppliers;
         _orders = orders;
         _products = products;
+        _journals = journals;
         _stock = stock;
         _numbering = numbering;
         _permissions = permissions;
@@ -172,6 +175,11 @@ public sealed class ReceivingService : IReceivingService
         // inside this transaction: a receipt that fails to save leaves
         // no batches and no movements behind.
         await _stock.ApplyReceiptAsync(receipt, ct);
+
+        // Stock bought on credit, expensed on arrival. Same transaction
+        // as the delivery, so the books cannot owe a supplier for goods
+        // that never landed.
+        await _journals.PostReceiptAsync(receipt, ct);
 
         await CloseOffOrderLinesAsync(edit, receipt, ct);
 

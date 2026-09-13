@@ -39,6 +39,18 @@ public sealed class LedgerAccount : Entity
     public bool IsDebitPositive =>
         AccountType is LedgerAccountType.Asset or LedgerAccountType.Expense;
 
+    /// <summary>
+    /// Changes what the account is called. The code never changes: it is
+    /// what every posted journal line refers to.
+    /// </summary>
+    public void Rename(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new DomainException("A ledger account requires a name.");
+
+        Name = name.Trim();
+    }
+
     public void Deactivate() => IsActive = false;
 }
 

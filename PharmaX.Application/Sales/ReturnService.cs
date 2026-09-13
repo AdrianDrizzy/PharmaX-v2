@@ -1,5 +1,6 @@
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Inventory;
+using PharmaX.Application.Finance;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Sales.Dtos;
@@ -32,6 +33,7 @@ public sealed class ReturnService : IReturnService
 {
     private readonly ISaleRepository _sales;
     private readonly IReturnRepository _returns;
+    private readonly IJournalPoster _journals;
     private readonly IStockService _stock;
     private readonly IDocumentNumbering _numbering;
     private readonly IPermissionService _permissions;
@@ -42,12 +44,14 @@ public sealed class ReturnService : IReturnService
     private readonly IClock _clock;
 
     public ReturnService(ISaleRepository sales, IReturnRepository returns,
-        IStockService stock, IDocumentNumbering numbering,
-        IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow, ICurrentUser user, IClock clock)
+        IJournalPoster journals, IStockService stock,
+        IDocumentNumbering numbering, IPermissionService permissions,
+        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
+        ICurrentUser user, IClock clock)
     {
         _sales = sales;
         _returns = returns;
+        _journals = journals;
         _stock = stock;
         _numbering = numbering;
         _permissions = permissions;
@@ -202,6 +206,10 @@ public sealed class ReturnService : IReturnService
         // Restockable lines go back on the shelf; the rest are written
         // off, and the movements say which was which.
         await _stock.ApplyReturnAsync(saleReturn, ct);
+
+        // The sale's entry, backwards: money out, revenue and VAT
+        // reversed.
+        await _journals.PostReturnAsync(saleReturn, ct);
 
         _outbox.Append("SaleReturn", saleReturn.Id,
             $"{{\"id\":\"{saleReturn.Id}\",\"number\":\"{number}\","

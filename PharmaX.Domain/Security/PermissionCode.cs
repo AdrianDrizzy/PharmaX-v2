@@ -29,6 +29,9 @@ public static class PermissionCode
     public const string ReportFinancial = "rpt.report.run.financial";
     public const string ReportClinical = "rpt.report.run.clinical";
 
+    public const string LedgerRead = "fin.ledger.read";
+    public const string LedgerPost = "fin.journal.post";
+
     public const string UserRoleAssign = "adm.user.role.assign";
     public const string SettingsChange = "adm.settings.change";
 
@@ -39,7 +42,8 @@ public static class PermissionCode
         ProductRead, PriceChange, StockTakePost, SupplierMaintain,
         PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
-        ReportClinical, UserRoleAssign, SettingsChange
+        ReportClinical, LedgerRead, LedgerPost,
+        UserRoleAssign, SettingsChange
     };
 }
 

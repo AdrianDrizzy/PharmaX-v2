@@ -51,6 +51,14 @@ public static class DependencyInjection
         s.AddTransient<PosPresenter>();
         s.AddTransient<frmCollect>();
         s.AddTransient<CollectPresenter>();
+        // Accounts
+        s.AddTransient<Features.Finance.frmTrialBalance>();
+        s.AddTransient<Features.Finance.TrialBalancePresenter>();
+        s.AddTransient<Features.Finance.frmJournal>();
+        s.AddTransient<Features.Finance.JournalPresenter>();
+        s.AddTransient<Features.Finance.frmChartOfAccounts>();
+        s.AddTransient<Features.Finance.ChartPresenter>();
+
         s.AddTransient<Features.Inventory.frmAlerts>();
         s.AddTransient<Features.Inventory.AlertPresenter>();
         s.AddTransient<frmQuotation>();

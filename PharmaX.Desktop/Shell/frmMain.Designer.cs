@@ -102,6 +102,15 @@ partial class frmMain
                 Item("Expired Stock", "expired-stock"),
                 Item("Price Changes", "price-changes")),
 
+            // The pharmacy's own books. Its own heading rather than a
+            // corner of Administration: a manager doing the month end is
+            // not administering the system, and the three screens here
+            // are used together.
+            Menu("&Accounts", "accounts",
+                Item("Trial Balance", "trial-balance"),
+                Item("Journal Entry", "journal"),
+                Item("Chart of Accounts", "chart-of-accounts")),
+
             Menu("&Reports", "reports",
                 Item("Reports", "reports", Keys.F9)),
 
@@ -290,6 +299,8 @@ partial class frmMain
              "purchase-orders", "inventory"),
             ("Stocktake", "Count and post", "stocktake-capture", "stocktake"),
             ("Reports", "F9   Sales, stock, VAT", "reports", "reports"),
+            ("Trial balance", "The books, in balance", "trial-balance",
+             "accounts"),
             ("Till session", "Ctrl+T   Float and cash up", "till", "till")
         })
         {

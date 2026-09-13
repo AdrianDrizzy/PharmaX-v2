@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Security;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Tills;
@@ -34,8 +35,33 @@ public sealed class ReferenceDataSeeder
         await SeedAdministratorAsync(ct);
         await SeedDenominationsAsync(ct);
         await SeedFirstNumberBlockAsync(ct);
+        await SeedChartOfAccountsAsync(ct);
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The standard chart, so that the first sale of the day has
+    /// somewhere to post to.
+    /// </summary>
+    /// <remarks>
+    /// Adds only what is missing and renames nothing. A pharmacy that
+    /// has called account 4000 something other than "Sales" has made a
+    /// decision, and a seeder that put its own name back every morning
+    /// would be overruling it.
+    /// </remarks>
+    private async Task SeedChartOfAccountsAsync(CancellationToken ct)
+    {
+        var existing = await _db.LedgerAccounts
+            .Select(a => a.Code)
+            .ToListAsync(ct);
+
+        foreach (var (code, name, type) in LedgerCode.Standard)
+        {
+            if (existing.Contains(code, StringComparer.Ordinal)) continue;
+
+            _db.LedgerAccounts.Add(LedgerAccount.Create(code, name, type));
+        }
     }
 
     private async Task SeedPermissionsAsync(CancellationToken ct)
@@ -99,7 +125,13 @@ public sealed class ReferenceDataSeeder
                 PermissionCode.GoodsReceive,
                 PermissionCode.ReportOperational,
                 PermissionCode.ReportManagement,
-                PermissionCode.ReportFinancial
+                PermissionCode.ReportFinancial,
+
+                // The books are a manager's job. A cashier posting a
+                // journal is how a till shortage quietly becomes a
+                // rounding adjustment.
+                PermissionCode.LedgerRead,
+                PermissionCode.LedgerPost
             },
 
             Role.Standard.Pharmacist => new[]
@@ -187,8 +219,13 @@ public sealed class ReferenceDataSeeder
     {
         var till = _options.Workstation.TillNumber;
 
+        // JNL is here because the books now number themselves: a sale
+        // finalising takes a SALE number for the receipt and a JNL
+        // number for the journal it posts, and a series with no block
+        // stops the transaction that needed it.
         foreach (var series in new[]
-                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK" })
+                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK",
+                   "JNL" })
         {
             var exists = await _db.DocumentNumberBlocks
                 .AnyAsync(b => b.Series == series

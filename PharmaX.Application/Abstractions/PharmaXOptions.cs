@@ -9,6 +9,7 @@ public sealed class PharmaXOptions
     public NumberingOptions Numbering { get; init; } = new();
     public FeatureFlags Features { get; init; } = new();
     public AlertOptions Alerts { get; init; } = new();
+    public AccountingOptions Accounting { get; init; } = new();
     public LoggingOptions Logging { get; init; } = new();
     public DevelopmentOptions Development { get; init; } = new();
 }
@@ -136,6 +137,29 @@ public sealed class AlertOptions
     /// run its own stock reports.
     /// </summary>
     public bool Enabled { get; init; } = true;
+}
+
+/// <summary>
+/// The pharmacy's own books.
+/// </summary>
+/// <remarks>
+/// Not to be confused with Features.AccountingPosting, which is about
+/// handing figures to an outside accounting package. This one is about
+/// whether PharmaX keeps a ledger of its own at all.
+/// </remarks>
+public sealed class AccountingOptions
+{
+    /// <summary>
+    /// Writes a journal for every sale, refund, delivery and cash-up.
+    /// </summary>
+    /// <remarks>
+    /// On by default, because books that only start when somebody
+    /// remembers to switch them on have a hole in them from opening day
+    /// to whenever that was. Turning it off stops new journals; it does
+    /// not remove the ones already posted, and the chart, the manual
+    /// journals and the trial balance all keep working.
+    /// </remarks>
+    public bool AutoPost { get; init; } = true;
 }
 
 public sealed class ConnectivityOptions

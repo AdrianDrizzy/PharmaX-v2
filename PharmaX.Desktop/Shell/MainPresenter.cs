@@ -8,6 +8,7 @@ using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
 using PharmaX.Desktop.Features.Admin;
 using PharmaX.Desktop.Features.Dispensing;
+using PharmaX.Desktop.Features.Finance;
 using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Patients;
 using PharmaX.Desktop.Features.Reference;
@@ -87,6 +88,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 == PermissionOutcome.Granted);
         View.EnableMenu("reports",
             _permissions.Check(PermissionCode.ReportOperational)
+                == PermissionOutcome.Granted);
+        View.EnableMenu("accounts",
+            _permissions.Check(PermissionCode.LedgerRead)
                 == PermissionOutcome.Granted);
         View.EnableMenu("admin",
             _permissions.Check(PermissionCode.UserRoleAssign)
@@ -248,6 +252,15 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // building a second list over the same rows.
             case "stock":
                 ShowReport("inv.stock.on-hand");
+                break;
+            case "trial-balance":
+                _views.ShowDialog<frmTrialBalance>((Form)View);
+                break;
+            case "journal":
+                _views.ShowDialog<frmJournal>((Form)View);
+                break;
+            case "chart-of-accounts":
+                _views.ShowDialog<frmChartOfAccounts>((Form)View);
                 break;
             case "alerts":
                 _views.ShowDialog<frmAlerts>((Form)View);

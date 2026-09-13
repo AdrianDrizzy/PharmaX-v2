@@ -3,6 +3,7 @@ using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Sales;
 
@@ -107,14 +108,35 @@ public sealed class FakeOutbox : IOutbox
 /// </summary>
 public sealed class FakeDocumentNumbering : IDocumentNumbering
 {
+    private readonly Dictionary<string, int> _issued = new(
+        StringComparer.Ordinal);
+
     private long _next = 1;
 
+    /// Numbers handed out across every series.
     public int IssuedCount { get; private set; }
+
+    /// <summary>
+    /// Numbers handed out for one series.
+    /// </summary>
+    /// <remarks>
+    /// Per series because one transaction now draws from more than one:
+    /// finalising a sale takes a receipt number and the journal it posts
+    /// takes a journal number. A total alone cannot tell a second
+    /// receipt from a first journal, and the receipt is the one that
+    /// must never be issued twice.
+    /// </remarks>
+    public int IssuedFor(string series) =>
+        _issued.GetValueOrDefault(series);
 
     public Task<string> NextAsync(string series,
                                   CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(series);
+
         IssuedCount++;
+        _issued[series] = _issued.GetValueOrDefault(series) + 1;
+
         return Task.FromResult($"{series[..1]}-001-{_next++:D6}");
     }
 
@@ -467,5 +489,119 @@ public sealed class InMemoryDispensingRepository : IDispensingRepository
     {
         Add(dispensing);
         return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// The books, in a list.
+/// </summary>
+/// <remarks>
+/// Seeded with the standard chart, so a service test posts against the
+/// same account codes a real installation has.
+/// </remarks>
+public sealed class InMemoryLedgerRepository : ILedgerRepository
+{
+    private readonly List<LedgerAccount> _accounts = new();
+    private readonly List<JournalBatch> _batches = new();
+
+    public InMemoryLedgerRepository()
+    {
+        foreach (var (code, name, type) in LedgerCode.Standard)
+            _accounts.Add(LedgerAccount.Create(code, name, type));
+    }
+
+    public IReadOnlyList<JournalBatch> Posted => _batches;
+
+    /// Every posted batch balances, or the books are wrong.
+    public bool AllBalance => _batches.TrueForAll(b => b.IsBalanced);
+
+    /// What one account has been debited less what it has been credited.
+    public decimal NetOf(string accountCode) => _batches
+        .SelectMany(b => b.Lines)
+        .Where(l => string.Equals(l.AccountCode, accountCode,
+                                  StringComparison.Ordinal))
+        .Sum(l => l.IsDebit ? l.Amount.Amount : -l.Amount.Amount);
+
+    public Task<IReadOnlyList<LedgerAccount>> AccountsAsync(
+        bool includeInactive = false, CancellationToken ct = default)
+    {
+        IReadOnlyList<LedgerAccount> found = _accounts
+            .Where(a => includeInactive || a.IsActive)
+            .OrderBy(a => a.Code, StringComparer.Ordinal)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task<LedgerAccount?> AccountAsync(Guid id,
+        CancellationToken ct = default) =>
+        Task.FromResult(_accounts.Find(a => a.Id == id));
+
+    public Task<LedgerAccount?> AccountByCodeAsync(string code,
+        CancellationToken ct = default) =>
+        Task.FromResult(_accounts.Find(a =>
+            string.Equals(a.Code, code, StringComparison.Ordinal)));
+
+    public Task AddAccountAsync(LedgerAccount account,
+        CancellationToken ct = default)
+    {
+        _accounts.Add(account);
+        return Task.CompletedTask;
+    }
+
+    public Task<JournalBatch?> BatchAsync(Guid id,
+        CancellationToken ct = default) =>
+        Task.FromResult(_batches.Find(b => b.Id == id));
+
+    public Task<IReadOnlyList<JournalBatch>> BatchesAsync(DateOnly from,
+        DateOnly until, CancellationToken ct = default)
+    {
+        IReadOnlyList<JournalBatch> found = _batches
+            .Where(b => b.PostingDate >= from && b.PostingDate <= until)
+            .OrderByDescending(b => b.PostingDate)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task AddBatchAsync(JournalBatch batch,
+        CancellationToken ct = default)
+    {
+        _batches.Add(batch);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<AccountTotals>> TotalsAsync(DateOnly asAt,
+        CancellationToken ct = default)
+    {
+        IReadOnlyList<AccountTotals> totals = _batches
+            .Where(b => b.IsPosted && b.PostingDate <= asAt)
+            .SelectMany(b => b.Lines)
+            .GroupBy(l => l.AccountCode, StringComparer.Ordinal)
+            .Select(g => new AccountTotals(g.Key,
+                g.Where(l => l.IsDebit).Sum(l => l.Amount.Amount),
+                g.Where(l => !l.IsDebit).Sum(l => l.Amount.Amount)))
+            .ToList();
+
+        return Task.FromResult(totals);
+    }
+
+    public Task<IReadOnlyList<LedgerEntry>> EntriesAsync(string accountCode,
+        DateOnly from, DateOnly until, CancellationToken ct = default)
+    {
+        IReadOnlyList<LedgerEntry> entries = _batches
+            .Where(b => b.IsPosted)
+            .Where(b => b.PostingDate >= from && b.PostingDate <= until)
+            .SelectMany(b => b.Lines, (batch, line) => new LedgerEntry(
+                batch.PostingDate, batch.BatchNumber, batch.Source,
+                line.AccountCode,
+                line.IsDebit ? line.Amount.Amount : 0m,
+                line.IsDebit ? 0m : line.Amount.Amount,
+                line.Narration ?? batch.Narration))
+            .Where(e => string.Equals(e.AccountCode, accountCode,
+                                      StringComparison.Ordinal))
+            .ToList();
+
+        return Task.FromResult(entries);
     }
 }

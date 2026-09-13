@@ -1,5 +1,6 @@
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
+using PharmaX.Application.Finance;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
@@ -39,6 +40,7 @@ public sealed class SaleService : ISaleService
     private readonly IProductRepository _products;
     private readonly IBatchRepository _batches;
     private readonly IDispensingRepository _dispensings;
+    private readonly IJournalPoster _journals;
     private readonly IStockService _stock;
     private readonly IDocumentNumbering _numbering;
     private readonly IPermissionService _permissions;
@@ -50,12 +52,13 @@ public sealed class SaleService : ISaleService
 
     public SaleService(ISaleRepository sales, IProductRepository products,
         IBatchRepository batches, IDispensingRepository dispensings,
-        IStockService stock, IDocumentNumbering numbering,
-        IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow, ICurrentUser user, IClock clock)
+        IJournalPoster journals, IStockService stock,
+        IDocumentNumbering numbering, IPermissionService permissions,
+        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
+        ICurrentUser user, IClock clock)
     {
         _sales = sales; _products = products; _batches = batches;
-        _dispensings = dispensings;
+        _dispensings = dispensings; _journals = journals;
         _stock = stock; _numbering = numbering; _permissions = permissions;
         _audit = audit; _outbox = outbox; _uow = uow;
         _user = user; _clock = clock;
@@ -245,6 +248,10 @@ public sealed class SaleService : ISaleService
         // afterwards, a crash between the two would bill the patient and
         // still show their script as waiting.
         await MarkCollectedAsync(sale, ct);
+
+        // The books, in the same transaction as the sale: money taken
+        // and revenue recognised, or neither.
+        await _journals.PostSaleAsync(sale, ct);
 
         _outbox.Append("Sale", sale.Id, SaleDto.From(sale).ToJson());
         _audit.Applied("pos.sale.create", "Sale", sale.Id);
