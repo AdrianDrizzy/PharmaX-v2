@@ -7,6 +7,7 @@ using PharmaX.Application;
 using PharmaX.Application.Abstractions;
 using PharmaX.Desktop.Features.Login;
 using PharmaX.Desktop.Mvp;
+using PharmaX.Desktop.Setup;
 using PharmaX.Desktop.Shell;
 using PharmaX.Domain.Primitives;
 using PharmaX.Persistence;
@@ -23,6 +24,11 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
+
+        // Before anything else, and before any logging: a machine that
+        // has never been set up has no database to log to and no
+        // identity to stamp on what it writes.
+        if (!EnsureProvisioned()) return;
 
         var host = BuildHost();
 
@@ -102,6 +108,19 @@ internal static class Program
 
         builder.Configuration
             .AddJsonFile("appsettings.json", optional: false)
+
+            // What this machine is, as against what PharmaX is. Written
+            // by the first-run wizard into ProgramData, where an upgrade
+            // cannot reach it: the installer replaces everything in
+            // Program Files, and a workstation identity kept beside the
+            // executable would be wiped by the first update - bringing
+            // the machine back with a new identity and a numbering
+            // series it had already used.
+            .AddJsonFile(WorkstationProvisioning.FilePath, optional: true,
+                         reloadOnChange: false)
+
+            // Last of the files, so that a developer's own overrides
+            // still win on a machine that has also been provisioned.
             .AddJsonFile("appsettings.Development.json", optional: true)
             .AddEnvironmentVariables();
 
@@ -133,6 +152,33 @@ internal static class Program
         builder.Services.AddSerilog();
 
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Runs the first-run wizard where this machine has not been set up.
+    /// </summary>
+    /// <remarks>
+    /// Returns false where the operator quit, which is the one path that
+    /// ends the application before it has started: without a profile
+    /// there is no database to open and no identity to trade under.
+    ///
+    /// A developer's machine skips it, because appsettings.Development
+    /// has already answered every question the wizard asks.
+    /// </remarks>
+    private static bool EnsureProvisioned()
+    {
+        if (WorkstationProvisioning.Exists) return true;
+
+        if (File.Exists(Path.Combine(AppContext.BaseDirectory,
+                                     "appsettings.Development.json")))
+            return true;
+
+        using var wizard = new frmFirstRun();
+
+        if (wizard.ShowDialog() != DialogResult.OK) return false;
+
+        ApplyCurrency(Currencies.ByCode(wizard.Profile.Currency));
+        return true;
     }
 
     /// <summary>

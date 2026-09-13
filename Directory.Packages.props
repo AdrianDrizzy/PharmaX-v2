@@ -8,6 +8,12 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.8" />
     <PackageVersion Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
+
+    <!-- Pinned to what Pomelo 8.0.2 already resolves. Referenced
+         explicitly because the first-run wizard opens a connection of
+         its own, before the container or any DbContext exists, to prove
+         the operator has typed a reachable server. -->
+    <PackageVersion Include="MySqlConnector" Version="2.3.5" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
