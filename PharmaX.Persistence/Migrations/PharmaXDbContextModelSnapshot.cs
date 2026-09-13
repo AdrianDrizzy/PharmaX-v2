@@ -1022,6 +1022,72 @@ namespace PharmaX.Persistence.Migrations
                     b.ToTable("Patient", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Patients.PatientAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CapturedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CapturedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<Guid?>("ScriptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScriptId");
+
+                    b.HasIndex("PatientId", "CapturedAtUtc");
+
+                    b.ToTable("PatientAttachment", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Reference.Branch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2463,6 +2529,10 @@ namespace PharmaX.Persistence.Migrations
 
             modelBuilder.Entity("PharmaX.Persistence.WorkstationSetting", b =>
                 {
+                    b.Property<string>("WorkstationCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Key")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -2474,7 +2544,7 @@ namespace PharmaX.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.HasKey("Key");
+                    b.HasKey("WorkstationCode", "Key");
 
                     b.ToTable("WorkstationSetting", (string)null);
                 });

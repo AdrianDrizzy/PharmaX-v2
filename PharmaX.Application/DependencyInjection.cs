@@ -32,6 +32,7 @@ public static class DependencyInjection
                     Reference.ReferenceDataService>();
         s.AddScoped<Reference.ITariffService, Reference.TariffService>();
         s.AddScoped<IPatientService, PatientService>();
+        s.AddScoped<Patients.IAttachmentService, Patients.AttachmentService>();
         s.AddScoped<IStockService, StockService>();
         s.AddScoped<IStocktakeService, StocktakeService>();
         s.AddScoped<ITillSessionService, TillSessionService>();

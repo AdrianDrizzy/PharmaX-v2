@@ -84,7 +84,7 @@ public sealed class AuditWriter : IAuditWriter
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
     private readonly PharmaXOptions _options;
-
+    
     public AuditWriter(PharmaXDbContext db, ICurrentUser user, IClock clock,
                        PharmaXOptions options)
     {

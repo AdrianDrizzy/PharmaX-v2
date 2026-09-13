@@ -13,10 +13,17 @@ using PharmaX.Persistence.Outbox;
 
 namespace PharmaX.Persistence;
 
-public sealed class PharmaXDbContext : DbContext
+public class PharmaXDbContext : DbContext
 {
     public PharmaXDbContext(DbContextOptions<PharmaXDbContext> options)
         : base(options) { }
+
+    /// <summary>
+    /// For the shared-database context, which is the same model against
+    /// a different provider and therefore needs its own options and its
+    /// own migration history.
+    /// </summary>
+    protected PharmaXDbContext(DbContextOptions options) : base(options) { }
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Batch> Batches => Set<Batch>();
@@ -31,6 +38,8 @@ public sealed class PharmaXDbContext : DbContext
     public DbSet<TillDeclaration> TillDeclarations => Set<TillDeclaration>();
     public DbSet<Denomination> Denominations => Set<Denomination>();
     public DbSet<Patient> Patients => Set<Patient>();
+    public DbSet<PatientAttachment> PatientAttachments =>
+        Set<PatientAttachment>();
     public DbSet<ClinicalProfile> ClinicalProfiles => Set<ClinicalProfile>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Role> Roles => Set<Role>();
@@ -80,34 +89,27 @@ public sealed class PharmaXDbContext : DbContext
 }
 
 /// <summary>
-/// The host database, reached only by the reconciler in PharmaX.Sync.
-/// Forms and services always use PharmaXDbContext against the local
-/// database, which is what lets the pharmacy trade with the host switched
-/// off (NET-002): the till is not talking to it in the first place.
+/// The pharmacy's shared database, on a machine every workstation can
+/// reach - in a small pharmacy, usually the dispensary PC.
 /// </summary>
-public sealed class HostDbContext : DbContext
+/// <remarks>
+/// The same model as the workstation context, which is the point: it
+/// derives from it rather than redeclaring anything, so a table added
+/// for the till exists here too and cannot drift. It is a separate type
+/// only because EF Core keys a migration history to a context type, and
+/// the two run on different providers - SQLite on a standalone
+/// workstation, MySQL or MariaDB here - which need different SQL.
+///
+/// Two jobs, depending on how the site is set up. Where
+/// Database:SharedConnection is set, this is the database every screen
+/// actually reads and writes, and the local SQLite file is unused.
+/// Where it is not, this is only what ConnectivityMonitor opens to see
+/// whether a host is answering.
+/// </remarks>
+public sealed class HostDbContext : PharmaXDbContext
 {
     public HostDbContext(DbContextOptions<HostDbContext> options)
         : base(options) { }
-
-    public DbSet<Sale> Sales => Set<Sale>();
-    public DbSet<Product> Products => Set<Product>();
-    public DbSet<Batch> Batches => Set<Batch>();
-    public DbSet<TillSession> TillSessions => Set<TillSession>();
-    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
-    public DbSet<DocumentNumberBlock> DocumentNumberBlocks =>
-        Set<DocumentNumberBlock>();
-
-    protected override void OnModelCreating(ModelBuilder b)
-    {
-        ArgumentNullException.ThrowIfNull(b);
-
-        // The same mappings: the two databases hold the same shapes, which
-        // is what makes a row copyable from one to the other unchanged.
-        b.ApplyConfigurationsFromAssembly(typeof(PharmaXDbContext).Assembly);
-        PharmaXModelConventions.UseDomainGeneratedKeys(b);
-        base.OnModelCreating(b);
-    }
 }
 
 /// <summary>

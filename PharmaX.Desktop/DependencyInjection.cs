@@ -31,6 +31,11 @@ public static class DependencyInjection
 
         // One logo for the whole application, loaded once at start-up.
         s.AddSingleton<Branding>();
+
+        // Registered after AddPharmaXReporting's default, so the
+        // exporters resolve the real logo rather than no logo.
+        s.AddSingleton<PharmaX.Application.Reporting.IReportBranding,
+            Features.Reports.ReportBranding>();
         s.AddScoped<ReceiptHeaderFactory>();
 
         // Shell
@@ -77,6 +82,7 @@ public static class DependencyInjection
 
         // Patients
         s.AddTransient<frmPatientList>();
+        s.AddTransient<Features.Patients.frmPatientAttachments>();
         s.AddTransient<PatientListPresenter>();
         s.AddTransient<frmPatientMerge>();
         s.AddTransient<frmPatientEdit>();

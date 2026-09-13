@@ -12,11 +12,14 @@ public sealed class WorkstationSettingConfiguration
 
         b.ToTable("WorkstationSetting");
 
-        // The key is the identity: there is exactly one value per
-        // setting on a workstation, so a surrogate would only add a way
-        // for two rows to claim the same key.
-        b.HasKey(x => x.Key);
+        // Workstation and key together are the identity: exactly one
+        // value per setting per till. A surrogate would only add a way
+        // for two rows to claim the same pair, and the till has to be in
+        // the key or a shared database would give every machine in the
+        // pharmacy the same printer.
+        b.HasKey(x => new { x.WorkstationCode, x.Key });
 
+        b.Property(x => x.WorkstationCode).HasMaxLength(20);
         b.Property(x => x.Key).HasMaxLength(100);
         b.Property(x => x.Value).HasMaxLength(500);
     }

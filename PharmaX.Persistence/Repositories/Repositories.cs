@@ -194,6 +194,26 @@ public sealed class PatientRepository : IPatientRepository
         CancellationToken ct = default) =>
         await _db.ClinicalProfiles.AddAsync(profile, ct);
 
+    public async Task<IReadOnlyList<PatientAttachment>> AttachmentsAsync(
+        Guid patientId, CancellationToken ct = default) =>
+        await _db.PatientAttachments
+            .AsNoTracking()
+            .Where(a => a.PatientId == patientId)
+            .OrderByDescending(a => a.CapturedAtUtc)
+            .ToListAsync(ct);
+
+    public async Task<PatientAttachment?> AttachmentAsync(Guid attachmentId,
+        CancellationToken ct = default) =>
+        await _db.PatientAttachments
+            .FirstOrDefaultAsync(a => a.Id == attachmentId, ct);
+
+    public async Task AddAttachmentAsync(PatientAttachment attachment,
+        CancellationToken ct = default) =>
+        await _db.PatientAttachments.AddAsync(attachment, ct);
+
+    public void RemoveAttachment(PatientAttachment attachment) =>
+        _db.PatientAttachments.Remove(attachment);
+
     public async Task<IReadOnlySet<Guid>> WithAllergiesAsync(
         IEnumerable<Guid> patientIds, CancellationToken ct = default)
     {

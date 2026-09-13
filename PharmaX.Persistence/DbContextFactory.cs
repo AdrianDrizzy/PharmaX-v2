@@ -37,13 +37,11 @@ public sealed class DesignTimeDbContextFactory
 public sealed class HostDesignTimeDbContextFactory
     : IDesignTimeDbContextFactory<HostDbContext>
 {
-    /// <summary>
-    /// The oldest host the generated SQL has to be valid for. Raise this
-    /// when the estate's minimum MariaDB version moves, not before: a
-    /// higher version here can emit syntax an older host rejects.
-    /// </summary>
-    public static readonly ServerVersion HostServerVersion =
-        new MariaDbServerVersion(new Version(10, 11, 0));
+    /// The same pinned version the application runs against, so a
+    /// migration cannot be scaffolded for a server the tills will not
+    /// be talking to.
+    public static ServerVersion HostServerVersion =>
+        DependencyInjection.SharedServerVersion;
 
     public HostDbContext CreateDbContext(string[] args)
     {

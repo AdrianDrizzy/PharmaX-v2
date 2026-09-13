@@ -17,7 +17,14 @@ public static class DependencyInjection
         // Swapped for a real endpoint in Release 2.0. Nothing else changes.
         services.AddSingleton<ISyncEndpoint, NullSyncEndpoint>();
 
-        services.AddHostedService<OutboxDrainer>();
+        // A shared database has nothing to drain: the till is writing
+        // straight into the pharmacy's one database, so there is no
+        // second copy for an outbox entry to travel to. Registering the
+        // drainer anyway would have it wake every thirty seconds to find
+        // work it must never send.
+        if (!options.Database.IsShared)
+            services.AddHostedService<OutboxDrainer>();
+
         return services;
     }
 }

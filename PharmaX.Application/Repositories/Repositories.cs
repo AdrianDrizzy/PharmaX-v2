@@ -102,6 +102,18 @@ public interface IPatientRepository
     /// because a list of names must not pull medical histories.
     Task<IReadOnlySet<Guid>> WithAllergiesAsync(IEnumerable<Guid> patientIds,
                                                 CancellationToken ct = default);
+
+    /// Scans filed against the patient, newest first.
+    Task<IReadOnlyList<PatientAttachment>> AttachmentsAsync(Guid patientId,
+        CancellationToken ct = default);
+
+    Task<PatientAttachment?> AttachmentAsync(Guid attachmentId,
+        CancellationToken ct = default);
+
+    Task AddAttachmentAsync(PatientAttachment attachment,
+                            CancellationToken ct = default);
+
+    void RemoveAttachment(PatientAttachment attachment);
 }
 
 public interface IUserRepository

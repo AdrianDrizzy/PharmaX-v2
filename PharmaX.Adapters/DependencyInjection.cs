@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PharmaX.Application.Abstractions;
 using PharmaX.Adapters.Devices;
 using PharmaX.Adapters.Printing;
 using PharmaX.Application.Dispensing;
@@ -25,6 +26,11 @@ public static class DependencyInjection
         // integrated terminal replaces this one line and nothing else
         // (specification Section 7.6).
         services.AddSingleton<ICardTerminal, ManualCardTerminal>();
+
+        // Scanned documents live on this workstation's disk.
+
+        services.AddSingleton<IAttachmentStore, Files.AttachmentStore>();
+
 
         return services;
     }

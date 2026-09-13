@@ -184,15 +184,25 @@ internal static class Program
         var services = scope.ServiceProvider;
         var options = services.GetRequiredService<PharmaXOptions>();
 
-        var path = options.Database.ResolvedLocalConnection
-            .Replace("Data Source=", string.Empty,
-                     StringComparison.OrdinalIgnoreCase)
-            .Trim();
+        // Only a standalone workstation has a file to make room for. On
+        // a shared database there is no local file, and a site that has
+        // cleared LocalConnection entirely would otherwise crash here on
+        // an empty path before it ever reached the sign-in window.
+        if (!options.Database.IsShared)
+        {
+            var path = options.Database.ResolvedLocalConnection
+                .Replace("Data Source=", string.Empty,
+                         StringComparison.OrdinalIgnoreCase)
+                .Trim();
 
-        var folder = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrWhiteSpace(folder))
-            Directory.CreateDirectory(folder);
+            var folder = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrWhiteSpace(folder))
+                Directory.CreateDirectory(folder);
+        }
 
+        // Creates the database if it is not there and brings it up to
+        // date either way. On a shared database this is the server's
+        // schema, and the first till to start is the one that builds it.
         var db = services.GetRequiredService<PharmaXDbContext>();
         db.Database.Migrate();          // idempotent; safe on every start
 
@@ -207,6 +217,12 @@ internal static class Program
                 "PharmaX", MessageBoxButtons.OK, MessageBoxIcon.Stop);
             return false;
         }
+
+        // Settings written before they were kept per workstation belong
+        // to this machine: claim them before anything reads one.
+        ((WorkstationSettingStore)services
+            .GetRequiredService<IWorkstationSettings>())
+            .ClaimUnassignedAsync().GetAwaiter().GetResult();
 
         // The till's own currency, if it has been set here, wins over
         // the installed default. Read before seeding so that the
@@ -232,6 +248,11 @@ internal static class Program
         // Accounts with nothing to sell are half a test environment, so
         // the same flag puts stock on the shelf.
         services.GetRequiredService<TestCatalogueSeeder>()
+                .SeedAsync().GetAwaiter().GetResult();
+
+        // The pharmacy's own price list. Idempotent: it adds what is
+        // missing and reprices what has moved, and never touches stock.
+        services.GetRequiredService<PriceListSeeder>()
                 .SeedAsync().GetAwaiter().GetResult();
 
         // Last, and every start: an amount stored under a currency this

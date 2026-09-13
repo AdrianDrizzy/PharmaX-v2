@@ -15,15 +15,18 @@ public static class PosKeyMap
     public const Keys Hold = Keys.F8;
     public const Keys VoidLine = Keys.Escape;
 
-    /// What the function bar shows, in the order it shows it.
+    /// <summary>
+    /// What the function bar shows, in the order it shows it: key order,
+    /// so that the bar reads the way the keyboard is laid out.
+    /// </summary>
     public static IReadOnlyList<(Keys Key, string Label)> Bar { get; } = new[]
     {
         (Search, "F2 Find item"),
         (Quantity, "F4 Quantity"),
         (LineDiscount, "F5 Discount"),
         (Payment, "F6 Pay"),
-        (Hold, "F8 Hold"),
         (Close, "F7 Close"),
+        (Hold, "F8 Hold"),
         (VoidLine, "Esc Void line")
     };
 }

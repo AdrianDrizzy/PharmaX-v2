@@ -24,6 +24,31 @@ public sealed class ConnectivityMonitor : IConnectivityMonitor, IDisposable
 
     public DateTime? LastContactUtc { get; private set; }
 
+    /// <inheritdoc />
+    public string DescribeState(ConnectivityState state)
+    {
+        if (_options.Database.IsShared)
+        {
+            return state switch
+            {
+                ConnectivityState.Connected => "",
+                ConnectivityState.Degraded =>
+                    "The pharmacy database is slow to answer",
+                _ => "Cannot reach the pharmacy database - work cannot be "
+                     + "saved until it is back"
+            };
+        }
+
+        return state switch
+        {
+            ConnectivityState.Connected => "",
+            ConnectivityState.Degraded =>
+                "Host slow to respond - working locally",
+            _ => "Working locally - transactions will sync when the host "
+                 + "returns"
+        };
+    }
+
     public event EventHandler<ConnectivityState>? StateChanged;
 
     public ConnectivityMonitor(IDbContextFactory<HostDbContext> hosts,
@@ -46,7 +71,18 @@ public sealed class ConnectivityMonitor : IConnectivityMonitor, IDisposable
     {
         var previous = State;
 
-        if (string.IsNullOrWhiteSpace(_options.Database.HostConnection))
+        // Which database this installation would lose. On a shared one
+        // that is the pharmacy's own server, and it is the thing worth
+        // watching: losing it stops the till. Reading HostConnection
+        // regardless meant a shared site never probed at all, because
+        // that setting is empty there - so every screen carried a banner
+        // saying the database was unreachable while the till was writing
+        // to it perfectly happily.
+        var watched = _options.Database.IsShared
+            ? _options.Database.SharedConnection
+            : _options.Database.HostConnection;
+
+        if (string.IsNullOrWhiteSpace(watched))
         {
             // A standalone workstation has no host to reach, and saying so
             // once is better than a failed probe every thirty seconds.

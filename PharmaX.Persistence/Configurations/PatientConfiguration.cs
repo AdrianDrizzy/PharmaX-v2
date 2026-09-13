@@ -122,3 +122,33 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         b.HasIndex(x => x.AccountNumber).IsUnique();
     }
 }
+
+/// <summary>
+/// A scanned document filed against a patient. The image is not here -
+/// only where it is and what it is.
+/// </summary>
+public sealed class PatientAttachmentConfiguration
+    : IEntityTypeConfiguration<PatientAttachment>
+{
+    public void Configure(EntityTypeBuilder<PatientAttachment> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("PatientAttachment");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Description).HasMaxLength(200).IsRequired();
+        b.Property(x => x.RelativePath).HasMaxLength(300).IsRequired();
+        b.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        // The patient's file is read by patient and shown newest first,
+        // which is the only way this table is ever queried.
+        b.HasIndex(x => new { x.PatientId, x.CapturedAtUtc });
+
+        // Finding the scans behind one dispensing, for a reprint or a
+        // query about what was actually presented at the counter.
+        b.HasIndex(x => x.ScriptId);
+    }
+}

@@ -14,6 +14,7 @@ partial class frmPatientList
     private Button btnAdd = null!;
     private Button btnEdit = null!;
     private Button btnDeactivate = null!;
+    private Button btnDocuments = null!;
     private Button btnChoose = null!;
     private Button btnClose = null!;
 
@@ -40,6 +41,7 @@ partial class frmPatientList
         btnAdd = new Button();
         btnEdit = new Button();
         btnDeactivate = new Button();
+        btnDocuments = new Button();
         btnChoose = new Button();
         btnClose = new Button();
         SuspendLayout();
@@ -82,7 +84,7 @@ partial class frmPatientList
         foreach (var (button, text) in new[]
         {
             (btnAdd, "&Add"), (btnEdit, "&Edit"),
-            (btnDeactivate, "Deac&tivate")
+            (btnDeactivate, "Deac&tivate"), (btnDocuments, "Doc&uments")
         })
         {
             button.Location = new Point(x, 8);

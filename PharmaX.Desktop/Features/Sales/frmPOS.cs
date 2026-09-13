@@ -54,7 +54,21 @@ public partial class frmPOS : PhxFormBase, IPosView
     /// </summary>
     private void OnFunctionKey(object? sender, KeyEventArgs e)
     {
-        switch (e.KeyCode)
+        if (!Raise(e.KeyCode)) return;
+
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+    }
+
+    /// <summary>
+    /// Raises whatever a function key stands for, and says whether it
+    /// stood for anything. Shared by the keyboard and by the buttons on
+    /// the bar, so pressing F6 and pressing Pay cannot come to mean two
+    /// different things.
+    /// </summary>
+    private bool Raise(Keys key)
+    {
+        switch (key)
         {
             case PosKeyMap.Search:
                 ProductSearchRequested?.Invoke(this, EventArgs.Empty); break;
@@ -71,11 +85,26 @@ public partial class frmPOS : PhxFormBase, IPosView
             case PosKeyMap.VoidLine:
                 VoidLineRequested?.Invoke(this, EventArgs.Empty); break;
             default:
-                return;
+                return false;
         }
 
-        e.Handled = true;
-        e.SuppressKeyPress = true;
+        return true;
+    }
+
+    /// <summary>
+    /// A button on the function bar was pressed.
+    /// </summary>
+    /// <remarks>
+    /// The caret goes straight back to the scan bar afterwards. The next
+    /// thing that happens at a till is almost always a barcode, and a
+    /// barcode typed into whichever button still holds focus goes
+    /// nowhere at all.
+    /// </remarks>
+    private void OnFunctionButton(object? sender, EventArgs e)
+    {
+        if (sender is Control { Tag: Keys key }) Raise(key);
+
+        scanBar.TakeFocus();
     }
 
     // ---- IPosView --------------------------------------------------------

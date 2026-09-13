@@ -13,6 +13,7 @@ namespace PharmaX.Desktop.Features.Patients;
 public partial class frmPatientList : PhxFormBase, IPatientListView
 {
     private readonly PatientListPresenter? _presenter;
+    private readonly ViewFactory? _views;
 
     private readonly System.Windows.Forms.Timer _debounce =
         new() { Interval = 250 };
@@ -36,6 +37,7 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         btnEdit.Click += (_, _) => EditRequested?.Invoke(this, EventArgs.Empty);
         btnDeactivate.Click += (_, _) =>
             DeactivateRequested?.Invoke(this, EventArgs.Empty);
+        btnDocuments.Click += (_, _) => ShowDocuments();
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
@@ -48,11 +50,39 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     }
 
     /// Runtime. Resolved by the container.
-    public frmPatientList(PatientListPresenter presenter) : this()
+    public frmPatientList(PatientListPresenter presenter, ViewFactory views)
+        : this()
     {
         _presenter = presenter;
+        _views = views;
         _presenter.Attach(this);
     }
+
+    /// <summary>
+    /// Opens the chosen patient's scanned documents.
+    /// </summary>
+    /// <remarks>
+    /// Straight from this screen rather than through the presenter: it
+    /// opens a window and changes nothing, and routing it through the
+    /// presenter would only teach the presenter about a second form.
+    /// </remarks>
+    private void ShowDocuments()
+    {
+        if (_views is null) return;
+
+        if (SelectedRow is not PatientListItemDto patient)
+        {
+            ShowInfo("Choose a patient first.");
+            return;
+        }
+
+        using var documents = _views.Create<frmPatientAttachments>();
+        documents.LoadForPatient(patient.Id, patient.FullName);
+        documents.ShowDialog(this);
+    }
+
+    private PatientListItemDto? SelectedRow =>
+        grdPatients.CurrentRow?.DataBoundItem as PatientListItemDto;
 
     public bool IsPickerMode { get; private set; }
 
