@@ -137,6 +137,14 @@ public sealed class CollectionService : ICollectionService
             return Result<SaleDto>.Fail("DSP-032",
                 $"{dispensing.DocumentNumber} is not waiting for payment.");
 
+        // A cashier who opened this script and was called away left a
+        // draft behind, and only one sale may hold a dispensing. Carry
+        // on with theirs: starting a second is refused by the database,
+        // and the patient could then never pay at all.
+        if (await _sales.OpenCollectionForAsync(dispensing.Id, ct)
+            is Sale resumed)
+            return Result<SaleDto>.Ok(SaleDto.From(resumed));
+
         var sale = Sale.Open(
             branchId: _sales.CurrentBranchId,
             workstationId: _sales.CurrentWorkstationId,

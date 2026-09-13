@@ -197,6 +197,11 @@ public sealed class InMemorySaleRepository : ISaleRepository
         return Task.FromResult(found);
     }
 
+    public Task<Sale?> OpenCollectionForAsync(Guid dispensingId,
+        CancellationToken ct = default) =>
+        Task.FromResult(_sales.Values.FirstOrDefault(s =>
+            s.DispensingId == dispensingId && s.Status == SaleStatus.Open));
+
     public Task<Sale?> ByDocumentNumberAsync(string documentNumber,
         CancellationToken ct = default) =>
         Task.FromResult(_sales.Values.FirstOrDefault(s =>

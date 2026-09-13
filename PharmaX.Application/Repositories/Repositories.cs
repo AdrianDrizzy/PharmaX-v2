@@ -24,6 +24,19 @@ public interface ISaleRepository
     Task<IReadOnlyList<Sale>> ForSessionAsync(Guid tillSessionId,
                                               CancellationToken ct = default);
 
+    /// <summary>
+    /// The unfinished sale already opened against a dispensing, if there
+    /// is one.
+    /// </summary>
+    /// <remarks>
+    /// A cashier who opens a script and is called away leaves a draft
+    /// sale holding that dispensing, and only one sale may hold it. The
+    /// next attempt has to find that draft and carry on with it rather
+    /// than start a second one, which the database would refuse.
+    /// </remarks>
+    Task<Sale?> OpenCollectionForAsync(Guid dispensingId,
+                                       CancellationToken ct = default);
+
     /// The number printed on the customer's receipt, which is the only
     /// identifier they can hand back across a counter.
     Task<Sale?> ByDocumentNumberAsync(string documentNumber,

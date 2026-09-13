@@ -48,6 +48,15 @@ public sealed class SaleRepository : ISaleRepository
             .OrderBy(s => s.OccurredAtUtc)
             .ToListAsync(ct);
 
+    public async Task<Sale?> OpenCollectionForAsync(Guid dispensingId,
+        CancellationToken ct = default) =>
+        await _db.Sales
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .Where(s => s.DispensingId == dispensingId)
+            .Where(s => s.Status == SaleStatus.Open)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<Sale?> ByDocumentNumberAsync(string documentNumber,
         CancellationToken ct = default) =>
         await _db.Sales

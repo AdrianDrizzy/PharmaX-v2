@@ -196,8 +196,14 @@ public partial class frmPOS : PhxFormBase, IPosView
     public void ClearSale()
     {
         grdLines.Rows.Clear();
-        ShowCustomer("", "", ratedPricing: false);
         scanBar.Reset();
+
+        // A collection already knows whose script it is, and ClearSale
+        // runs after CollectFor has said so. Resetting the customer here
+        // put "Cash sale" over the patient's name on every collection.
+        if (_collecting) return;
+
+        ShowCustomer("", "", ratedPricing: false);
     }
 
     public void FocusScan()

@@ -103,6 +103,35 @@ public class CollectionServiceTests
     }
 
     /// <summary>
+    /// A cashier who opens a script and is called away must not lock the
+    /// patient out of paying.
+    /// </summary>
+    /// <remarks>
+    /// Only one sale may hold a dispensing - the database enforces it -
+    /// so a second attempt that started a new sale was refused with a
+    /// duplicate-key error, and the script could then never be collected
+    /// by anybody. Found by abandoning a collection during the
+    /// walkthrough, which is not a thing any test was doing.
+    /// </remarks>
+    [Fact]
+    public async Task An_abandoned_collection_is_resumed_rather_than_restarted()
+    {
+        var builder = new CollectionServiceBuilder();
+        var dispensing = builder.Waiting(tariff: 90m, scheme: 60m);
+        var sut = builder.Build();
+
+        var first = await sut.StartAsync(dispensing.Id);
+        var second = await sut.StartAsync(dispensing.Id);
+
+        first.IsSuccess.Should().BeTrue();
+        second.IsSuccess.Should().BeTrue();
+
+        // The same sale, not a second one holding the same dispensing.
+        second.Value.Id.Should().Be(first.Value.Id);
+        second.Value.Totals.Total.Should().Be(30m);
+    }
+
+    /// <summary>
     /// The medicine left the shelf when the pharmacist issued the
     /// script. Issuing it again at the till would take the pharmacy's
     /// stock figures out by every script it ever sold.

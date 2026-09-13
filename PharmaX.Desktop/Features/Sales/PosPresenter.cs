@@ -51,7 +51,11 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         View.VoidLineRequested += (_, _) => _ = OnVoidAsync();
         View.PaymentRequested += (_, _) => _ = OnPaymentAsync();
         View.HoldRequested += (_, _) => _ = OnHoldAsync();
-        View.CloseRequested += (_, _) => View.CloseView(true);
+        // False, not true. The collection screen reads this dialog's
+        // result as "the patient paid", and closing the till is exactly
+        // the case where they did not - so it was telling the cashier
+        // the money had been taken when nothing had.
+        View.CloseRequested += (_, _) => View.CloseView(false);
     }
 
     public override Task InitialiseAsync() =>

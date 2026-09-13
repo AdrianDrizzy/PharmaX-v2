@@ -8,6 +8,7 @@ partial class frmJournal
     private System.ComponentModel.IContainer components = null!;
     private Panel pnlTop = null!;
     private Panel pnlBottom = null!;
+    private Panel pnlTotals = null!;
     private Label lblDate = null!;
     private Label lblNarration = null!;
     private Label lblTotals = null!;
@@ -30,6 +31,7 @@ partial class frmJournal
         components = new System.ComponentModel.Container();
         pnlTop = new Panel();
         pnlBottom = new Panel();
+        pnlTotals = new Panel();
         lblDate = new Label();
         lblNarration = new Label();
         lblTotals = new Label();
@@ -106,11 +108,20 @@ partial class frmJournal
             MaxInputLength = 300
         });
 
+        // Its own row, not docked inside the button panel. Docked to the
+        // top of a panel whose buttons are absolutely positioned, the
+        // label spanned the full width and the Close button sat on top
+        // of it, cutting the credits figure in half.
         lblTotals.AutoSize = false;
-        lblTotals.Dock = DockStyle.Top;
+        lblTotals.Dock = DockStyle.Fill;
         lblTotals.Font = PhxTheme.Subheading;
-        lblTotals.Height = 30;
+        lblTotals.Padding = new Padding(0, 0, 16, 0);
         lblTotals.TextAlign = ContentAlignment.MiddleRight;
+
+        pnlTotals.Controls.Add(lblTotals);
+        pnlTotals.Dock = DockStyle.Bottom;
+        pnlTotals.Height = 34;
+        pnlTotals.Name = "pnlTotals";
 
         btnPost.Location = new Point(12, 8);
         btnPost.Size = new Size(150, 34);
@@ -132,9 +143,8 @@ partial class frmJournal
         btnClose.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnClose);
 
-        pnlBottom.Controls.Add(lblTotals);
         pnlBottom.Dock = DockStyle.Bottom;
-        pnlBottom.Height = 84;
+        pnlBottom.Height = 52;
         pnlBottom.Name = "pnlBottom";
 
         AutoScaleDimensions = new SizeF(7F, 15F);
@@ -143,6 +153,7 @@ partial class frmJournal
         ClientSize = new Size(790, 520);
         Controls.Add(grdLines);
         Controls.Add(pnlTop);
+        Controls.Add(pnlTotals);
         Controls.Add(pnlBottom);
         Name = "frmJournal";
         StartPosition = FormStartPosition.CenterParent;
