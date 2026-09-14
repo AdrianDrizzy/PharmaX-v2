@@ -10,6 +10,7 @@ namespace PharmaX.Desktop.Mvp;
 public class PhxFormBase : Form, IView
 {
     private Label? _offlineBanner;
+    private bool _sharedDatabase;
 
 
     protected IConnectivityMonitor? Connectivity { get; private set; }
@@ -30,11 +31,13 @@ public class PhxFormBase : Form, IView
     /// </summary>
     protected virtual bool ClosesOnEscape => true;
 
-    public void UseConnectivity(IConnectivityMonitor monitor)
+    public void UseConnectivity(IConnectivityMonitor monitor,
+                                bool sharedDatabase = false)
     {
         ArgumentNullException.ThrowIfNull(monitor);
 
         Connectivity = monitor;
+        _sharedDatabase = sharedDatabase;
         monitor.StateChanged += OnConnectivityChanged;
 
         // The handler outlives the form otherwise: the monitor is a
@@ -142,17 +145,21 @@ public class PhxFormBase : Form, IView
 
         _offlineBanner ??= CreateBanner();
 
-        // Informative, not alarming: offline is a normal working state.
+        // The wording comes from the monitor because it depends on how
+        // the site is set up: offline is a normal working state on a
+        // standalone till and a stoppage on a shared database. The
+        // colour follows the same logic - informative where work
+        // continues, a problem where it cannot.
+        var text = Connectivity?.DescribeState(state) ?? "";
+        var stopped = _sharedDatabase && state != ConnectivityState.Degraded;
+
         (_offlineBanner.Text, _offlineBanner.BackColor, _offlineBanner.Visible)
             = state switch
         {
-            ConnectivityState.Connected =>
-                ("", Color.Transparent, false),
-            ConnectivityState.Degraded =>
-                ("Host slow to respond - working locally",
-                 PhxTheme.Attention, true),
-            _ => ("Working locally - transactions will sync when the " +
-                  "host returns", PhxTheme.Information, true)
+            ConnectivityState.Connected => ("", Color.Transparent, false),
+            ConnectivityState.Degraded => (text, PhxTheme.Attention, true),
+            _ => (text, stopped ? PhxTheme.Problem : PhxTheme.Information,
+                  true)
         };
     }
 

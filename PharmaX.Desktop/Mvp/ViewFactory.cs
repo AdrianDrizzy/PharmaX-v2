@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Offline;
 
 namespace PharmaX.Desktop.Mvp;
@@ -33,7 +34,10 @@ public sealed class ViewFactory
             if (form is PhxFormBase phx)
                 phx.UseConnectivity(
                     scope.ServiceProvider
-                         .GetRequiredService<IConnectivityMonitor>());
+                         .GetRequiredService<IConnectivityMonitor>(),
+                    scope.ServiceProvider
+                         .GetRequiredService<PharmaXOptions>()
+                         .Database.IsShared);
 
             // The scope outlives this method and dies with the window.
             form.Disposed += (_, _) => scope.Dispose();

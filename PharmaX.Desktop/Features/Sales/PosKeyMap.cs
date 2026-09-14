@@ -8,6 +8,16 @@ namespace PharmaX.Desktop.Features.Sales;
 public static class PosKeyMap
 {
     public const Keys Search = Keys.F2;
+
+    /// <summary>
+    /// Puts the sale on a patient's account.
+    /// </summary>
+    /// <remarks>
+    /// F3 because it is free at the till and sits next to Find item on
+    /// the bar. It is the Sell shortcut on the shell's menu, but the
+    /// shell is not open while the till is.
+    /// </remarks>
+    public const Keys Customer = Keys.F3;
     public const Keys Quantity = Keys.F4;
     public const Keys LineDiscount = Keys.F5;
     public const Keys Payment = Keys.F6;
@@ -15,15 +25,19 @@ public static class PosKeyMap
     public const Keys Hold = Keys.F8;
     public const Keys VoidLine = Keys.Escape;
 
-    /// What the function bar shows, in the order it shows it.
+    /// <summary>
+    /// What the function bar shows, in the order it shows it: key order,
+    /// so that the bar reads the way the keyboard is laid out.
+    /// </summary>
     public static IReadOnlyList<(Keys Key, string Label)> Bar { get; } = new[]
     {
         (Search, "F2 Find item"),
+        (Customer, "F3 Customer"),
         (Quantity, "F4 Quantity"),
         (LineDiscount, "F5 Discount"),
         (Payment, "F6 Pay"),
-        (Hold, "F8 Hold"),
         (Close, "F7 Close"),
+        (Hold, "F8 Hold"),
         (VoidLine, "Esc Void line")
     };
 }

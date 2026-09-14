@@ -139,7 +139,7 @@ public sealed class StocktakeService : IStocktakeService
             return Result<StocktakeDto>.Fail("STK-003",
                 "Nothing matches that scope, so there is nothing to count.");
 
-        var number = await _numbering.NextAsync("STK", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Stocktake, ct);
 
         var stocktake = Stocktake.Open(number,
             Guid.Parse(_options.Workstation.BranchId), _user.Id,

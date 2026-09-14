@@ -1,4 +1,7 @@
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Claims;
+using PharmaX.Application.Finance;
+using PharmaX.Application.Reference;
 using PharmaX.Application.Dispensing.Dtos;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
@@ -47,6 +50,9 @@ public sealed class DispensingService : IDispensingService
     private readonly IBatchRepository _batches;
     private readonly IPatientRepository _patients;
     private readonly IUserRepository _users;
+    private readonly IClaimRepository _claims;
+    private readonly IReferenceRepository _reference;
+    private readonly IJournalPoster _journals;
     private readonly IDocumentNumbering _numbering;
     private readonly IAuditWriter _audit;
     private readonly IOutbox _outbox;
@@ -57,10 +63,15 @@ public sealed class DispensingService : IDispensingService
     public DispensingService(IDispensingRepository dispensings,
         IScriptRepository scripts, IProductRepository products,
         IBatchRepository batches, IPatientRepository patients,
-        IUserRepository users, IDocumentNumbering numbering,
+        IUserRepository users, IClaimRepository claims,
+        IReferenceRepository reference, IJournalPoster journals,
+        IDocumentNumbering numbering,
         IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
         ICurrentUser user, IClock clock)
     {
+        _claims = claims;
+        _reference = reference;
+        _journals = journals;
         _dispensings = dispensings;
         _scripts = scripts;
         _products = products;
@@ -208,7 +219,7 @@ public sealed class DispensingService : IDispensingService
         if (script is null)
             return Result<IssueResultDto>.Fail("DSP-000", "Script not found.");
 
-        var number = await _numbering.NextAsync("DISP", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Dispensing, ct);
         dispensing.Issue(pharmacistId, number, _clock.UtcNow);
         script.RecordDispensing(_clock.Today);
 
@@ -232,6 +243,12 @@ public sealed class DispensingService : IDispensingService
             ScriptNumber: script.ScriptNumber,
             DispensedOn: _clock.Today,
             Cautions: Array.Empty<string>())).ToList();
+
+        // The scheme's share of the bill, recognised now rather than
+        // whenever somebody remembers to submit a batch. Inside the issue
+        // transaction, so a dispensing that fails to save takes its claim
+        // with it.
+        await RaiseClaimAsync(dispensing, patient, ct);
 
         _outbox.Append("Dispensing", dispensing.Id,
             $"{{\"id\":\"{dispensing.Id}\",\"script\":\"{script.ScriptNumber}\"}}");
@@ -276,6 +293,60 @@ public sealed class DispensingService : IDispensingService
                 + "against the pregnancy category.",
                 line.Id);
     }
+
+    /// <summary>
+    /// Bills the scheme for its share of what has just been dispensed.
+    /// </summary>
+    /// <remarks>
+    /// Quiet where there is nothing to claim: a cash patient, or a
+    /// script the scheme contributes nothing to. Quiet too where a claim
+    /// already exists, which is what a retry of a part-completed issue
+    /// looks like - the unique index on DispensingId would refuse the
+    /// second one, and refusing to issue medicine over a duplicate
+    /// claim would be the wrong way round.
+    /// </remarks>
+    private async Task RaiseClaimAsync(
+        Domain.Dispensing.Dispensing dispensing,
+        Domain.Patients.Patient? patient, CancellationToken ct)
+    {
+        if (patient is null || !patient.IsOnMedicalAid) return;
+        if (dispensing.ContributionTotal.IsZero) return;
+
+        if (await _claims.ForDispensingAsync(dispensing.Id, ct) is not null)
+            return;
+
+        var number = await _numbering.NextAsync(DocumentSeries.Claim, ct);
+
+        var claim = ClaimService.Build(number, patient, dispensing,
+                                       _clock.Today);
+
+        if (claim is null) return;
+
+        await _claims.AddAsync(claim, ct);
+
+        // Per product, because a script can mix VAT rates and one rate
+        // across the claim would misstate what is owed on every mixed
+        // script the pharmacy dispenses.
+        var rates = new Dictionary<Guid, decimal>();
+
+        foreach (var line in dispensing.Lines)
+        {
+            if (rates.ContainsKey(line.ProductId)) continue;
+
+            var product = await _products.GetAsync(line.ProductId, ct);
+            rates[line.ProductId] = product?.VatRatePercent ?? 0m;
+        }
+
+        // The scheme's name, not its id: the journal narration is read
+        // by a person reconciling a remittance, and a row of hex would
+        // tell them nothing.
+        var scheme = await _reference.GetAsync(
+            ReferenceKind.MedicalAidScheme,
+            patient.MedicalAidSchemeId!.Value, ct);
+
+        await _journals.PostClaimAsync(claim, scheme?.Name ?? "scheme",
+            ClaimService.SplitOf(dispensing, rates), ct);
+    }
 }
 
 public interface IDispensingRepository
@@ -292,6 +363,13 @@ public interface IDispensingRepository
     /// starts from: the person, then which of their items to print again.
     Task<IReadOnlyList<Domain.Dispensing.Dispensing>> ForPatientAsync(
         Guid patientId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Dispensings that have been issued and still owe a co-payment,
+    /// oldest first - the queue a cashier works from.
+    /// </summary>
+    Task<IReadOnlyList<Domain.Dispensing.Dispensing>> AwaitingCollectionAsync(
+        CancellationToken ct = default);
 
     Task AddAsync(Domain.Dispensing.Dispensing dispensing,
                   CancellationToken ct = default);

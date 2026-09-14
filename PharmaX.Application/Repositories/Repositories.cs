@@ -1,4 +1,6 @@
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Claims;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
 using PharmaX.Domain.Sales;
@@ -22,6 +24,19 @@ public interface ISaleRepository
 
     Task<IReadOnlyList<Sale>> ForSessionAsync(Guid tillSessionId,
                                               CancellationToken ct = default);
+
+    /// <summary>
+    /// The unfinished sale already opened against a dispensing, if there
+    /// is one.
+    /// </summary>
+    /// <remarks>
+    /// A cashier who opens a script and is called away leaves a draft
+    /// sale holding that dispensing, and only one sale may hold it. The
+    /// next attempt has to find that draft and carry on with it rather
+    /// than start a second one, which the database would refuse.
+    /// </remarks>
+    Task<Sale?> OpenCollectionForAsync(Guid dispensingId,
+                                       CancellationToken ct = default);
 
     /// The number printed on the customer's receipt, which is the only
     /// identifier they can hand back across a counter.
@@ -64,6 +79,20 @@ public interface IProductRepository
     /// say how much it is not showing.
     Task<int> CountAsync(string term, CancellationToken ct = default);
 
+    /// <summary>
+    /// Active products at or under their reorder level.
+    /// </summary>
+    /// <remarks>
+    /// Only where a reorder level has actually been set. Product.
+    /// ReorderLevel defaults to zero, and on zero the level rule reads
+    /// "warn me when there are none left" for every line in the
+    /// catalogue - which for a price list loaded without stock is all of
+    /// them. A product with no reorder level has no reorder policy, so
+    /// there is nothing here to breach.
+    /// </remarks>
+    Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
+        CancellationToken ct = default);
+
     Task AddAsync(Product product, CancellationToken ct = default);
 }
 
@@ -102,6 +131,18 @@ public interface IPatientRepository
     /// because a list of names must not pull medical histories.
     Task<IReadOnlySet<Guid>> WithAllergiesAsync(IEnumerable<Guid> patientIds,
                                                 CancellationToken ct = default);
+
+    /// Scans filed against the patient, newest first.
+    Task<IReadOnlyList<PatientAttachment>> AttachmentsAsync(Guid patientId,
+        CancellationToken ct = default);
+
+    Task<PatientAttachment?> AttachmentAsync(Guid attachmentId,
+        CancellationToken ct = default);
+
+    Task AddAttachmentAsync(PatientAttachment attachment,
+                            CancellationToken ct = default);
+
+    void RemoveAttachment(PatientAttachment attachment);
 }
 
 public interface IUserRepository
@@ -131,6 +172,14 @@ public interface ITillSessionRepository
 
     Task AddDeclarationAsync(TillDeclaration declaration,
                              CancellationToken ct = default);
+
+    /// <summary>
+    /// The last declaration captured for a session - what the operator
+    /// actually counted, as opposed to what the sales say they should
+    /// have.
+    /// </summary>
+    Task<TillDeclaration?> LatestDeclarationAsync(Guid tillSessionId,
+        CancellationToken ct = default);
 }
 
 public interface IStocktakeRepository
@@ -178,6 +227,111 @@ public interface IGoodsReceiptRepository
         CancellationToken ct = default);
 
     Task AddAsync(GoodsReceipt receipt, CancellationToken ct = default);
+}
+
+public interface ILedgerRepository
+{
+    Task<IReadOnlyList<LedgerAccount>> AccountsAsync(
+        bool includeInactive = false, CancellationToken ct = default);
+
+    Task<LedgerAccount?> AccountAsync(Guid id,
+                                      CancellationToken ct = default);
+
+    Task<LedgerAccount?> AccountByCodeAsync(string code,
+                                            CancellationToken ct = default);
+
+    Task AddAccountAsync(LedgerAccount account,
+                         CancellationToken ct = default);
+
+    Task<JournalBatch?> BatchAsync(Guid id, CancellationToken ct = default);
+
+    /// Posted batches in a date range, newest first, for the journal list.
+    Task<IReadOnlyList<JournalBatch>> BatchesAsync(DateOnly from,
+        DateOnly until, CancellationToken ct = default);
+
+    Task AddBatchAsync(JournalBatch batch, CancellationToken ct = default);
+
+    /// <summary>
+    /// The debit and credit totals per account for everything posted up
+    /// to and including a date - the trial balance, summed in the
+    /// database rather than by pulling every journal line across.
+    /// </summary>
+    Task<IReadOnlyList<AccountTotals>> TotalsAsync(DateOnly asAt,
+        CancellationToken ct = default);
+
+    /// Every posted line touching one account, for the detail behind a
+    /// trial balance figure.
+    Task<IReadOnlyList<LedgerEntry>> EntriesAsync(string accountCode,
+        DateOnly from, DateOnly until, CancellationToken ct = default);
+}
+
+/// What one account has been debited and credited altogether.
+public sealed record AccountTotals(string AccountCode, decimal Debits,
+                                   decimal Credits);
+
+/// One posted line, with enough of its batch to read on a screen.
+public sealed record LedgerEntry(DateOnly PostingDate, string BatchNumber,
+    string Source, string AccountCode, decimal Debit, decimal Credit,
+    string? Narration);
+
+public interface IAccountRepository
+{
+    Task<Account?> GetAsync(Guid id, CancellationToken ct = default);
+
+    Task<Account?> ByNumberAsync(string accountNumber,
+                                 CancellationToken ct = default);
+
+    /// Accounts by name or number, for the picker at the till.
+    Task<IReadOnlyList<Account>> SearchAsync(string term, int take = 100,
+                                             CancellationToken ct = default);
+
+    /// <summary>
+    /// Everything owing, largest first - the list somebody works through
+    /// when chasing money.
+    /// </summary>
+    Task<IReadOnlyList<Account>> OwingAsync(CancellationToken ct = default);
+
+    Task AddAsync(Account account, CancellationToken ct = default);
+
+    /// The movements on one account, oldest first, so a statement reads
+    /// down the page with a running balance.
+    Task<IReadOnlyList<AccountTransaction>> TransactionsAsync(Guid accountId,
+        DateOnly from, DateOnly until, CancellationToken ct = default);
+
+    Task AddTransactionAsync(AccountTransaction transaction,
+                             CancellationToken ct = default);
+
+    /// <summary>
+    /// What the movements add up to, for checking the stored balance
+    /// against its own history.
+    /// </summary>
+    Task<decimal> MovementTotalAsync(Guid accountId,
+                                     CancellationToken ct = default);
+}
+
+public interface IClaimRepository
+{
+    Task<MedicalAidClaim?> GetAsync(Guid id, CancellationToken ct = default);
+
+    Task<MedicalAidClaim?> ByNumberAsync(string claimNumber,
+                                         CancellationToken ct = default);
+
+    /// <summary>
+    /// The claim already raised for a dispensing, if there is one.
+    /// </summary>
+    /// <remarks>
+    /// Issuing is idempotent and runs in a transaction, but a retry that
+    /// got as far as saving would otherwise bill the scheme twice for
+    /// one script.
+    /// </remarks>
+    Task<MedicalAidClaim?> ForDispensingAsync(Guid dispensingId,
+        CancellationToken ct = default);
+
+    /// Claims still owed, oldest first. One scheme, or every scheme.
+    Task<IReadOnlyList<MedicalAidClaim>> OutstandingAsync(
+        Guid? schemeId = null, CancellationToken ct = default);
+
+    Task AddAsync(MedicalAidClaim claim, CancellationToken ct = default);
 }
 
 public interface IPermissionRepository

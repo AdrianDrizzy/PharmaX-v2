@@ -7,6 +7,7 @@ using PharmaX.Application;
 using PharmaX.Application.Abstractions;
 using PharmaX.Desktop.Features.Login;
 using PharmaX.Desktop.Mvp;
+using PharmaX.Desktop.Setup;
 using PharmaX.Desktop.Shell;
 using PharmaX.Domain.Primitives;
 using PharmaX.Persistence;
@@ -23,6 +24,11 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
+
+        // Before anything else, and before any logging: a machine that
+        // has never been set up has no database to log to and no
+        // identity to stamp on what it writes.
+        if (!EnsureProvisioned()) return;
 
         var host = BuildHost();
 
@@ -102,6 +108,19 @@ internal static class Program
 
         builder.Configuration
             .AddJsonFile("appsettings.json", optional: false)
+
+            // What this machine is, as against what PharmaX is. Written
+            // by the first-run wizard into ProgramData, where an upgrade
+            // cannot reach it: the installer replaces everything in
+            // Program Files, and a workstation identity kept beside the
+            // executable would be wiped by the first update - bringing
+            // the machine back with a new identity and a numbering
+            // series it had already used.
+            .AddJsonFile(WorkstationProvisioning.FilePath, optional: true,
+                         reloadOnChange: false)
+
+            // Last of the files, so that a developer's own overrides
+            // still win on a machine that has also been provisioned.
             .AddJsonFile("appsettings.Development.json", optional: true)
             .AddEnvironmentVariables();
 
@@ -133,6 +152,33 @@ internal static class Program
         builder.Services.AddSerilog();
 
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Runs the first-run wizard where this machine has not been set up.
+    /// </summary>
+    /// <remarks>
+    /// Returns false where the operator quit, which is the one path that
+    /// ends the application before it has started: without a profile
+    /// there is no database to open and no identity to trade under.
+    ///
+    /// A developer's machine skips it, because appsettings.Development
+    /// has already answered every question the wizard asks.
+    /// </remarks>
+    private static bool EnsureProvisioned()
+    {
+        if (WorkstationProvisioning.Exists) return true;
+
+        if (File.Exists(Path.Combine(AppContext.BaseDirectory,
+                                     "appsettings.Development.json")))
+            return true;
+
+        using var wizard = new frmFirstRun();
+
+        if (wizard.ShowDialog() != DialogResult.OK) return false;
+
+        ApplyCurrency(Currencies.ByCode(wizard.Profile.Currency));
+        return true;
     }
 
     /// <summary>
@@ -184,15 +230,25 @@ internal static class Program
         var services = scope.ServiceProvider;
         var options = services.GetRequiredService<PharmaXOptions>();
 
-        var path = options.Database.ResolvedLocalConnection
-            .Replace("Data Source=", string.Empty,
-                     StringComparison.OrdinalIgnoreCase)
-            .Trim();
+        // Only a standalone workstation has a file to make room for. On
+        // a shared database there is no local file, and a site that has
+        // cleared LocalConnection entirely would otherwise crash here on
+        // an empty path before it ever reached the sign-in window.
+        if (!options.Database.IsShared)
+        {
+            var path = options.Database.ResolvedLocalConnection
+                .Replace("Data Source=", string.Empty,
+                         StringComparison.OrdinalIgnoreCase)
+                .Trim();
 
-        var folder = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrWhiteSpace(folder))
-            Directory.CreateDirectory(folder);
+            var folder = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrWhiteSpace(folder))
+                Directory.CreateDirectory(folder);
+        }
 
+        // Creates the database if it is not there and brings it up to
+        // date either way. On a shared database this is the server's
+        // schema, and the first till to start is the one that builds it.
         var db = services.GetRequiredService<PharmaXDbContext>();
         db.Database.Migrate();          // idempotent; safe on every start
 
@@ -207,6 +263,12 @@ internal static class Program
                 "PharmaX", MessageBoxButtons.OK, MessageBoxIcon.Stop);
             return false;
         }
+
+        // Settings written before they were kept per workstation belong
+        // to this machine: claim them before anything reads one.
+        ((WorkstationSettingStore)services
+            .GetRequiredService<IWorkstationSettings>())
+            .ClaimUnassignedAsync().GetAwaiter().GetResult();
 
         // The till's own currency, if it has been set here, wins over
         // the installed default. Read before seeding so that the
@@ -232,6 +294,11 @@ internal static class Program
         // Accounts with nothing to sell are half a test environment, so
         // the same flag puts stock on the shelf.
         services.GetRequiredService<TestCatalogueSeeder>()
+                .SeedAsync().GetAwaiter().GetResult();
+
+        // The pharmacy's own price list. Idempotent: it adds what is
+        // missing and reprices what has moved, and never touches stock.
+        services.GetRequiredService<PriceListSeeder>()
                 .SeedAsync().GetAwaiter().GetResult();
 
         // Last, and every start: an amount stored under a currency this

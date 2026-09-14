@@ -19,6 +19,14 @@ public sealed class PatientConfiguration : IEntityTypeConfiguration<Patient>
         b.Property(x => x.IdNumber).HasMaxLength(20);
         b.Property(x => x.Telephone).HasMaxLength(30);
         b.Property(x => x.Email).HasMaxLength(150);
+
+        // Bounded rather than left as unlimited text: a membership
+        // number goes on every claim, and an unbounded column cannot be
+        // indexed and is stored off-row for no reason.
+        b.Property(x => x.MembershipNumber).HasMaxLength(40);
+        b.Property(x => x.DependantCode).HasMaxLength(10);
+
+        b.Ignore(x => x.IsOnMedicalAid);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.Ignore(x => x.FullName);
@@ -120,5 +128,68 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         b.Ignore(x => x.Available);
 
         b.HasIndex(x => x.AccountNumber).IsUnique();
+    }
+}
+
+/// <summary>
+/// A scanned document filed against a patient. The image is not here -
+/// only where it is and what it is.
+/// </summary>
+public sealed class PatientAttachmentConfiguration
+    : IEntityTypeConfiguration<PatientAttachment>
+{
+    public void Configure(EntityTypeBuilder<PatientAttachment> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("PatientAttachment");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Description).HasMaxLength(200).IsRequired();
+        b.Property(x => x.RelativePath).HasMaxLength(300).IsRequired();
+        b.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        // The patient's file is read by patient and shown newest first,
+        // which is the only way this table is ever queried.
+        b.HasIndex(x => new { x.PatientId, x.CapturedAtUtc });
+
+        // Finding the scans behind one dispensing, for a reprint or a
+        // query about what was actually presented at the counter.
+        b.HasIndex(x => x.ScriptId);
+    }
+}
+
+public sealed class AccountTransactionConfiguration
+    : IEntityTypeConfiguration<AccountTransaction>
+{
+    public void Configure(EntityTypeBuilder<AccountTransaction> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("AccountTransaction");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Reference).HasMaxLength(60);
+        b.Property(x => x.Narration).HasMaxLength(300);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        b.ComplexProperty(x => x.Amount, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("Amount")
+                                     .HasPrecision(18, 2);
+            m.Property(p => p.Currency).HasColumnName("AmountCurrency")
+                                       .HasMaxLength(3);
+        });
+
+        // Both are the kind read off the kind and the amount, so there
+        // is nothing to store.
+        b.Ignore(x => x.Increases);
+        b.Ignore(x => x.Effect);
+
+        // The statement's own query: one account, in date order.
+        b.HasIndex(x => new { x.AccountId, x.OccurredOn });
     }
 }

@@ -22,6 +22,8 @@ public class PosPresenterTests
     private readonly IReceiptPrinter _receipts =
         Substitute.For<IReceiptPrinter>();
     private readonly ICashDrawer _drawer = Substitute.For<ICashDrawer>();
+    private readonly ICollectionService _collections =
+        Substitute.For<ICollectionService>();
     private readonly IPosView _view = Substitute.For<IPosView>();
 
     private readonly ReceiptHeaderFactory _headers =
@@ -31,8 +33,8 @@ public class PosPresenterTests
 
     private PosPresenter CreateSut()
     {
-        var presenter = new PosPresenter(_sales, _permissions, _receipts,
-                                         _drawer, _headers);
+        var presenter = new PosPresenter(_sales, _collections, _permissions,
+                                         _receipts, _drawer, _headers);
         presenter.Attach(_view);
         return presenter;
     }

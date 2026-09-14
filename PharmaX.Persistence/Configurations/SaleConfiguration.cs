@@ -31,6 +31,7 @@ public sealed class SaleConfiguration : IEntityTypeConfiguration<Sale>
         b.Ignore(x => x.Tendered);
         b.Ignore(x => x.Change);
         b.Ignore(x => x.IsRated);
+        b.Ignore(x => x.IsCollection);
 
         b.HasMany(x => x.Lines)
          .WithOne()
@@ -55,6 +56,13 @@ public sealed class SaleConfiguration : IEntityTypeConfiguration<Sale>
         // NET-021 made physical: two workstations cannot produce the same
         // receipt number, and if a bug ever tried, the database refuses.
         b.HasIndex(x => new { x.WorkstationId, x.DocumentNumber }).IsUnique();
+
+        // One sale per dispensing, enforced by the database rather than
+        // by two cashiers watching the same collection queue being
+        // careful. Nullable, and both providers treat NULLs as distinct,
+        // so the over-the-counter sales that carry no dispensing are
+        // unaffected.
+        b.HasIndex(x => x.DispensingId).IsUnique();
     }
 }
 

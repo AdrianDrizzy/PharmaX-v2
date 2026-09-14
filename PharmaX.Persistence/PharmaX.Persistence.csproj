@@ -21,4 +21,11 @@
     </PackageReference>
   </ItemGroup>
 
+
+  <ItemGroup>
+    <!-- The pharmacy's price list, read by PriceListSeeder. Embedded so
+         that it ships with the assembly and no install step has to
+         remember to copy a data file next to the executable. -->
+    <EmbeddedResource Include="Seeding\Data\pricelist.csv" />
+  </ItemGroup>
 </Project>

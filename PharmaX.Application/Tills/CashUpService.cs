@@ -1,4 +1,5 @@
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Finance;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Tills.Dtos;
@@ -33,6 +34,7 @@ public sealed class CashUpService : ICashUpService
     private readonly ITillSessionRepository _sessions;
     private readonly ISaleRepository _sales;
     private readonly IReturnRepository _returns;
+    private readonly IJournalPoster _journals;
     private readonly ISessionContext _context;
     private readonly IAuditWriter _audit;
     private readonly IOutbox _outbox;
@@ -42,12 +44,14 @@ public sealed class CashUpService : ICashUpService
 
     public CashUpService(ITillSessionRepository sessions,
         ISaleRepository sales, IReturnRepository returns,
-        ISessionContext context, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow, ICurrentUser user, IClock clock)
+        IJournalPoster journals, ISessionContext context,
+        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
+        ICurrentUser user, IClock clock)
     {
         _sessions = sessions;
         _sales = sales;
         _returns = returns;
+        _journals = journals;
         _context = context;
         _audit = audit;
         _outbox = outbox;
@@ -155,13 +159,35 @@ public sealed class CashUpService : ICashUpService
         var expectations = await ExpectationsAsync(session, ct);
         var expected = Money.Of(expectations.Sum(e => e.Expected));
 
-        session.Close(_user.Id, expected, _clock.UtcNow, varianceReason);
+        // What the operator counted, not what the sales say they should
+        // have. Closing on the expected figure was recording the
+        // system's own opinion as the declaration, so every session
+        // closed with a variance of exactly zero and a short till looked
+        // like a balanced one - which is the single thing a cash-up
+        // exists to catch.
+        var declaration = await _sessions.LatestDeclarationAsync(
+            session.Id, ct);
+
+        // A session closed without a count has nothing better to record
+        // than the expectation, and says so through the reason.
+        var counted = declaration?.TotalDeclared ?? expected;
+
+        session.Close(_user.Id, counted, _clock.UtcNow,
+            declaration is null
+                ? varianceReason ?? "Closed without a cash declaration."
+                : varianceReason);
+
+        // The drawer against the books. Posts only where they differ.
+        await _journals.PostCashUpAsync(session, expected, counted, ct);
 
         _context.AttachTillSession(null);
+
         _audit.Applied("pos.session.close", "TillSession", session.Id,
-            varianceReason);
+            $"counted {counted}, expected {expected}. {varianceReason}");
+
         _outbox.Append("TillSessionClose", session.Id,
-            $"{{\"id\":\"{session.Id}\",\"declared\":{expected.Amount}}}");
+            $"{{\"id\":\"{session.Id}\",\"declared\":{counted.Amount},"
+            + $"\"expected\":{expected.Amount}}}");
 
         await _uow.SaveChangesAsync(ct);
         await tx.DisposeAsync();

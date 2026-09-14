@@ -1,6 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Alerts;
 using PharmaX.Application.Offline;
 using PharmaX.Application.Reference;
+using PharmaX.Application.Sales;
 using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
 using PharmaX.Desktop.Features.Admin;
@@ -27,20 +30,23 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     private readonly IConnectivityMonitor _connectivity;
     private readonly IAuthenticationService _auth;
     private readonly ViewFactory _views;
+    private readonly IServiceScopeFactory _scopes;
 
     public MainPresenter(ICurrentUser user, PharmaXOptions options,
         ITillSessionService sessions, IPermissionService permissions,
         IConnectivityMonitor connectivity, IAuthenticationService auth,
-        ViewFactory views)
+        ViewFactory views, IServiceScopeFactory scopes)
     {
         _user = user; _options = options; _sessions = sessions;
         _permissions = permissions; _connectivity = connectivity;
-        _auth = auth; _views = views;
+        _auth = auth; _views = views; _scopes = scopes;
     }
 
     protected override void Subscribe()
     {
         View.MenuSelected += (_, key) => _ = OnMenuAsync(key);
+        View.WaitingTick += (_, _) => _ = ShowWaitingAsync();
+        View.WaitingTick += (_, _) => _ = ShowAlertsAsync();
         _connectivity.StateChanged += (_, s) => View.SetConnectivity(Describe(s));
     }
 
@@ -83,9 +89,115 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         View.EnableMenu("reports",
             _permissions.Check(PermissionCode.ReportOperational)
                 == PermissionOutcome.Granted);
+        View.EnableMenu("accounts",
+            _permissions.Check(PermissionCode.LedgerRead)
+                == PermissionOutcome.Granted);
         View.EnableMenu("admin",
             _permissions.Check(PermissionCode.UserRoleAssign)
                 == PermissionOutcome.Granted);
+
+        await ShowWaitingAsync();
+        await ShowAlertsAsync();
+    }
+
+    /// <summary>
+    /// Counts the stock that needs attention and puts it in the status
+    /// bar, beside the collection queue.
+    /// </summary>
+    /// <remarks>
+    /// Its own scope and silent on failure, for the same reasons as
+    /// ShowWaitingAsync above.
+    /// </remarks>
+    private async Task ShowAlertsAsync()
+    {
+        if (_permissions.Check(PermissionCode.ProductRead)
+                != PermissionOutcome.Granted)
+            return;
+
+        try
+        {
+            using var scope = _scopes.CreateScope();
+
+            var alerts = scope.ServiceProvider
+                .GetRequiredService<IStockAlertService>();
+
+            var result = await alerts.CurrentAsync();
+            if (result.IsFailure) return;
+
+            // The count that matters is the urgent one. A pharmacy with
+            // forty slow-moving lines below reorder level would
+            // otherwise show a permanent forty, and a permanent number
+            // is one nobody reads.
+            var critical = result.Value
+                .Count(a => a.Severity == AlertSeverity.Critical);
+
+            View.SetAlerts(critical switch
+            {
+                0 => "",
+                1 => "1 stock alert",
+                var many => $"{many} stock alerts"
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            // The database is unreachable, which the connectivity label
+            // beside this one is already reporting.
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // As above.
+        }
+    }
+
+    /// <summary>
+    /// Reads how many dispensed scripts are waiting to be paid for and
+    /// puts the number in the status bar.
+    /// </summary>
+    /// <remarks>
+    /// Its own container scope every time, rather than a service held
+    /// for the life of the shell. The shell is open all day, and a
+    /// DbContext that lived that long would both cache the queue it is
+    /// supposed to be re-reading and accumulate every entity it ever
+    /// loaded.
+    ///
+    /// Silent on failure. This is a number in the corner of a status
+    /// bar; a database that has gone away is already being reported by
+    /// the connectivity label an inch to its right, and saying it twice
+    /// - in a message box, over whatever the operator was doing - would
+    /// be worse than not saying it here at all.
+    /// </remarks>
+    private async Task ShowWaitingAsync()
+    {
+        if (_permissions.Check(PermissionCode.SaleCreate)
+                != PermissionOutcome.Granted)
+            return;
+
+        try
+        {
+            using var scope = _scopes.CreateScope();
+
+            var collections = scope.ServiceProvider
+                .GetRequiredService<ICollectionService>();
+
+            var result = await collections.WaitingAsync();
+            if (result.IsFailure) return;
+
+            View.SetWaiting(result.Value.Count switch
+            {
+                0 => "",
+                1 => "1 script waiting",
+                var many => $"{many} scripts waiting"
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            // The scope could not be built, or the database is not
+            // reachable. Neither is this label's business to report.
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // As above.
+        }
     }
 
     private Task OnMenuAsync(string key) => GuardAsync(async () =>
@@ -94,6 +206,10 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         {
             case "pos":
                 _views.ShowDialog<frmPOS>((Form)View);
+                break;
+            case "collect":
+                _views.ShowDialog<frmCollect>((Form)View);
+                await ShowWaitingAsync();
                 break;
             case "returns":
                 _views.ShowDialog<frmReturn>((Form)View);
@@ -136,6 +252,25 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // building a second list over the same rows.
             case "stock":
                 ShowReport("inv.stock.on-hand");
+                break;
+            case "trial-balance":
+                _views.ShowDialog<frmTrialBalance>((Form)View);
+                break;
+            case "journal":
+                _views.ShowDialog<frmJournal>((Form)View);
+                break;
+            case "accounts-receivable":
+                _views.ShowDialog<Features.Patients.frmAccounts>((Form)View);
+                break;
+            case "claims":
+                _views.ShowDialog<frmClaims>((Form)View);
+                break;
+            case "chart-of-accounts":
+                _views.ShowDialog<frmChartOfAccounts>((Form)View);
+                break;
+            case "alerts":
+                _views.ShowDialog<frmAlerts>((Form)View);
+                await ShowAlertsAsync();
                 break;
             case "expired-stock":
                 ShowReport("inv.stock.expiring");

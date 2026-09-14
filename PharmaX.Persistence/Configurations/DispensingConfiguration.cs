@@ -71,6 +71,7 @@ public sealed class DispensingConfiguration
         b.Ignore(x => x.ContributionTotal);
         b.Ignore(x => x.CoPaymentTotal);
         b.Ignore(x => x.PendingWarnings);
+        b.Ignore(x => x.AwaitsCollection);
 
         b.HasMany(x => x.Lines)
          .WithOne()
@@ -90,6 +91,12 @@ public sealed class DispensingConfiguration
 
         b.HasIndex(x => x.ScriptId);
         b.HasIndex(x => new { x.PatientId, x.IssuedAtUtc });
+
+        // The collection queue's own query: issued, unpaid, oldest
+        // first. Every till re-runs it on a timer, so it is worth an
+        // index rather than a scan of every dispensing the pharmacy has
+        // ever made.
+        b.HasIndex(x => new { x.Status, x.SaleId, x.IssuedAtUtc });
     }
 }
 

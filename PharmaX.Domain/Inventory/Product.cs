@@ -136,6 +136,15 @@ public sealed class Product : AuditableEntity
 
     public void SetQuantityOnHand(decimal quantity) => QuantityOnHand = quantity;
 
+    /// <summary>
+    /// How the product is packed, as it is written on the shelf label:
+    /// "TAB 1000", "LIQ", "UNI".
+    /// </summary>
+    public void SetPackSize(string? packSize) =>
+        PackSize = string.IsNullOrWhiteSpace(packSize)
+            ? null
+            : packSize.Trim();
+
     public void AddPrice(ProductPrice price)
     {
         ArgumentNullException.ThrowIfNull(price);

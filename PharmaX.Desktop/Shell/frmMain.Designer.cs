@@ -19,6 +19,18 @@ partial class frmMain
     private ToolStripStatusLabel lblTill = null!;
     private ToolStripStatusLabel lblSession = null!;
     private ToolStripStatusLabel lblConnectivity = null!;
+    private ToolStripStatusLabel lblWaiting = null!;
+    private ToolStripStatusLabel lblAlerts = null!;
+
+    /// <summary>
+    /// Re-reads the collection queue while the shell is up.
+    /// </summary>
+    /// <remarks>
+    /// Fifteen seconds rather than the collection screen's five: this
+    /// is the glance-at-the-corner count, not the queue somebody is
+    /// working from, and it runs all day on every till in the pharmacy.
+    /// </remarks>
+    private System.Windows.Forms.Timer tmrWaiting = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -36,6 +48,14 @@ partial class frmMain
         lblTill = new ToolStripStatusLabel();
         lblSession = new ToolStripStatusLabel();
         lblConnectivity = new ToolStripStatusLabel();
+        lblWaiting = new ToolStripStatusLabel();
+        lblAlerts = new ToolStripStatusLabel();
+        tmrWaiting = new System.Windows.Forms.Timer(components)
+        {
+            Interval = 15000
+        };
+
+        tmrWaiting.Tick += (_, _) => WaitingTick?.Invoke(this, EventArgs.Empty);
         SuspendLayout();
 
         // The menu mirrors the incumbent structure, which is what the
@@ -65,9 +85,11 @@ partial class frmMain
 
             Menu("&Point of Sale", "pos",
                 Item("Sell", "pos", Keys.F3),
+                Item("Scripts to Collect", "collect", Keys.F11),
                 Item("Returns and Credit Notes", "returns", Keys.F5)),
 
             Menu("&Inventory", "inventory",
+                Item("Stock Alerts", "alerts", Keys.F12),
                 Item("Departments", "departments"),
                 Item("Suppliers", "suppliers"),
                 Item("Purchase Orders", "purchase-orders", Keys.F7),
@@ -79,6 +101,17 @@ partial class frmMain
                 Item("Breakages", "breakages"),
                 Item("Expired Stock", "expired-stock"),
                 Item("Price Changes", "price-changes")),
+
+            // The pharmacy's own books. Its own heading rather than a
+            // corner of Administration: a manager doing the month end is
+            // not administering the system, and the three screens here
+            // are used together.
+            Menu("&Accounts", "accounts",
+                Item("Trial Balance", "trial-balance"),
+                Item("Journal Entry", "journal"),
+                Item("Patient Accounts", "accounts-receivable"),
+                Item("Medical Aid Claims", "claims"),
+                Item("Chart of Accounts", "chart-of-accounts")),
 
             Menu("&Reports", "reports",
                 Item("Reports", "reports", Keys.F9)),
@@ -132,13 +165,37 @@ partial class frmMain
         lblSession.Size = new Size(140, 19);
         lblSession.BorderSides = ToolStripStatusLabelBorderSides.Right;
 
+        // Coloured and bold, because it is the one thing in the status
+        // bar that means a person is waiting rather than a machine is
+        // fine. Hidden entirely when the queue is empty: a permanent
+        // "0 waiting" is something the eye stops reading by Tuesday.
+        lblWaiting.Name = "lblWaiting";
+        lblWaiting.Font = PhxTheme.Emphasis;
+        lblWaiting.ForeColor = PhxTheme.Accent;
+        lblWaiting.Size = new Size(160, 19);
+        lblWaiting.BorderSides = ToolStripStatusLabelBorderSides.Right;
+        lblWaiting.Visible = false;
+
+        // Red rather than the waiting queue's blue, and hidden when
+        // there is nothing wrong. This one means stock is expiring or
+        // gone, which is money, not a person at a counter.
+        lblAlerts.Name = "lblAlerts";
+        lblAlerts.Font = PhxTheme.Emphasis;
+        lblAlerts.ForeColor = PhxTheme.ProblemText;
+        lblAlerts.Size = new Size(150, 19);
+        lblAlerts.BorderSides = ToolStripStatusLabelBorderSides.Right;
+        lblAlerts.Visible = false;
+
         lblConnectivity.Name = "lblConnectivity";
         lblConnectivity.Size = new Size(160, 19);
         lblConnectivity.Spring = true;
         lblConnectivity.TextAlign = ContentAlignment.MiddleRight;
 
         staMain.Items.AddRange(new ToolStripItem[]
-            { lblUser, lblTill, lblSession, lblConnectivity });
+        {
+            lblUser, lblTill, lblSession, lblWaiting, lblAlerts,
+            lblConnectivity
+        });
         staMain.Location = new Point(0, 678);
         staMain.Name = "staMain";
         staMain.Size = new Size(1200, 22);
@@ -232,16 +289,21 @@ partial class frmMain
         foreach (var (title, hint, key, group) in new[]
         {
             ("Sell", "F3   Point of sale", "pos", "pos"),
+            ("Collect", "F11   Scripts to be paid for", "collect", "pos"),
             ("Dispense", "F2   Script and label", "dispensing", "dispensary"),
             ("Patients", "F4   Find and edit", "patients", "dispensary"),
             ("Returns", "F5   And credit notes", "returns", "returns"),
             ("Products", "F6   Prices and stock", "products", "inventory"),
+            ("Stock alerts", "F12   Expiring and short", "alerts",
+             "inventory"),
             ("Goods receipt", "F8   Book a delivery in",
              "goods-receipt", "goods-receipt"),
             ("Purchase orders", "F7   Order from a supplier",
              "purchase-orders", "inventory"),
             ("Stocktake", "Count and post", "stocktake-capture", "stocktake"),
             ("Reports", "F9   Sales, stock, VAT", "reports", "reports"),
+            ("Trial balance", "The books, in balance", "trial-balance",
+             "accounts"),
             ("Till session", "Ctrl+T   Float and cash up", "till", "till")
         })
         {

@@ -66,6 +66,28 @@ public partial class frmMain : PhxFormBase, IMainView
     {
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        tmrWaiting.Start();
+    }
+
+    /// <summary>
+    /// How many scripts are waiting at the till, or nothing at all.
+    /// </summary>
+    /// <remarks>
+    /// The label disappears when the queue empties rather than reading
+    /// zero. A count that is nearly always zero is a count nobody looks
+    /// at, and this one has to be noticed the one time it is not.
+    /// </remarks>
+    public void SetWaiting(string waiting)
+    {
+        lblWaiting.Text = waiting;
+        lblWaiting.Visible = !string.IsNullOrWhiteSpace(waiting);
+    }
+
+    /// As above: shown only when there is something to show.
+    public void SetAlerts(string alerts)
+    {
+        lblAlerts.Text = alerts;
+        lblAlerts.Visible = !string.IsNullOrWhiteSpace(alerts);
     }
 
     /// <summary>
@@ -265,4 +287,5 @@ public partial class frmMain : PhxFormBase, IMainView
     }
 
     public event EventHandler<string>? MenuSelected;
+    public event EventHandler? WaitingTick;
 }

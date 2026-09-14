@@ -149,3 +149,150 @@ public sealed class frmTextPrompt : Form
             : null;
     }
 }
+
+/// <summary>
+/// A read-only window for a block of text somebody needs to look at:
+/// the postings behind a trial-balance figure, and anything else that is
+/// a page rather than a grid.
+/// </summary>
+/// <remarks>
+/// Monospaced and selectable, so the columns line up and the operator
+/// can copy a line into an email to their accountant - which is the
+/// commonest thing anybody does with a screen like this.
+/// </remarks>
+public sealed class frmTextViewer : Form
+{
+    private frmTextViewer(string title, string body)
+    {
+        var text = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Consolas", 9.75F),
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Both,
+            Text = body,
+            WordWrap = false
+        };
+
+        var close = new Button
+        {
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            DialogResult = DialogResult.Cancel,
+            Location = new Point(660, 8),
+            Size = new Size(110, 30),
+            Text = "&Close"
+        };
+
+        var footer = new Panel { Dock = DockStyle.Bottom, Height = 46 };
+        footer.Controls.Add(close);
+
+        Controls.Add(text);
+        Controls.Add(footer);
+
+        CancelButton = close;
+        ClientSize = new Size(790, 520);
+        MinimizeBox = false;
+        StartPosition = FormStartPosition.CenterParent;
+        Text = title;
+
+        // The caret starts at the top rather than wherever a selection
+        // left it, and nothing is selected on opening.
+        Shown += (_, _) =>
+        {
+            text.SelectionStart = 0;
+            text.SelectionLength = 0;
+        };
+    }
+
+    public static void Show(IWin32Window owner, string title, string body)
+    {
+        using var dialog = new frmTextViewer(title, body);
+        dialog.ShowDialog(owner);
+    }
+}
+
+/// <summary>
+/// Asks the operator to pick one of a short list.
+/// </summary>
+/// <remarks>
+/// A dialog rather than a drop-down on a form, for the same reason as
+/// the prompts above: the question is asked from three places and a
+/// fourth copy of a combo box is a fourth place for it to be wrong.
+/// Generic in the value, so the caller gets its own type back rather
+/// than an index it has to interpret.
+/// </remarks>
+public sealed class frmChoicePrompt : Form
+{
+    private readonly ListBox _list = new();
+
+    private frmChoicePrompt(string title, string prompt,
+                            IEnumerable<string> choices)
+    {
+        var label = new Label
+        {
+            AutoSize = false,
+            Location = new Point(16, 16),
+            Size = new Size(400, 20),
+            Text = prompt
+        };
+
+        _list.Location = new Point(16, 42);
+        _list.Size = new Size(400, 140);
+        _list.Items.AddRange(choices.Cast<object>().ToArray());
+        if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+
+        var ok = new Button
+        {
+            DialogResult = DialogResult.OK,
+            Location = new Point(260, 196),
+            Size = new Size(75, 28),
+            Text = "OK"
+        };
+
+        var cancel = new Button
+        {
+            DialogResult = DialogResult.Cancel,
+            Location = new Point(341, 196),
+            Size = new Size(75, 28),
+            Text = "Cancel"
+        };
+
+        Controls.AddRange(new Control[] { label, _list, ok, cancel });
+
+        // Double-clicking a row is how everybody expects a list like
+        // this to be answered.
+        _list.DoubleClick += (_, _) =>
+        {
+            DialogResult = DialogResult.OK;
+            Close();
+        };
+
+        AcceptButton = ok;
+        CancelButton = cancel;
+        ClientSize = new Size(432, 238);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        StartPosition = FormStartPosition.CenterParent;
+        Text = title;
+    }
+
+    public static TValue? Ask<TValue>(IWin32Window owner, string title,
+        string prompt, IReadOnlyList<(string Text, TValue Value)> choices)
+        where TValue : struct
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+
+        using var dialog = new frmChoicePrompt(title, prompt,
+            choices.Select(c => c.Text));
+
+        if (dialog.ShowDialog(owner) != DialogResult.OK) return null;
+
+        var index = dialog._list.SelectedIndex;
+
+        return index >= 0 && index < choices.Count
+            ? choices[index].Value
+            : null;
+    }
+}

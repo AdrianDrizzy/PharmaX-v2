@@ -179,25 +179,38 @@ partial class frmPOS
 
         var x = PhxTheme.Gutter;
 
-        foreach (var (_, label) in PosKeyMap.Bar)
+        // Buttons, not labels. These were labels once, on the reasoning
+        // that the keyboard is the input device at a till and a button
+        // would only invite a mouse. The reasoning was sound and the
+        // result was not: a white box with a border and bold centred
+        // text is a button to everyone who looks at it, so the bar
+        // invited the click it then ignored.
+        foreach (var (key, label) in PosKeyMap.Bar)
         {
-            // Labels, not buttons: the keyboard is the input device at a
-            // till, and a button here would only invite a mouse.
-            var hint = new Label
+            var button = new Button
             {
-                AutoSize = false,
-                BackColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle,
                 Font = PhxTheme.Emphasis,
-                Location = new Point(x, 9),
-                Size = new Size(126, 30),
+                Location = new Point(x, 7),
+                Size = new Size(126, 34),
+
+                // The key it stands for, so one handler serves the whole
+                // bar and each button raises exactly what its key does.
+                Tag = key,
                 Text = label,
-                TextAlign = ContentAlignment.MiddleCenter
+                UseVisualStyleBackColor = true
             };
 
-            pnlFunctions.Controls.Add(hint);
+            button.Click += OnFunctionButton;
+
+            pnlFunctions.Controls.Add(button);
             x += 132;
         }
+
+        // Paying is what the screen is for, so it is the one that looks
+        // like it.
+        PhxTheme.MakePrimary(pnlFunctions.Controls
+            .OfType<Button>()
+            .First(b => (Keys)b.Tag! == PosKeyMap.Payment));
 
         // ---- Clock --------------------------------------------------------
         tmrClock.Enabled = true;

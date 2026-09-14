@@ -9,6 +9,7 @@ namespace PharmaX.Desktop.Features.Sales;
 public sealed class PosPresenter : PresenterBase<IPosView>
 {
     private readonly ISaleService _sales;
+    private readonly ICollectionService _collections;
     private readonly IPermissionService _permissions;
     private readonly IReceiptPrinter _receipts;
     private readonly ICashDrawer _drawer;
@@ -17,30 +18,84 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     private Guid _saleId;
     private SaleDto? _sale;
 
-    public PosPresenter(ISaleService sales, IPermissionService permissions,
-        IReceiptPrinter receipts, ICashDrawer drawer,
-        ReceiptHeaderFactory headers)
+    /// <summary>
+    /// Set before the screen loads where the till was opened on a script
+    /// waiting to be collected rather than on an empty basket.
+    /// </summary>
+    private Guid? _collecting;
+
+    public PosPresenter(ISaleService sales, ICollectionService collections,
+        IPermissionService permissions, IReceiptPrinter receipts,
+        ICashDrawer drawer, ReceiptHeaderFactory headers)
     {
         _sales = sales;
+        _collections = collections;
         _permissions = permissions;
         _receipts = receipts;
         _drawer = drawer;
         _headers = headers;
     }
 
+    /// <summary>
+    /// Opens the till on one dispensed script instead of an empty sale.
+    /// Called by the collection screen before the form loads.
+    /// </summary>
+    public void Collect(Guid dispensingId) => _collecting = dispensingId;
+
     protected override void Subscribe()
     {
         View.CodeScanned += (_, code) => _ = OnScanAsync(code);
         View.ProductSearchRequested += (_, _) => _ = OnSearchAsync(null);
+        View.CustomerRequested += (_, _) => _ = OnCustomerAsync();
         View.QuantityRequested += (_, _) => _ = OnQuantityAsync();
         View.LineDiscountRequested += (_, _) => _ = OnDiscountAsync();
         View.VoidLineRequested += (_, _) => _ = OnVoidAsync();
         View.PaymentRequested += (_, _) => _ = OnPaymentAsync();
         View.HoldRequested += (_, _) => _ = OnHoldAsync();
-        View.CloseRequested += (_, _) => View.CloseView(true);
+        // False, not true. The collection screen reads this dialog's
+        // result as "the patient paid", and closing the till is exactly
+        // the case where they did not - so it was telling the cashier
+        // the money had been taken when nothing had.
+        View.CloseRequested += (_, _) => View.CloseView(false);
     }
 
-    public override Task InitialiseAsync() => StartNewSaleAsync();
+    public override Task InitialiseAsync() =>
+        _collecting is Guid dispensingId
+            ? StartCollectionAsync(dispensingId)
+            : StartNewSaleAsync();
+
+    /// <summary>
+    /// Loads the script's co-payment as a sale, ready to be tendered.
+    /// </summary>
+    /// <remarks>
+    /// The lines are priced by the service from what the dispensing
+    /// says the patient owes, so there is nothing to scan and nothing
+    /// for the cashier to key: the till opens with the amount already
+    /// on it and the only thing left is the money. A failure here -
+    /// most likely another till having taken it a second earlier - is
+    /// reported and the screen closes rather than sitting open on a
+    /// sale the cashier cannot complete.
+    /// </remarks>
+    private Task StartCollectionAsync(Guid dispensingId) =>
+        GuardAsync(async () =>
+        {
+            var result = await _collections.StartAsync(dispensingId);
+
+            if (result.IsFailure)
+            {
+                View.ShowError(result.Error.Message);
+                View.CloseView(false);
+                return;
+            }
+
+            _sale = result.Value;
+            _saleId = _sale.Id;
+
+            View.ClearSale();
+            View.ShowLines(_sale.Lines);
+            View.ShowTotals(_sale.Totals);
+            View.FocusPayment();
+        });
 
     private Task StartNewSaleAsync() => GuardAsync(async () =>
     {
@@ -90,6 +145,47 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         }
 
         await RefreshAsync();
+    });
+
+    /// <summary>
+    /// Puts the sale on a customer's account.
+    /// </summary>
+    /// <remarks>
+    /// The account is what makes the Account tender mean anything: a
+    /// sale tendered to an account with none chosen is refused at
+    /// finalise, and was silently allowed before accounts existed.
+    /// </remarks>
+    private Task OnCustomerAsync() => GuardAsync(async () =>
+    {
+        if (View.PromptAccount() is not Application.Patients.AccountDto
+            chosen)
+        {
+            View.FocusScan();
+            return;
+        }
+
+        var result = await _sales.AssignAccountAsync(_saleId, chosen.Id);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            View.FocusScan();
+            return;
+        }
+
+        var account = result.Value;
+
+        // What the cashier needs on screen is how much room is left on
+        // the account, because that is what decides whether the sale can
+        // go on it at all.
+        View.ShowCustomer(account.Name,
+            string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                "Account {0}   owes {1}   {2} available",
+                account.AccountNumber, Format.Money(account.Balance),
+                Format.Money(account.Available)),
+            ratedPricing: false);
+
+        View.FocusScan();
     });
 
     private Task OnSearchAsync(string? term) =>
@@ -217,6 +313,17 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         // receipt for a sale that never committed, which is the worse of
         // the two failures (Section 20.2).
         await PrintAsync(payments);
+
+        // A collection is one patient's script and it is now paid for.
+        // Handing the cashier a fresh empty basket would leave them one
+        // window away from the queue with the next patient already
+        // waiting in it, so the till closes and the queue comes back.
+        if (_collecting is not null)
+        {
+            View.CloseView(true);
+            return;
+        }
+
         await StartNewSaleAsync();
     });
 

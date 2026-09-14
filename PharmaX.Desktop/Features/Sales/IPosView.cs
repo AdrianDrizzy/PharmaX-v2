@@ -11,6 +11,12 @@ public interface IPosView : Mvp.IView
     void ClearSale();
     void FocusScan();
 
+    /// <summary>
+    /// The one thing left to do on a collection: the lines are already
+    /// priced from the script, so there is nothing to scan.
+    /// </summary>
+    void FocusPayment();
+
     int? SelectedLineNo { get; }
 
     // Prompts, kept on the view because they are UI concerns; the
@@ -31,8 +37,15 @@ public interface IPosView : Mvp.IView
     /// </param>
     string? PromptProductSearch(string? term);
 
+    /// <summary>
+    /// Asks the operator to find the account this sale goes on, and
+    /// returns it. Null where they gave up.
+    /// </summary>
+    Application.Patients.AccountDto? PromptAccount();
+
     event EventHandler<string>? CodeScanned;
     event EventHandler? ProductSearchRequested; // F2
+    event EventHandler? CustomerRequested;      // F3
     event EventHandler? QuantityRequested;      // F4
     event EventHandler? LineDiscountRequested;  // F5
     event EventHandler? VoidLineRequested;      // Esc

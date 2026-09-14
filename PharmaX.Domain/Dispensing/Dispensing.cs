@@ -23,6 +23,22 @@ public sealed class Dispensing : AuditableEntity
     public Guid CapturedBy { get; private set; }
     public Guid? PharmacistId { get; private set; }
     public DateTime? IssuedAtUtc { get; private set; }
+
+    /// <summary>
+    /// The till sale that collected the patient's co-payment, once one
+    /// has. Null while the medicine is dispensed but not yet paid for.
+    /// </summary>
+    /// <remarks>
+    /// The join between the dispensary and the till. A pharmacist issues
+    /// and the patient walks to a cashier, so for a few minutes the
+    /// dispensing is real, the stock has gone, and no money has been
+    /// taken. That interval is what the collection queue shows, and it
+    /// is why this is nullable rather than a status: the dispensing is
+    /// issued either way, and what changes is whether it has been paid.
+    /// </remarks>
+    public Guid? SaleId { get; private set; }
+
+    public DateTime? CollectedAtUtc { get; private set; }
     public DispensingStatus Status { get; private set; } =
         DispensingStatus.InProgress;
 
@@ -38,6 +54,20 @@ public sealed class Dispensing : AuditableEntity
     /// What the patient pays at the till. The sale takes this figure.
     public Money CoPaymentTotal => _lines.Aggregate(
         Money.Zero(), (sum, l) => sum + l.CoPayment);
+
+    /// <summary>
+    /// Issued, and still waiting for a till to take the co-payment.
+    /// </summary>
+    /// <remarks>
+    /// A dispensing with nothing to pay is not waiting for anything -
+    /// a fully covered medical aid script is finished the moment it is
+    /// issued, and putting it in a queue for a cashier to collect
+    /// nothing would only teach the cashiers to ignore the queue.
+    /// </remarks>
+    public bool AwaitsCollection =>
+        Status == DispensingStatus.Issued
+        && SaleId is null
+        && !CoPaymentTotal.IsZero;
 
     public IReadOnlyList<ClinicalWarning> PendingWarnings =>
         _warnings.Where(w => !w.IsAcknowledged).ToList();
@@ -118,6 +148,26 @@ public sealed class Dispensing : AuditableEntity
     }
 
     /// <summary>
+    /// Records the till sale that collected the patient's co-payment.
+    /// </summary>
+    public void RecordCollection(Guid saleId, DateTime nowUtc)
+    {
+        if (Status != DispensingStatus.Issued)
+            throw new DomainException(
+                "Only an issued dispensing can be collected.");
+
+        if (SaleId is not null)
+            throw new DomainException(
+                $"{DocumentNumber} has already been paid for.");
+
+        if (saleId == Guid.Empty)
+            throw new DomainException("A collection needs a sale.");
+
+        SaleId = saleId;
+        CollectedAtUtc = nowUtc;
+    }
+
+    /// <summary>
     /// Reverses an issued dispensing. The record stays: a reversal is a
     /// new fact about the dispensing, not the removal of an old one.
     /// </summary>
@@ -125,6 +175,15 @@ public sealed class Dispensing : AuditableEntity
     {
         if (Status != DispensingStatus.Issued)
             throw new DomainException("Only an issued dispensing can be reversed.");
+
+        // Money has changed hands. Reversing the dispensing alone would
+        // put the stock back and leave the patient paid up for nothing;
+        // the sale has to be refunded through returns first, which is
+        // the path that actually gives the money back.
+        if (SaleId is not null)
+            throw new DomainException(
+                $"{DocumentNumber} has been paid for. Refund the sale "
+                + "through returns before reversing it.");
 
         if (string.IsNullOrWhiteSpace(reason))
             throw new DomainException("A reversal requires a reason.");

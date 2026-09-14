@@ -1,0 +1,130 @@
+using System.Globalization;
+using PharmaX.Application.Finance;
+using PharmaX.Desktop.Controls;
+using PharmaX.Desktop.Mvp;
+using PharmaX.Domain.Finance;
+
+namespace PharmaX.Desktop.Features.Finance;
+
+/// <summary>
+/// The accounts the books post to.
+/// </summary>
+public partial class frmChartOfAccounts : PhxFormBase, IChartView
+{
+    private readonly ChartPresenter? _presenter;
+
+    protected override string? RequiredPermission =>
+        Domain.Security.PermissionCode.LedgerRead;
+
+    /// Designer only. Never called at runtime.
+    public frmChartOfAccounts()
+    {
+        InitializeComponent();
+
+        chkInactive.CheckedChanged += (_, _) =>
+            RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+        btnAdd.Click += (_, _) => AddRequested?.Invoke(this, EventArgs.Empty);
+
+        btnRename.Click += (_, _) =>
+            RenameRequested?.Invoke(this, EventArgs.Empty);
+
+        btnDeactivate.Click += (_, _) =>
+            DeactivateRequested?.Invoke(this, EventArgs.Empty);
+
+        grdAccounts.DoubleClick += (_, _) =>
+            RenameRequested?.Invoke(this, EventArgs.Empty);
+
+        btnClose.Click += (_, _) => CloseView(false);
+    }
+
+    /// Runtime. Resolved by the container.
+    public frmChartOfAccounts(ChartPresenter presenter) : this()
+    {
+        _presenter = presenter;
+        _presenter.Attach(this);
+    }
+
+    protected override async void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        if (_presenter is not null) await _presenter.InitialiseAsync();
+    }
+
+    public bool IncludeInactive => chkInactive.Checked;
+
+    public Guid? SelectedAccountId =>
+        grdAccounts.CurrentRow?.DataBoundItem is AccountRow row
+            ? row.Id
+            : null;
+
+    public void ShowAccounts(IReadOnlyList<LedgerAccountDto> accounts)
+    {
+        ArgumentNullException.ThrowIfNull(accounts);
+
+        grdAccounts.DataSource = accounts.Select(AccountRow.From).ToList();
+
+        foreach (DataGridViewRow row in grdAccounts.Rows)
+        {
+            if (row.DataBoundItem is AccountRow { IsActive: false })
+                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+        }
+
+        lblCount.Text = string.Format(CultureInfo.CurrentCulture,
+            "{0} account(s)", accounts.Count);
+    }
+
+    public (string Code, string Name, LedgerAccountType Type)?
+        PromptNewAccount()
+    {
+        var code = frmTextPrompt.Ask(this, "New account",
+            "Account code, for example 6100");
+
+        if (string.IsNullOrWhiteSpace(code)) return null;
+
+        var name = frmTextPrompt.Ask(this, "New account",
+            $"What is account {code} called?");
+
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        var type = frmChoicePrompt.Ask(this, "New account",
+            $"What kind of account is {code} {name}?",
+            new[]
+            {
+                ("Asset", LedgerAccountType.Asset),
+                ("Liability", LedgerAccountType.Liability),
+                ("Equity", LedgerAccountType.Equity),
+                ("Income", LedgerAccountType.Income),
+                ("Expense", LedgerAccountType.Expense)
+            });
+
+        return type is null ? null : (code, name, type.Value);
+    }
+
+    public string? PromptRename(string current) =>
+        frmTextPrompt.Ask(this, "Rename account",
+            $"What should \"{current}\" be called?");
+
+    /// One account as the grid shows it.
+    private sealed record AccountRow(Guid Id, string Code, string Name,
+        string TypeText, string StatusText, bool IsActive)
+    {
+        public static AccountRow From(LedgerAccountDto dto) => new(
+            dto.Id, dto.Code, dto.Name,
+            dto.AccountType switch
+            {
+                LedgerAccountType.Asset => "Asset",
+                LedgerAccountType.Liability => "Liability",
+                LedgerAccountType.Equity => "Equity",
+                LedgerAccountType.Income => "Income",
+                _ => "Expense"
+            },
+            dto.IsActive ? "In use" : "Not in use",
+            dto.IsActive);
+    }
+
+    public event EventHandler? RefreshRequested;
+    public event EventHandler? AddRequested;
+    public event EventHandler? RenameRequested;
+    public event EventHandler? DeactivateRequested;
+}

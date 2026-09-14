@@ -10,6 +10,10 @@ namespace PharmaX.Reporting.Exporters;
 
 public sealed class ExcelExporter : IReportExporter
 {
+    private readonly IReportBranding _branding;
+
+    public ExcelExporter(IReportBranding branding) => _branding = branding;
+
     public ExportFormat Format => ExportFormat.Excel;
 
     public string Write(ReportResult report, string directory)
@@ -19,16 +23,20 @@ public sealed class ExcelExporter : IReportExporter
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add(SheetName(report.Title));
 
+        var top = AddLogo(sheet);
+
         // Provenance first, so an exported file can still answer
         // "what was this?" a month later (RPT-012).
-        sheet.Cell(1, 1).Value = report.Title;
-        sheet.Cell(2, 1).Value = report.Provenance.ParameterSummary;
-        sheet.Cell(3, 1).Value = string.Format(CultureInfo.CurrentCulture,
+        sheet.Cell(top, 1).Value = report.Title;
+        sheet.Cell(top, 1).Style.Font.Bold = true;
+        sheet.Cell(top + 1, 1).Value = report.Provenance.ParameterSummary;
+        sheet.Cell(top + 2, 1).Value = string.Format(
+            CultureInfo.CurrentCulture,
             "Run by {0} at {1:dd/MM/yyyy HH:mm} - {2}",
             report.Provenance.RunByUsername, report.Provenance.RunAtLocal,
             report.Provenance.DataCurrency);
 
-        const int headerRow = 5;
+        var headerRow = top + 4;
 
         for (var c = 0; c < report.Columns.Count; c++)
         {
@@ -65,6 +73,53 @@ public sealed class ExcelExporter : IReportExporter
         var path = Path.Combine(directory, FileName(report, "xlsx"));
         workbook.SaveAs(path);
         return path;
+    }
+
+    /// <summary>
+    /// Puts the pharmacy's logo at the top of the sheet and returns the
+    /// first row the report itself may use.
+    /// </summary>
+    /// <remarks>
+    /// Anchored to a cell and sized in rows rather than dropped at a
+    /// pixel offset, so the provenance lines below it are never written
+    /// underneath the picture. An unreadable or missing file costs the
+    /// export nothing: the sheet starts at row one and the figures are
+    /// the same either way.
+    /// </remarks>
+    private int AddLogo(IXLWorksheet sheet)
+    {
+        const int firstRowWithoutLogo = 1;
+
+        var path = _branding.LogoPath;
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return firstRowWithoutLogo;
+
+        try
+        {
+            using var stream = new MemoryStream(File.ReadAllBytes(path));
+
+            var picture = sheet.AddPicture(stream)
+                               .MoveTo(sheet.Cell(1, 1));
+
+            // Four rows of roughly the default height, which is enough
+            // for a wordmark without pushing the data off the screen.
+            const int rows = 4;
+            const int heightPixels = 68;
+
+            var scale = (double)heightPixels / picture.OriginalHeight;
+
+            if (scale < 1d)
+                picture.Scale(scale);
+
+            return rows + 2;
+        }
+#pragma warning disable CA1031 // Deliberately broad: see the remarks.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return firstRowWithoutLogo;
+        }
     }
 
     private static string SheetName(string title)

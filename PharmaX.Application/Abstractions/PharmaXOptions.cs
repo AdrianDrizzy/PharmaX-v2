@@ -8,6 +8,8 @@ public sealed class PharmaXOptions
     public ConnectivityOptions Connectivity { get; init; } = new();
     public NumberingOptions Numbering { get; init; } = new();
     public FeatureFlags Features { get; init; } = new();
+    public AlertOptions Alerts { get; init; } = new();
+    public AccountingOptions Accounting { get; init; } = new();
     public LoggingOptions Logging { get; init; } = new();
     public AccountingOptions Accounting { get; init; } = new();
     public DevelopmentOptions Development { get; init; } = new();
@@ -69,8 +71,96 @@ public sealed class DatabaseOptions
     public string HostConnection { get; init; } = "";
     public string LocalConnection { get; init; } = "";
 
+    /// <summary>
+    /// One database for the whole pharmacy, on a machine every
+    /// workstation can reach. Setting it turns off standalone mode.
+    /// </summary>
+    /// <remarks>
+    /// This is the arrangement a single site on one switch actually
+    /// wants: the pharmacist dispenses and the tills see it at once,
+    /// with no sync engine in between. It trades away the offline-first
+    /// promise of NET-002 - if the machine holding the database is off,
+    /// the tills do not fall back to working locally, they stop - which
+    /// is the right trade for one site and the wrong one for a branch on
+    /// the end of a bad line. Leave it empty and nothing changes: the
+    /// workstation keeps its own SQLite file as before.
+    /// </remarks>
+    public string SharedConnection { get; init; } = "";
+
+    /// <summary>
+    /// Which server the shared database runs on, as a version string:
+    /// "8.0.42-mysql" or "10.11.0-mariadb". Empty uses the built-in
+    /// default.
+    /// </summary>
+    /// <remarks>
+    /// MySQL and MariaDB have diverged enough that the driver emits
+    /// different SQL for each, so this is not cosmetic: a context told
+    /// it is talking to MariaDB while connected to MySQL generates
+    /// statements the server can reject. Configuration rather than a
+    /// constant because a pharmacy installs whichever its supplier
+    /// supports, and both are reasonable.
+    /// </remarks>
+    public string ServerVersion { get; init; } = "";
+
+    /// True where the pharmacy runs on one shared database.
+    public bool IsShared => !string.IsNullOrWhiteSpace(SharedConnection);
+
     public string ResolvedLocalConnection =>
         Environment.ExpandEnvironmentVariables(LocalConnection);
+}
+
+/// <summary>
+/// When stock counts as a problem worth telling the staff about.
+/// </summary>
+/// <remarks>
+/// Pharmacy-wide rather than per-workstation: whether a batch three
+/// months from expiry is a worry is a property of how the business
+/// buys, not of which till happens to be showing it, and two tills
+/// disagreeing about what is urgent would be worse than either answer.
+/// </remarks>
+public sealed class AlertOptions
+{
+    /// <summary>
+    /// How far ahead an expiry starts being worth mentioning.
+    /// </summary>
+    /// <remarks>
+    /// Ninety days is roughly the point at which something can still be
+    /// sold through, returned to the wholesaler, or swapped - after
+    /// which the pharmacy is going to eat the cost.
+    /// </remarks>
+    public int ExpiryWarningDays { get; init; } = 90;
+
+    /// Inside this, it is no longer a warning but a thing to act on today.
+    public int ExpiryCriticalDays { get; init; } = 30;
+
+    /// <summary>
+    /// Turns the whole alert centre off, for a site that would rather
+    /// run its own stock reports.
+    /// </summary>
+    public bool Enabled { get; init; } = true;
+}
+
+/// <summary>
+/// The pharmacy's own books.
+/// </summary>
+/// <remarks>
+/// Not to be confused with Features.AccountingPosting, which is about
+/// handing figures to an outside accounting package. This one is about
+/// whether PharmaX keeps a ledger of its own at all.
+/// </remarks>
+public sealed class AccountingOptions
+{
+    /// <summary>
+    /// Writes a journal for every sale, refund, delivery and cash-up.
+    /// </summary>
+    /// <remarks>
+    /// On by default, because books that only start when somebody
+    /// remembers to switch them on have a hole in them from opening day
+    /// to whenever that was. Turning it off stops new journals; it does
+    /// not remove the ones already posted, and the chart, the manual
+    /// journals and the trial balance all keep working.
+    /// </remarks>
+    public bool AutoPost { get; init; } = true;
 }
 
 public sealed class ConnectivityOptions

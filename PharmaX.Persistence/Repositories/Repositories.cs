@@ -4,7 +4,9 @@ using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Claims;
 using PharmaX.Domain.Dispensing;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
 using PharmaX.Domain.Primitives;
@@ -46,6 +48,15 @@ public sealed class SaleRepository : ISaleRepository
             .Where(s => s.TillSessionId == tillSessionId)
             .OrderBy(s => s.OccurredAtUtc)
             .ToListAsync(ct);
+
+    public async Task<Sale?> OpenCollectionForAsync(Guid dispensingId,
+        CancellationToken ct = default) =>
+        await _db.Sales
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .Where(s => s.DispensingId == dispensingId)
+            .Where(s => s.Status == SaleStatus.Open)
+            .FirstOrDefaultAsync(ct);
 
     public async Task<Sale?> ByDocumentNumberAsync(string documentNumber,
         CancellationToken ct = default) =>
@@ -103,6 +114,21 @@ public sealed class ProductRepository : IProductRepository
     public async Task<int> CountAsync(string term,
         CancellationToken ct = default) =>
         await Matching(term).CountAsync(ct);
+
+    /// <remarks>
+    /// Filtered in the database rather than by pulling the catalogue
+    /// across the network and counting in memory: every workstation runs
+    /// this on a timer all day, and the pharmacy's catalogue is several
+    /// hundred lines of which a handful are ever low.
+    /// </remarks>
+    public async Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
+        CancellationToken ct = default) =>
+        await _db.Products
+            .Where(p => p.IsActive)
+            .Where(p => p.ReorderLevel > 0m)
+            .Where(p => p.QuantityOnHand <= p.ReorderLevel)
+            .OrderBy(p => p.Description)
+            .ToListAsync(ct);
 
     public async Task AddAsync(Product product, CancellationToken ct = default)
         => await _db.Products.AddAsync(product, ct);
@@ -193,6 +219,26 @@ public sealed class PatientRepository : IPatientRepository
     public async Task AddClinicalProfileAsync(ClinicalProfile profile,
         CancellationToken ct = default) =>
         await _db.ClinicalProfiles.AddAsync(profile, ct);
+
+    public async Task<IReadOnlyList<PatientAttachment>> AttachmentsAsync(
+        Guid patientId, CancellationToken ct = default) =>
+        await _db.PatientAttachments
+            .AsNoTracking()
+            .Where(a => a.PatientId == patientId)
+            .OrderByDescending(a => a.CapturedAtUtc)
+            .ToListAsync(ct);
+
+    public async Task<PatientAttachment?> AttachmentAsync(Guid attachmentId,
+        CancellationToken ct = default) =>
+        await _db.PatientAttachments
+            .FirstOrDefaultAsync(a => a.Id == attachmentId, ct);
+
+    public async Task AddAttachmentAsync(PatientAttachment attachment,
+        CancellationToken ct = default) =>
+        await _db.PatientAttachments.AddAsync(attachment, ct);
+
+    public void RemoveAttachment(PatientAttachment attachment) =>
+        _db.PatientAttachments.Remove(attachment);
 
     public async Task<IReadOnlySet<Guid>> WithAllergiesAsync(
         IEnumerable<Guid> patientIds, CancellationToken ct = default)
@@ -291,6 +337,19 @@ public sealed class TillSessionRepository : ITillSessionRepository
     public async Task AddDeclarationAsync(TillDeclaration declaration,
         CancellationToken ct = default) =>
         await _db.TillDeclarations.AddAsync(declaration, ct);
+
+    /// <remarks>
+    /// The latest rather than the one marked final: an operator can
+    /// recount, and what closes the till is the last count they stood
+    /// behind.
+    /// </remarks>
+    public async Task<TillDeclaration?> LatestDeclarationAsync(
+        Guid tillSessionId, CancellationToken ct = default) =>
+        await _db.TillDeclarations
+            .Include(d => d.Lines)
+            .Where(d => d.TillSessionId == tillSessionId)
+            .OrderByDescending(d => d.DeclaredAtUtc)
+            .FirstOrDefaultAsync(ct);
 }
 
 public sealed class DispensingRepository : IDispensingRepository
@@ -321,6 +380,28 @@ public sealed class DispensingRepository : IDispensingRepository
             .Where(d => d.PatientId == patientId)
             .OrderByDescending(d => d.IssuedAtUtc)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Filtered in the database rather than in memory: this runs on
+    /// every refresh of a screen a cashier keeps open all day, and a
+    /// pharmacy with a year of dispensings behind it would otherwise
+    /// pull all of them across the network to find the four that are
+    /// waiting. The co-payment itself is checked on the client, because
+    /// it is a sum over the lines and SQLite cannot total a decimal.
+    /// </remarks>
+    public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
+        AwaitingCollectionAsync(CancellationToken ct = default)
+    {
+        var issued = await _db.Dispensings
+            .Include(d => d.Lines)
+            .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Issued)
+            .Where(d => d.SaleId == null)
+            .OrderBy(d => d.IssuedAtUtc)
+            .ToListAsync(ct);
+
+        return issued.Where(d => d.AwaitsCollection).ToList();
+    }
 
     public async Task AddAsync(Domain.Dispensing.Dispensing dispensing,
         CancellationToken ct = default) =>
@@ -607,4 +688,282 @@ public sealed class ReturnRepository : IReturnRepository
     public async Task AddAsync(SaleReturn saleReturn,
         CancellationToken ct = default) =>
         await _db.SaleReturns.AddAsync(saleReturn, ct);
+}
+
+/// <summary>
+/// The books.
+/// </summary>
+/// <remarks>
+/// Journal lines carry an account code rather than a foreign key to the
+/// account row, which is deliberate: a posted journal is a historical
+/// record, and it must still read correctly if somebody later
+/// deactivates the account it went to. The cost is that these queries
+/// join on a string, which is what the index on AccountCode is for.
+/// </remarks>
+public sealed class LedgerRepository : ILedgerRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public LedgerRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<LedgerAccount>> AccountsAsync(
+        bool includeInactive = false, CancellationToken ct = default) =>
+        await _db.LedgerAccounts
+            .Where(a => includeInactive || a.IsActive)
+            .OrderBy(a => a.Code)
+            .ToListAsync(ct);
+
+    public async Task<LedgerAccount?> AccountAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.LedgerAccounts.FirstOrDefaultAsync(a => a.Id == id, ct);
+
+    public async Task<LedgerAccount?> AccountByCodeAsync(string code,
+        CancellationToken ct = default) =>
+        await _db.LedgerAccounts.FirstOrDefaultAsync(a => a.Code == code, ct);
+
+    public async Task AddAccountAsync(LedgerAccount account,
+        CancellationToken ct = default) =>
+        await _db.LedgerAccounts.AddAsync(account, ct);
+
+    public async Task<JournalBatch?> BatchAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.JournalBatches
+            .Include(j => j.Lines)
+            .FirstOrDefaultAsync(j => j.Id == id, ct);
+
+    public async Task<IReadOnlyList<JournalBatch>> BatchesAsync(DateOnly from,
+        DateOnly until, CancellationToken ct = default) =>
+        await _db.JournalBatches
+            .AsNoTracking()
+            .Include(j => j.Lines)
+            .Where(j => j.PostingDate >= from && j.PostingDate <= until)
+            .OrderByDescending(j => j.PostingDate)
+            .ThenByDescending(j => j.BatchNumber)
+            .ToListAsync(ct);
+
+    public async Task AddBatchAsync(JournalBatch batch,
+        CancellationToken ct = default) =>
+        await _db.JournalBatches.AddAsync(batch, ct);
+
+    /// <remarks>
+    /// Filtered in the database and summed here. SQLite cannot apply Sum
+    /// to a decimal, and a workstation database is always SQLite, so the
+    /// grouping has to happen in memory either way - which is also why
+    /// the projection takes three columns rather than whole entities.
+    /// </remarks>
+    public async Task<IReadOnlyList<AccountTotals>> TotalsAsync(DateOnly asAt,
+        CancellationToken ct = default)
+    {
+        var lines = await PostedLines()
+            .Where(x => x.Batch.PostingDate <= asAt)
+            .Select(x => new
+            {
+                x.Line.AccountCode,
+                x.Line.IsDebit,
+                x.Line.Amount.Amount
+            })
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(l => l.AccountCode, StringComparer.Ordinal)
+            .Select(g => new AccountTotals(
+                g.Key,
+                g.Where(l => l.IsDebit).Sum(l => l.Amount),
+                g.Where(l => !l.IsDebit).Sum(l => l.Amount)))
+            .OrderBy(t => t.AccountCode, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<LedgerEntry>> EntriesAsync(
+        string accountCode, DateOnly from, DateOnly until,
+        CancellationToken ct = default)
+    {
+        var rows = await PostedLines()
+            .Where(x => x.Line.AccountCode == accountCode)
+            .Where(x => x.Batch.PostingDate >= from)
+            .Where(x => x.Batch.PostingDate <= until)
+            .OrderBy(x => x.Batch.PostingDate)
+            .ThenBy(x => x.Batch.BatchNumber)
+            .ThenBy(x => x.Line.LineNo)
+            .Select(x => new
+            {
+                x.Batch.PostingDate,
+                x.Batch.BatchNumber,
+                x.Batch.Source,
+                x.Line.AccountCode,
+                x.Line.IsDebit,
+                x.Line.Amount.Amount,
+
+                // The line's own narration where it has one, and the
+                // batch's where it has not: a hand-written journal
+                // explains itself line by line, and an automatic one
+                // says the same thing once at the top.
+                Narration = x.Line.Narration ?? x.Batch.Narration
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(r => new LedgerEntry(r.PostingDate, r.BatchNumber,
+                r.Source, r.AccountCode,
+                r.IsDebit ? r.Amount : 0m,
+                r.IsDebit ? 0m : r.Amount,
+                r.Narration))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every line of every posted batch, paired with its batch.
+    /// </summary>
+    /// <remarks>
+    /// Unposted batches are drafts: a half-captured journal must not
+    /// appear in a trial balance, and it is the one place an unbalanced
+    /// set of lines is allowed to exist.
+    /// </remarks>
+    private IQueryable<BatchLine> PostedLines() =>
+        _db.JournalBatches
+            .AsNoTracking()
+            .Where(j => j.IsPosted)
+            .SelectMany(j => j.Lines, (batch, line) => new BatchLine
+            {
+                Batch = batch,
+                Line = line
+            });
+
+    private sealed class BatchLine
+    {
+        public JournalBatch Batch { get; init; } = null!;
+        public JournalLine Line { get; init; } = null!;
+    }
+}
+
+/// <summary>
+/// What the medical aid schemes owe.
+/// </summary>
+public sealed class ClaimRepository : IClaimRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public ClaimRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<MedicalAidClaim?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims.FirstOrDefaultAsync(c => c.Id == id, ct);
+
+    public async Task<MedicalAidClaim?> ByNumberAsync(string claimNumber,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims
+            .FirstOrDefaultAsync(c => c.ClaimNumber == claimNumber, ct);
+
+    public async Task<MedicalAidClaim?> ForDispensingAsync(Guid dispensingId,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims
+            .FirstOrDefaultAsync(c => c.DispensingId == dispensingId, ct);
+
+    /// <remarks>
+    /// Filtered on status in the database rather than by reading every
+    /// claim the pharmacy has ever made: a busy dispensary raises
+    /// hundreds a month and only the open ones are ever worked.
+    /// </remarks>
+    public async Task<IReadOnlyList<MedicalAidClaim>> OutstandingAsync(
+        Guid? schemeId = null, CancellationToken ct = default) =>
+        await _db.MedicalAidClaims
+            .Where(c => c.Status == ClaimStatus.Outstanding
+                     || c.Status == ClaimStatus.PartPaid)
+            .Where(c => schemeId == null || c.SchemeId == schemeId)
+            .OrderBy(c => c.ClaimedOn)
+            .ThenBy(c => c.ClaimNumber)
+            .ToListAsync(ct);
+
+    public async Task AddAsync(MedicalAidClaim claim,
+        CancellationToken ct = default) =>
+        await _db.MedicalAidClaims.AddAsync(claim, ct);
+}
+
+/// <summary>
+/// What patients owe the pharmacy.
+/// </summary>
+public sealed class AccountRepository : IAccountRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public AccountRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<Account?> GetAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.Accounts.FirstOrDefaultAsync(a => a.Id == id, ct);
+
+    public async Task<Account?> ByNumberAsync(string accountNumber,
+        CancellationToken ct = default) =>
+        await _db.Accounts
+            .FirstOrDefaultAsync(a => a.AccountNumber == accountNumber, ct);
+
+    public async Task<IReadOnlyList<Account>> SearchAsync(string term,
+        int take = 100, CancellationToken ct = default)
+    {
+        var query = _db.Accounts.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(a => a.AccountNumber.Contains(term)
+                                  || a.Name.Contains(term));
+
+        return await query
+            .OrderBy(a => a.Name)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    /// <remarks>
+    /// Filtered in the database and ordered here, because SQLite cannot
+    /// order by a decimal it has not selected and the rows are the
+    /// handful of accounts that actually owe something.
+    /// </remarks>
+    public async Task<IReadOnlyList<Account>> OwingAsync(
+        CancellationToken ct = default)
+    {
+        var owing = await _db.Accounts
+            .AsNoTracking()
+            .Where(a => a.Balance.Amount > 0m)
+            .ToListAsync(ct);
+
+        return owing
+            .OrderByDescending(a => a.Balance.Amount)
+            .ToList();
+    }
+
+    public async Task AddAsync(Account account,
+        CancellationToken ct = default) =>
+        await _db.Accounts.AddAsync(account, ct);
+
+    public async Task<IReadOnlyList<AccountTransaction>> TransactionsAsync(
+        Guid accountId, DateOnly from, DateOnly until,
+        CancellationToken ct = default) =>
+        await _db.AccountTransactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId)
+            .Where(t => t.OccurredOn >= from && t.OccurredOn <= until)
+            .OrderBy(t => t.OccurredOn)
+            .ThenBy(t => t.CreatedAtUtc)
+            .ToListAsync(ct);
+
+    public async Task AddTransactionAsync(AccountTransaction transaction,
+        CancellationToken ct = default) =>
+        await _db.AccountTransactions.AddAsync(transaction, ct);
+
+    /// <remarks>
+    /// Summed here rather than in SQL for the same reason as everywhere
+    /// else: SQLite will not total a decimal. One account's movements
+    /// are a page of rows, not a table scan.
+    /// </remarks>
+    public async Task<decimal> MovementTotalAsync(Guid accountId,
+        CancellationToken ct = default)
+    {
+        var movements = await _db.AccountTransactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId)
+            .Select(t => new { t.Kind, t.Amount.Amount })
+            .ToListAsync(ct);
+
+        return movements.Sum(m =>
+            m.Kind == AccountEntryKind.Charge ? m.Amount : -m.Amount);
+    }
 }

@@ -94,7 +94,11 @@ public class SaleServiceTests
         // produce a second sale (NET-006).
         first.IsSuccess.Should().BeTrue();
         second.Value.DocumentNumber.Should().Be(first.Value.DocumentNumber);
-        builder.Numbering.IssuedCount.Should().Be(1);
+        builder.Numbering.IssuedFor("SALE").Should().Be(1);
+
+        // And the second attempt posted no second journal either: the
+        // books would otherwise show the day's takings twice.
+        builder.Ledger.Posted.Should().ContainSingle();
     }
 
     [Fact]

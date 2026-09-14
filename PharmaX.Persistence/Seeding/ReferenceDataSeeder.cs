@@ -40,6 +40,30 @@ public sealed class ReferenceDataSeeder
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// The standard chart, so that the first sale of the day has
+    /// somewhere to post to.
+    /// </summary>
+    /// <remarks>
+    /// Adds only what is missing and renames nothing. A pharmacy that
+    /// has called account 4000 something other than "Sales" has made a
+    /// decision, and a seeder that put its own name back every morning
+    /// would be overruling it.
+    /// </remarks>
+    private async Task SeedChartOfAccountsAsync(CancellationToken ct)
+    {
+        var existing = await _db.LedgerAccounts
+            .Select(a => a.Code)
+            .ToListAsync(ct);
+
+        foreach (var (code, name, type) in LedgerCode.Standard)
+        {
+            if (existing.Contains(code, StringComparer.Ordinal)) continue;
+
+            _db.LedgerAccounts.Add(LedgerAccount.Create(code, name, type));
+        }
+    }
+
     private async Task SeedPermissionsAsync(CancellationToken ct)
     {
         var existing = await _db.Permissions
@@ -101,7 +125,13 @@ public sealed class ReferenceDataSeeder
                 PermissionCode.GoodsReceive,
                 PermissionCode.ReportOperational,
                 PermissionCode.ReportManagement,
-                PermissionCode.ReportFinancial
+                PermissionCode.ReportFinancial,
+
+                // The books are a manager's job. A cashier posting a
+                // journal is how a till shortage quietly becomes a
+                // rounding adjustment.
+                PermissionCode.LedgerRead,
+                PermissionCode.LedgerPost
             },
 
             Role.Standard.Pharmacist => new[]

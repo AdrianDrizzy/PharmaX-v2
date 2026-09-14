@@ -7,6 +7,29 @@
     <RootNamespace>PharmaX.Desktop</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+
+    <!-- Publishing. Self-contained because a pharmacy PC is not a
+         machine anybody is going to install a .NET runtime on first,
+         and the whole promise of the installer is that it is the only
+         thing they have to run.
+
+         Published as a folder rather than as a single file. The
+         single-file build leaves the native libraries beside the
+         executable anyway - e_sqlite3, the PDF renderer, the WPF
+         graphics used by printing - unless they are made to
+         self-extract on every start, and a till on a shop counter is
+         the wrong place to trade reliable startup for a tidier folder.
+         The installer hides the folder from whoever is using it. -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- Trimming is off deliberately: EF Core and the options binder
+         both reach for types by reflection, and a trimmed build fails
+         at the first query rather than at build time - which is the
+         worst possible place to find out. -->
+
+    <Version>1.0.0</Version>
+    <Company>PharmaX</Company>
+    <Product>PharmaX</Product>
   </PropertyGroup>
 
   <!-- Section 4.1: Desktop references the infrastructure projects because
@@ -23,6 +46,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+
+    <!-- The first-run wizard only. It runs before the host is built, so
+         it cannot ask the container for a connection, and its whole job
+         is to tell the operator why the server will not answer. -->
+    <PackageReference Include="MySqlConnector" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Sinks.File" />
@@ -35,8 +63,14 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Copied for a developer running from bin, and deliberately NOT
+         published. It holds a real database password, and PharmaX skips
+         its first-run wizard when it finds one - so a published build
+         carrying this file would ship somebody's credentials and come
+         up already configured as their machine. -->
     <None Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 

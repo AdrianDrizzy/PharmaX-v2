@@ -99,6 +99,123 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.ToTable("Batch", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Claims.MedicalAidClaim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ClaimNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateOnly>("ClaimedOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("DependantCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<Guid>("DispensingId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("MembershipNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<Guid>("SchemeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("SettledAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("WriteOffReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Claimed", "PharmaX.Domain.Claims.MedicalAidClaim.Claimed#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Claimed");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("varchar(3)")
+                                .HasColumnName("ClaimedCurrency");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("Settled", "PharmaX.Domain.Claims.MedicalAidClaim.Settled#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Settled");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("varchar(3)")
+                                .HasColumnName("SettledCurrency");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("WrittenOff", "PharmaX.Domain.Claims.MedicalAidClaim.WrittenOff#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("WrittenOff");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("varchar(3)")
+                                .HasColumnName("WrittenOffCurrency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClaimNumber")
+                        .IsUnique();
+
+                    b.HasIndex("DispensingId")
+                        .IsUnique();
+
+                    b.HasIndex("SchemeId", "Status");
+
+                    b.HasIndex("Status", "ClaimedOn");
+
+                    b.ToTable("MedicalAidClaim", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Dispensing.ClinicalWarning", b =>
                 {
                     b.Property<Guid>("Id")
@@ -150,6 +267,9 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.Property<Guid>("CapturedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("CollectedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -178,6 +298,9 @@ namespace PharmaX.Persistence.Migrations.Host
                         .IsRequired()
                         .HasColumnType("longblob");
 
+                    b.Property<Guid?>("SaleId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("ScriptId")
                         .HasColumnType("char(36)");
 
@@ -197,6 +320,8 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.HasIndex("ScriptId");
 
                     b.HasIndex("PatientId", "IssuedAtUtc");
+
+                    b.HasIndex("Status", "SaleId", "IssuedAtUtc");
 
                     b.ToTable("Dispensing", (string)null);
                 });
@@ -1004,6 +1129,68 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.ToTable("Account", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Patients.AccountTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Narration")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<DateOnly>("OccurredOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Patients.AccountTransaction.Amount#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("varchar(3)")
+                                .HasColumnName("AmountCurrency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "OccurredOn");
+
+                    b.ToTable("AccountTransaction", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Patients.Allergy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1105,6 +1292,10 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.Property<DateOnly?>("DateOfBirth")
                         .HasColumnType("date");
 
+                    b.Property<string>("DependantCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
                     b.Property<string>("Email")
                         .HasMaxLength(150)
                         .HasColumnType("varchar(150)");
@@ -1125,6 +1316,13 @@ namespace PharmaX.Persistence.Migrations.Host
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid?>("MedicalAidSchemeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("MembershipNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -1156,6 +1354,72 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.HasIndex("Surname", "FirstNames");
 
                     b.ToTable("Patient", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Patients.PatientAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CapturedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CapturedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<Guid?>("ScriptId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScriptId");
+
+                    b.HasIndex("PatientId", "CapturedAtUtc");
+
+                    b.ToTable("PatientAttachment", (string)null);
                 });
 
             modelBuilder.Entity("PharmaX.Domain.Reference.Branch", b =>
@@ -1547,6 +1811,9 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("DispensingId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("DocumentNumber")
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
@@ -1583,6 +1850,9 @@ namespace PharmaX.Persistence.Migrations.Host
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DispensingId")
+                        .IsUnique();
 
                     b.HasIndex("BranchId", "OccurredAtUtc");
 
@@ -2599,6 +2869,10 @@ namespace PharmaX.Persistence.Migrations.Host
 
             modelBuilder.Entity("PharmaX.Persistence.WorkstationSetting", b =>
                 {
+                    b.Property<string>("WorkstationCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("Key")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
@@ -2610,7 +2884,7 @@ namespace PharmaX.Persistence.Migrations.Host
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
-                    b.HasKey("Key");
+                    b.HasKey("WorkstationCode", "Key");
 
                     b.ToTable("WorkstationSetting", (string)null);
                 });

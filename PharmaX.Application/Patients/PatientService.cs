@@ -94,12 +94,18 @@ public sealed class PatientService : IPatientService
 
         // Allocated, not typed: a file number the operator invents is a
         // number two patients eventually share.
-        var fileNumber = await _numbering.NextAsync("PAT", ct);
+        var fileNumber = await _numbering.NextAsync(DocumentSeries.Patient, ct);
 
         var patient = Patient.Create(fileNumber, edit.Surname,
             edit.FirstNames, edit.DateOfBirth, edit.IdNumber);
 
         patient.UpdateContact(edit.Telephone, edit.Email);
+
+        // Who pays. Set here rather than on a screen of its own, because
+        // the membership number is captured at the counter at the same
+        // moment as the telephone number.
+        patient.SetMedicalAid(edit.MedicalAidSchemeId,
+                              edit.MembershipNumber, edit.DependantCode);
 
         await _patients.AddAsync(patient, ct);
 
@@ -134,6 +140,12 @@ public sealed class PatientService : IPatientService
         patient.Amend(edit.Surname, edit.FirstNames, edit.IdNumber,
                       edit.DateOfBirth);
         patient.UpdateContact(edit.Telephone, edit.Email);
+
+        // Who pays. Set here rather than on a screen of its own, because
+        // the membership number is captured at the counter at the same
+        // moment as the telephone number.
+        patient.SetMedicalAid(edit.MedicalAidSchemeId,
+                              edit.MembershipNumber, edit.DependantCode);
 
         var profile = await _patients.ClinicalProfileAsync(id, ct);
 

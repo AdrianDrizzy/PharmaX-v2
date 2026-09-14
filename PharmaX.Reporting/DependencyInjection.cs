@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using PharmaX.Application.Reporting;
 using PharmaX.Reporting.Definitions;
 using PharmaX.Reporting.Engine;
@@ -27,6 +28,11 @@ public static class DependencyInjection
         services.AddScoped<IReportDefinition, ReversedScriptsReport>();
         services.AddScoped<IReportDefinition, StockMovementsReport>();
         services.AddScoped<IReportDefinition, PriceChangesReport>();
+
+        // A default the desktop layer overrides with the real logo.
+        // Registered here so that a host without a UI - the test
+        // fixture, or a future service - still exports cleanly.
+        services.TryAddSingleton<IReportBranding, NoReportBranding>();
 
         services.AddSingleton<IReportExporter, PdfExporter>();
         services.AddSingleton<IReportExporter, ExcelExporter>();

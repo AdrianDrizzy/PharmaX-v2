@@ -1,4 +1,5 @@
 using PharmaX.Desktop.Controls;
+using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Patients;
 
@@ -8,6 +9,10 @@ partial class frmPatientEdit
     private TabControl tabs = null!;
     private TabPage tabIdentity = null!;
     private TabPage tabClinical = null!;
+    private TabPage tabMedicalAid = null!;
+    private ComboBox cboScheme = null!;
+    private TextBox txtMembershipNumber = null!;
+    private TextBox txtDependantCode = null!;
     private Label lblFileNumber = null!;
     private Label lblFileNumberValue = null!;
     private Label lblAge = null!;
@@ -41,6 +46,10 @@ partial class frmPatientEdit
         tabs = new TabControl();
         tabIdentity = new TabPage("Identity");
         tabClinical = new TabPage("Clinical");
+        tabMedicalAid = new TabPage("Medical aid");
+        cboScheme = new ComboBox();
+        txtMembershipNumber = new TextBox();
+        txtDependantCode = new TextBox();
         lblFileNumber = new Label();
         lblFileNumberValue = new Label();
         lblAge = new Label();
@@ -217,8 +226,40 @@ partial class frmPatientEdit
         });
         tabClinical.UseVisualStyleBackColor = true;
 
+        // ---- Medical aid -------------------------------------------------
+        cboScheme.DropDownStyle = ComboBoxStyle.DropDownList;
+        Field(tabMedicalAid, "&Scheme", cboScheme, 0, 260, 0);
+
+        // "Membership number" is wider than the gap the Field helper
+        // leaves before the input, and ran into it.
+        Field(tabMedicalAid, "Membership &no.", txtMembershipNumber,
+              1, 200, 40);
+
+        Field(tabMedicalAid, "&Dependant code", txtDependantCode, 2, 80, 10);
+
+        tabMedicalAid.Controls.Add(new Label
+        {
+            AutoSize = false,
+            ForeColor = PhxTheme.Muted,
+            Location = new Point(20, 20 + 3 * 34 + 12),
+            Size = new Size(520, 60),
+
+            // Said on the screen because it is the part staff get wrong:
+            // a claim is only raised where both are present, and a
+            // dependant code of "1" where the scheme expects "01" comes
+            // back rejected weeks later.
+            Text = "A claim is raised automatically when a script is "
+                 + "issued, but only where a scheme and a membership "
+                 + "number are both recorded here. Enter the dependant "
+                 + "code exactly as the scheme writes it - \"00\" for the "
+                 + "main member."
+        });
+
+        tabMedicalAid.UseVisualStyleBackColor = true;
+
         tabs.Controls.Add(tabIdentity);
         tabs.Controls.Add(tabClinical);
+        tabs.Controls.Add(tabMedicalAid);
         tabs.Dock = DockStyle.Top;
         tabs.Height = 420;
         tabs.Name = "tabs";
