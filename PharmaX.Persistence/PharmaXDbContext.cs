@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Patients;
 using PharmaX.Domain.Reference;
@@ -77,6 +78,13 @@ public class PharmaXDbContext : DbContext
     // A priced list for a customer who has not bought anything: no stock
     // moves and no receipt number is consumed.
     public DbSet<Quotation> Quotations => Set<Quotation>();
+
+    // The ledger. Journals are built from day one even where posting to
+    // an accounting package is switched off, so the first period that is
+    // switched on has something to hand over.
+    public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
+    public DbSet<JournalBatch> JournalBatches => Set<JournalBatch>();
+    public DbSet<JournalLine> JournalLines => Set<JournalLine>();
 
     public DbSet<Domain.Dispensing.Dispensing> Dispensings =>
         Set<Domain.Dispensing.Dispensing>();

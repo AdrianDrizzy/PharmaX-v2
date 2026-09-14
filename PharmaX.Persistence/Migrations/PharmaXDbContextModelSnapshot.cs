@@ -576,7 +576,7 @@ namespace PharmaX.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Narration")
-                        .HasMaxLength(300)
+                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("PostedAtUtc")
@@ -592,7 +592,7 @@ namespace PharmaX.Persistence.Migrations
 
                     b.Property<string>("Source")
                         .IsRequired()
-                        .HasMaxLength(30)
+                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -606,8 +606,6 @@ namespace PharmaX.Persistence.Migrations
                     b.HasIndex("BatchNumber")
                         .IsUnique();
 
-                    b.HasIndex("PostingDate");
-
                     b.HasIndex("Source", "PostingDate");
 
                     b.ToTable("JournalBatch", (string)null);
@@ -620,7 +618,7 @@ namespace PharmaX.Persistence.Migrations
 
                     b.Property<string>("AccountCode")
                         .IsRequired()
-                        .HasMaxLength(20)
+                        .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsDebit")
@@ -633,7 +631,7 @@ namespace PharmaX.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Narration")
-                        .HasMaxLength(300)
+                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Finance.JournalLine.Amount#Money", b1 =>
@@ -647,14 +645,13 @@ namespace PharmaX.Persistence.Migrations
                                 .IsRequired()
                                 .HasMaxLength(3)
                                 .HasColumnType("TEXT")
-                                .HasColumnName("AmountCurrency");
+                                .HasColumnName("Currency");
                         });
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AccountCode");
-
-                    b.HasIndex("JournalBatchId");
+                    b.HasIndex("JournalBatchId", "LineNo")
+                        .IsUnique();
 
                     b.ToTable("JournalLine", (string)null);
                 });
@@ -671,7 +668,7 @@ namespace PharmaX.Persistence.Migrations
 
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasMaxLength(20)
+                        .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")
@@ -679,7 +676,7 @@ namespace PharmaX.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(120)
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

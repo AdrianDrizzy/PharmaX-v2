@@ -319,6 +319,11 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 
             // What this till is set to, and what it is doing. Two views
             // of the same read-only list.
+            // A day's takings, turned into a balanced journal.
+            case "day-end":
+                _views.ShowDialog<frmDayEnd>((Form)View);
+                break;
+
             case "control-variables":
                 ShowSystemInfo(SystemInfoMode.ControlVariables);
                 break;

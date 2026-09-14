@@ -127,6 +127,7 @@ partial class frmMain
                 Item("Users", "users"),
                 Item("Branches", "branches"),
                 Item("Transaction Types", "transaction-types"),
+                Item("Day-End Posting", "day-end"),
                 Item("System Setup", "system-setup"),
                 Item("System Console", "system-console"),
                 Item("Control Variables", "control-variables")),

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Desktop.Features.Admin;
 using PharmaX.Desktop.Features.Dispensing;
+using PharmaX.Desktop.Features.Finance;
 using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Login;
 using PharmaX.Desktop.Features.Patients;
@@ -122,6 +123,7 @@ public static class DependencyInjection
         s.AddTransient<UserEditPresenter>();
         s.AddTransient<frmPrinterSetup>();
         s.AddTransient<frmSystemSetup>();
+        s.AddTransient<frmDayEnd>();
         s.AddTransient<frmSystemInfo>();
         s.AddTransient<SystemInfoPresenter>();
 

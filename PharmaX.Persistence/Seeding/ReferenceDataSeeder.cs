@@ -219,12 +219,9 @@ public sealed class ReferenceDataSeeder
     {
         var till = _options.Workstation.TillNumber;
 
-        // Read from DocumentSeries rather than written out again here.
-        // The two lists had drifted three times, each time leaving a
-        // feature that could not run at a site: a journal series with no
-        // block stopped the first sale of the day, and quotations had
-        // been asking for a QUO block nobody had ever seeded.
-        foreach (var series in DocumentSeries.All)
+        foreach (var series in new[]
+                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK",
+                   "QUO", "JNL" })
         {
             var exists = await _db.DocumentNumberBlocks
                 .AnyAsync(b => b.Series == series
@@ -244,5 +241,37 @@ public sealed class ReferenceDataSeeder
                 NextValue = 1
             });
         }
+    }
+
+    /// <summary>
+    /// The handful of ledger accounts a day's takings post to.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately minimal. This is not the pharmacy's chart of
+    /// accounts - their accountant owns that - it is the set PharmaX
+    /// itself posts to, with the codes the AccountingOptions defaults
+    /// name, so that a fresh installation balances before anybody has
+    /// configured anything. A site with its own codes overrides them in
+    /// configuration and renames these.
+    /// </remarks>
+    private async Task SeedChartOfAccountsAsync(CancellationToken ct)
+    {
+        if (await _db.LedgerAccounts.AnyAsync(ct)) return;
+
+        var accounts = new (string Code, string Name, LedgerAccountType Type)[]
+        {
+            ("1000", "Cash on hand", LedgerAccountType.Asset),
+            ("1010", "Card clearing", LedgerAccountType.Asset),
+            ("1020", "EFT clearing", LedgerAccountType.Asset),
+            ("1100", "Trade debtors", LedgerAccountType.Asset),
+            ("1110", "Medical aid debtors", LedgerAccountType.Asset),
+            ("1200", "Vouchers redeemed", LedgerAccountType.Asset),
+            ("2200", "VAT output", LedgerAccountType.Liability),
+            ("4000", "Sales", LedgerAccountType.Income),
+            ("4900", "Rounding differences", LedgerAccountType.Income)
+        };
+
+        foreach (var (code, name, type) in accounts)
+            _db.LedgerAccounts.Add(LedgerAccount.Create(code, name, type));
     }
 }

@@ -581,8 +581,8 @@ namespace PharmaX.Persistence.Migrations.Host
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Narration")
-                        .HasMaxLength(300)
-                        .HasColumnType("varchar(300)");
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<DateTime?>("PostedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -597,8 +597,8 @@ namespace PharmaX.Persistence.Migrations.Host
 
                     b.Property<string>("Source")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -610,8 +610,6 @@ namespace PharmaX.Persistence.Migrations.Host
 
                     b.HasIndex("BatchNumber")
                         .IsUnique();
-
-                    b.HasIndex("PostingDate");
 
                     b.HasIndex("Source", "PostingDate");
 
@@ -625,8 +623,8 @@ namespace PharmaX.Persistence.Migrations.Host
 
                     b.Property<string>("AccountCode")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.Property<bool>("IsDebit")
                         .HasColumnType("tinyint(1)");
@@ -638,8 +636,8 @@ namespace PharmaX.Persistence.Migrations.Host
                         .HasColumnType("int");
 
                     b.Property<string>("Narration")
-                        .HasMaxLength(300)
-                        .HasColumnType("varchar(300)");
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Finance.JournalLine.Amount#Money", b1 =>
                         {
@@ -652,14 +650,13 @@ namespace PharmaX.Persistence.Migrations.Host
                                 .IsRequired()
                                 .HasMaxLength(3)
                                 .HasColumnType("varchar(3)")
-                                .HasColumnName("AmountCurrency");
+                                .HasColumnName("Currency");
                         });
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AccountCode");
-
-                    b.HasIndex("JournalBatchId");
+                    b.HasIndex("JournalBatchId", "LineNo")
+                        .IsUnique();
 
                     b.ToTable("JournalLine", (string)null);
                 });
@@ -676,16 +673,16 @@ namespace PharmaX.Persistence.Migrations.Host
 
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.HasKey("Id");
 
