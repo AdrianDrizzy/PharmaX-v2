@@ -31,10 +31,15 @@ partial class frmSupplierList
         lblCount = new Label();
         grdSuppliers = new PhxGrid();
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnEdit = new Button();
+        btnEdit.Name = "btnEdit";
         btnDeactivate = new Button();
+        btnDeactivate.Name = "btnDeactivate";
         btnChoose = new Button();
+        btnChoose.Name = "btnChoose";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         chkIncludeInactive.AutoSize = true;

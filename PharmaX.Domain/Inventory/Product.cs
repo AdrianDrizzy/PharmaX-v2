@@ -38,6 +38,7 @@ public sealed class Product : AuditableEntity
     /// department where one is set.
     /// </summary>
     public Guid? DepartmentId { get; private set; }
+    public Guid? CategoryId { get; private set; }
     public Guid? ManufacturerId { get; private set; }
 
     public IReadOnlyList<string> Barcodes => _barcodes;
@@ -83,13 +84,22 @@ public sealed class Product : AuditableEntity
     }
 
     /// <summary>
-    /// Files the product under a department and a manufacturer, or under
-    /// neither. Null clears the setting rather than being ignored, so a
-    /// product filed in the wrong department can be taken out of it.
+    /// Files the product under a department, a category and a
+    /// manufacturer, or under none of them.
     /// </summary>
-    public void Classify(Guid? departmentId, Guid? manufacturerId)
+    /// <remarks>
+    /// Null clears the setting rather than being ignored, so a product
+    /// filed in the wrong department can be taken out of it. All three
+    /// are passed every time and none of them defaults: an overload that
+    /// quietly cleared the one the caller did not mention is how a
+    /// product loses its category the next time somebody edits its
+    /// department.
+    /// </remarks>
+    public void Classify(Guid? departmentId, Guid? categoryId,
+                         Guid? manufacturerId)
     {
         DepartmentId = departmentId == Guid.Empty ? null : departmentId;
+        CategoryId = categoryId == Guid.Empty ? null : categoryId;
         ManufacturerId = manufacturerId == Guid.Empty ? null : manufacturerId;
     }
 

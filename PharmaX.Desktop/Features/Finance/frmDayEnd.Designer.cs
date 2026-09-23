@@ -20,6 +20,7 @@ partial class frmDayEnd
     private Button btnPrepare = null!;
     private Button btnPost = null!;
     private Button btnExport = null!;
+    private Button btnExportExcel = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -45,7 +46,9 @@ partial class frmDayEnd
         btnPrepare = new Button();
         btnPost = new Button();
         btnExport = new Button();
+        btnExportExcel = new Button();
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
         SuspendLayout();
 
@@ -136,6 +139,12 @@ partial class frmDayEnd
         btnExport.Text = "&Export CSV";
         btnExport.UseVisualStyleBackColor = true;
 
+        btnExportExcel.Location = new Point(442, 40);
+        btnExportExcel.Name = "btnExportExcel";
+        btnExportExcel.Size = new Size(150, 30);
+        btnExportExcel.Text = "Export to E&xcel";
+        btnExportExcel.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(900, 40);
         btnClose.Size = new Size(90, 30);
@@ -144,7 +153,8 @@ partial class frmDayEnd
 
         pnlBottom.BackColor = PhxTheme.Band;
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnExport, btnPost, btnPrepare, lblBalance });
+            { btnClose, btnExportExcel, btnExport, btnPost, btnPrepare,
+              lblBalance });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 82;
         pnlBottom.Name = "pnlBottom";

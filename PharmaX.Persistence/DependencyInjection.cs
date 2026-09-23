@@ -158,6 +158,8 @@ public static class DependencyInjection
         services.AddScoped<ReferenceDataSeeder>();
         services.AddScoped<TestUserSeeder>();
         services.AddScoped<TestCatalogueSeeder>();
+        services.AddScoped<DemoTradingSeeder>();
+        services.AddScoped<DemoDataSeeder>();
         services.AddScoped<CurrencyNormaliser>();
         services.AddScoped<PriceListSeeder>();
         services.AddScoped<ICurrencyChanger, CurrencyChanger>();

@@ -86,3 +86,57 @@ public sealed class JournalLineConfiguration
         b.HasIndex(x => new { x.JournalBatchId, x.LineNo }).IsUnique();
     }
 }
+
+public sealed class MedicalAidClaimConfiguration
+    : IEntityTypeConfiguration<Domain.Claims.MedicalAidClaim>
+{
+    public void Configure(
+        EntityTypeBuilder<Domain.Claims.MedicalAidClaim> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("MedicalAidClaim");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.ClaimNumber).HasMaxLength(30).IsRequired();
+        b.Property(x => x.MembershipNumber).HasMaxLength(40).IsRequired();
+        b.Property(x => x.DependantCode).HasMaxLength(10);
+        b.Property(x => x.WriteOffReason).HasMaxLength(300);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+
+        foreach (var (money, column) in new[]
+        {
+            (nameof(Domain.Claims.MedicalAidClaim.Claimed), "Claimed"),
+            (nameof(Domain.Claims.MedicalAidClaim.Settled), "Settled"),
+            (nameof(Domain.Claims.MedicalAidClaim.WrittenOff), "WrittenOff")
+        })
+        {
+            b.ComplexProperty(money, m =>
+            {
+                m.Property("Amount").HasColumnName(column)
+                                    .HasPrecision(18, 2);
+                m.Property("Currency").HasColumnName(column + "Currency")
+                                      .HasMaxLength(3);
+            });
+        }
+
+        // Outstanding is Claimed less Settled less WrittenOff. Storing it
+        // would give the claim a second opinion about what it is owed.
+        b.Ignore(x => x.Outstanding);
+        b.Ignore(x => x.IsOpen);
+
+        b.HasIndex(x => x.ClaimNumber).IsUnique();
+
+        // One claim per dispensing. Issuing runs inside a transaction and
+        // is idempotent, but this is the guarantee that a retry cannot
+        // bill a scheme twice for one script.
+        b.HasIndex(x => x.DispensingId).IsUnique();
+
+        // The two queries the claims screen makes: what one scheme still
+        // owes, and everything still open, oldest first.
+        b.HasIndex(x => new { x.SchemeId, x.Status });
+        b.HasIndex(x => new { x.Status, x.ClaimedOn });
+    }
+}

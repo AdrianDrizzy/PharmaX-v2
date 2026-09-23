@@ -69,6 +69,7 @@ public class PharmaXDbContext : DbContext
     // The maintained lists behind the Inventory, Administration and
     // Dispensary maintenance screens.
     public DbSet<Department> Departments => Set<Department>();
+    public DbSet<Category> Categories => Set<Category>();
     public DbSet<Manufacturer> Manufacturers => Set<Manufacturer>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<MedicalAidScheme> MedicalAidSchemes =>
@@ -89,16 +90,6 @@ public class PharmaXDbContext : DbContext
     public DbSet<Domain.Dispensing.Dispensing> Dispensings =>
         Set<Domain.Dispensing.Dispensing>();
 
-    // The books. Journals are written by the pharmacy's own trading and
-    // by hand; the chart is what they post to.
-    public DbSet<Domain.Finance.LedgerAccount> LedgerAccounts =>
-        Set<Domain.Finance.LedgerAccount>();
-
-    public DbSet<Domain.Finance.JournalBatch> JournalBatches =>
-        Set<Domain.Finance.JournalBatch>();
-
-    public DbSet<Domain.Finance.JournalLine> JournalLines =>
-        Set<Domain.Finance.JournalLine>();
 
     // What the medical aid schemes owe for what has already been
     // dispensed - for a dispensary, the largest debtor it has.

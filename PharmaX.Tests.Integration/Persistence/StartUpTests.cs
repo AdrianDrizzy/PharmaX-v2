@@ -15,8 +15,6 @@ namespace PharmaX.Tests.Integration.Persistence;
 /// </summary>
 public class StartUpTests : IClassFixture<PharmaXFixture>
 {
-    private static readonly string[] SeededSeries = { "SALE", "DISP" };
-
     private readonly PharmaXFixture _fixture;
 
     public StartUpTests(PharmaXFixture fixture) => _fixture = fixture;
@@ -133,17 +131,28 @@ public class StartUpTests : IClassFixture<PharmaXFixture>
     /// NET-021: a brand-new workstation can trade before it has ever
     /// reached the host, which needs a document number block on disk.
     /// </summary>
+    /// <remarks>
+    /// Every series, not a sample of them. This asserted two - SALE and
+    /// DISP - while the seeder carried its own hardcoded list that had
+    /// fallen two behind DocumentSeries.All. CLM and ACC had no block, so
+    /// opening a patient account and raising a medical aid claim both
+    /// died at "No document numbers left for ACC", naming a series the
+    /// operator has never heard of, in the middle of something else. A
+    /// test that checks a sample of a list cannot catch the list going
+    /// stale, which is the only way this ever goes wrong.
+    /// </remarks>
     [Fact]
-    public async Task The_first_number_block_is_seeded_for_this_till()
+    public async Task Every_document_series_is_seeded_a_block_for_this_till()
     {
         using var scope = _fixture.NewScope();
         var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
 
         var blocks = await db.DocumentNumberBlocks.AsNoTracking()
             .Where(b => b.WorkstationCode == "1")
+            .Select(b => b.Series)
             .ToListAsync();
 
-        blocks.Select(b => b.Series).Should().Contain(SeededSeries);
+        blocks.Should().BeEquivalentTo(DocumentSeries.All);
     }
 
     [Fact]

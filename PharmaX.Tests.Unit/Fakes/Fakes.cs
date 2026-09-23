@@ -290,6 +290,23 @@ public sealed class InMemoryBatchRepository : IBatchRepository
     }
 
     /// <remarks>
+    /// Ordered by expiry like the real one, because the batch view reads
+    /// the rows in the order it is given them.
+    /// </remarks>
+    public Task<IReadOnlyList<Batch>> ForProductsAsync(
+        IReadOnlyCollection<Guid> productIds, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+
+        IReadOnlyList<Batch> found = _batches
+            .Where(b => productIds.Contains(b.ProductId))
+            .OrderBy(b => b.ExpiryDate)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    /// <remarks>
     /// The same three filters as the real repository. A fake that
     /// returned quarantined or empty batches too would let an alert test
     /// pass against behaviour the database does not have.

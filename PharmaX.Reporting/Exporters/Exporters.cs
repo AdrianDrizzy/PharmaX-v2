@@ -8,7 +8,7 @@ using QuestPDF.Infrastructure;
 
 namespace PharmaX.Reporting.Exporters;
 
-public sealed class ExcelExporter : IReportExporter
+public sealed class ExcelExporter : IReportExporter, IWorkbookWriter
 {
     private readonly IReportBranding _branding;
 
@@ -17,6 +17,19 @@ public sealed class ExcelExporter : IReportExporter
     public ExportFormat Format => ExportFormat.Excel;
 
     public string Write(ReportResult report, string directory)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var path = Path.Combine(directory, FileName(report, "xlsx"));
+        WriteTo(report, path);
+
+        return path;
+    }
+
+    /// <summary>
+    /// The same workbook, written where the caller says.
+    /// </summary>
+    public void WriteTo(ReportResult report, string path)
     {
         ArgumentNullException.ThrowIfNull(report);
 
@@ -70,9 +83,7 @@ public sealed class ExcelExporter : IReportExporter
 
         sheet.Columns().AdjustToContents();
 
-        var path = Path.Combine(directory, FileName(report, "xlsx"));
         workbook.SaveAs(path);
-        return path;
     }
 
     /// <summary>

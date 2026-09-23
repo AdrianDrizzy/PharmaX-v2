@@ -48,9 +48,13 @@ partial class frmDispense
         lblScript = new Label();
         lblWarningsCaption = new Label();
         btnFindScript = new Button();
+        btnFindScript.Name = "btnFindScript";
         btnIssue = new Button();
+        btnIssue.Name = "btnIssue";
         btnReprint = new Button();
+        btnReprint.Name = "btnReprint";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
         splMain.Panel1.SuspendLayout();
         splMain.Panel2.SuspendLayout();

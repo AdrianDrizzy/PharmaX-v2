@@ -142,6 +142,18 @@ public partial class frmReports : PhxFormBase, IReportsView
         }
     }
 
+    /// <summary>The margin every slicer row starts at.</summary>
+    private const int SlicerMargin = 8;
+
+    /// <summary>One caption and its input, plus the gap to the next.</summary>
+    private const int SlicerRowHeight = 30;
+
+    /// <summary>
+    /// Past this the panel scrolls rather than eating the grid. Four rows
+    /// and the margins, which is more slicers than any preset declares.
+    /// </summary>
+    private const int SlicerPanelMaximum = 140;
+
     public void ShowSlicers(IReadOnlyList<SlicerDto> slicers)
     {
         ArgumentNullException.ThrowIfNull(slicers);
@@ -150,14 +162,15 @@ public partial class frmReports : PhxFormBase, IReportsView
         pnlSlicers.Controls.Clear();
         _slicerInputs.Clear();
 
-        var y = 8;
+        var gutter = InputColumn(slicers);
+        var y = SlicerMargin;
 
         foreach (var slicer in slicers)
         {
             pnlSlicers.Controls.Add(new Label
             {
                 AutoSize = true,
-                Location = new Point(8, y + 4),
+                Location = new Point(SlicerMargin, y + 4),
                 Text = slicer.Label
             });
 
@@ -165,44 +178,105 @@ public partial class frmReports : PhxFormBase, IReportsView
             {
                 "flag" => new CheckBox
                 {
-                    Location = new Point(150, y),
+                    Location = new Point(gutter, y),
                     Size = new Size(20, 22)
                 },
 
                 // A lookup with no options is one whose values load at run
                 // time; it falls back to free text rather than an empty
                 // dropdown the operator cannot get past.
-                "lookup" when slicer.Options.Count > 0 => BuildCombo(slicer, y),
+                "lookup" when slicer.Options.Count > 0 =>
+                    BuildCombo(slicer, gutter, y),
 
                 _ => new TextBox
                 {
-                    Location = new Point(150, y),
+                    Location = new Point(gutter, y),
                     Size = new Size(200, 23)
                 }
             };
 
             pnlSlicers.Controls.Add(input);
             _slicerInputs[slicer.Key] = input;
-            y += 30;
+            y += SlicerRowHeight;
         }
+
+        // As tall as what is in it. The height was fixed at 140, so a
+        // preset with one slicer showed it stranded above a hand's depth
+        // of empty grey, and a preset with none reserved the band anyway.
+        pnlSlicers.Height = slicers.Count == 0
+            ? 0
+            : Math.Min(y + SlicerMargin, SlicerPanelMaximum);
 
         pnlSlicers.ResumeLayout();
     }
 
-    private static ComboBox BuildCombo(SlicerDto slicer, int y)
+    /// <summary>
+    /// Where the inputs line up: after the longest caption, not at a
+    /// figure somebody typed once.
+    /// </summary>
+    /// <remarks>
+    /// The captions come from the report catalogue, so this screen cannot
+    /// know how wide they are - and the fixed 150 it used was narrower
+    /// than several of them. "Expiring within (days)" reached 131 pixels
+    /// from a margin of 8 and so ran right up against its own text box;
+    /// "Below reorder level only" reached 149 and ran underneath it.
+    /// </remarks>
+    private int InputColumn(IReadOnlyList<SlicerDto> slicers)
+    {
+        var widest = slicers
+            .Select(s => TextRenderer.MeasureText(s.Label, Font).Width)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        // Never narrower than the column this screen has always had, so
+        // a report of short captions looks exactly as it did, and never
+        // so wide that the input is pushed off the edge.
+        return Math.Clamp(SlicerMargin + widest + 16, 150, 340);
+    }
+
+    /// <summary>
+    /// What the operator reads against what the report is sent.
+    /// </summary>
+    /// <remarks>
+    /// The two are not the same thing, and the combo used to add the
+    /// value as the item - so it showed "MedicalAid" where it meant
+    /// "Medical aid", and would have shown a bare GUID for a department
+    /// or a till session. ToString is what a ComboBox draws, so putting
+    /// the label there keeps the display and the filter value apart
+    /// without a custom draw.
+    /// </remarks>
+    private sealed class Choice
+    {
+        public Choice(string value, string label)
+        {
+            Value = value;
+            Label = label;
+        }
+
+        public string Value { get; }
+        public string Label { get; }
+
+        public override string ToString() => Label;
+    }
+
+    private static ComboBox BuildCombo(SlicerDto slicer, int x, int y)
     {
         var combo = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Location = new Point(150, y),
-            Size = new Size(200, 23)
+            Location = new Point(x, y),
+
+            // Wider than a code needs, because a till session reads
+            // "Till 1, 20/09/2026 08:14" and a department name is
+            // whatever the pharmacy called it.
+            Size = new Size(260, 23)
         };
 
         // A blank first entry, so "any" is reachable after a choice.
-        combo.Items.Add("");
+        combo.Items.Add(new Choice("", ""));
 
         foreach (var option in slicer.Options)
-            combo.Items.Add(option.Value);
+            combo.Items.Add(new Choice(option.Value, option.Label));
 
         combo.SelectedIndex = 0;
         return combo;
@@ -214,7 +288,7 @@ public partial class frmReports : PhxFormBase, IReportsView
             pair => pair.Value switch
             {
                 CheckBox check => check.Checked ? "true" : null,
-                ComboBox combo => Blank(combo.SelectedItem?.ToString()),
+                ComboBox combo => Blank((combo.SelectedItem as Choice)?.Value),
                 _ => Blank(pair.Value.Text)
             },
             StringComparer.Ordinal);

@@ -6,6 +6,7 @@ using PharmaX.Application.Sales;
 using PharmaX.Application.Sales.Dtos;
 using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
+using PharmaX.Domain.Finance;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Primitives;
 using PharmaX.Persistence;
@@ -65,15 +66,15 @@ public sealed class DayEndPostingTests : IDisposable
 
         var lines = prepared.Value.Lines;
 
-        lines.Should().Contain(l => l.AccountCode == "1000"
+        lines.Should().Contain(l => l.AccountCode == LedgerCode.CashOnHand
                                     && l.Debit == 115.00m,
             "cash taken is debited to cash on hand");
 
-        lines.Should().Contain(l => l.AccountCode == "4000"
+        lines.Should().Contain(l => l.AccountCode == LedgerCode.Sales
                                     && l.Credit == 100.00m,
             "income excludes the VAT");
 
-        lines.Should().Contain(l => l.AccountCode == "2200"
+        lines.Should().Contain(l => l.AccountCode == LedgerCode.VatControl
                                     && l.Credit == 15.00m,
             "VAT collected is a liability, not income");
     }
@@ -94,9 +95,15 @@ public sealed class DayEndPostingTests : IDisposable
         var prepared = await posting.PrepareAsync(Today);
         prepared.IsSuccess.Should().BeTrue(prepared.Error.Message);
 
+        // Named per tender rather than by literal, so that the assertion
+        // says which tender landed where. Two codes each holding 50.00
+        // would pass even if the two tenders had been posted to each
+        // other's account.
         prepared.Value.Lines.Should()
-            .Contain(l => l.AccountCode == "1000" && l.Debit == 50.00m)
-            .And.Contain(l => l.AccountCode == "1010" && l.Debit == 50.00m);
+            .Contain(l => l.AccountCode == LedgerCode.CashOnHand
+                          && l.Debit == 50.00m)
+            .And.Contain(l => l.AccountCode == LedgerCode.Bank
+                              && l.Debit == 50.00m);
 
         prepared.Value.IsBalanced.Should().BeTrue();
     }
@@ -196,11 +203,10 @@ public sealed class DayEndPostingTests : IDisposable
         var line = await sales.AddLineAsync(opened.Value.Id, code, 1m);
         line.IsSuccess.Should().BeTrue(line.Error.Message);
 
-        // Card and EFT carry an authorisation reference; cash does not.
-        var reference = tender is "Card" or "Eft" ? "AUTH-0001" : null;
-
+        // No reference on any tender: there is no gateway, and the
+        // posting must not depend on one being copied out by hand.
         var finalised = await sales.FinaliseAsync(opened.Value.Id,
-            new[] { new PaymentDto(tender, price, reference) });
+            new[] { new PaymentDto(tender, price, null) });
 
         finalised.IsSuccess.Should().BeTrue(finalised.Error.Message);
     }

@@ -42,10 +42,15 @@ partial class frmTariffList
         txtSearch = new TextBox();
         grdTariffs = new PhxGrid();
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnEdit = new Button();
+        btnEdit.Name = "btnEdit";
         btnToggle = new Button();
+        btnToggle.Name = "btnToggle";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblScheme.AutoSize = true;

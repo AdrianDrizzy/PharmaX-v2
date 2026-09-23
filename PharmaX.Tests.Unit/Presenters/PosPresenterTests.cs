@@ -268,8 +268,9 @@ public class PosPresenterTests
               .Returns(Result<FinaliseDto>.Ok(
                   new FinaliseDto("R-001-000001", 24m)));
 
-        _receipts.Print(Arg.Any<SaleDto>(), Arg.Any<ReceiptHeaderDto>())
-                 .Returns(PrintOutcome.Printed);
+        _receipts.PrintAsync(Arg.Any<SaleDto>(),
+                Arg.Any<ReceiptHeaderDto>(), Arg.Any<CancellationToken>())
+            .Returns(PrintOutcome.Printed);
 
         var sut = CreateSut();
         await sut.InitialiseAsync();
@@ -277,9 +278,87 @@ public class PosPresenterTests
         _view.PaymentRequested += Raise.EventWith(this, EventArgs.Empty);
 
         _view.Received().ShowDocumentNumber("R-001-000001");
-        _drawer.Received().Open();
-        _receipts.Received().Print(Arg.Any<SaleDto>(),
-                                   Arg.Any<ReceiptHeaderDto>());
+        await _drawer.Received().OpenAsync(
+            Arg.Any<CancellationToken>());
+        await _receipts.Received().PrintAsync(Arg.Any<SaleDto>(),
+            Arg.Any<ReceiptHeaderDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The hourglass belongs over work, not over a person.
+    /// </summary>
+    /// <remarks>
+    /// GuardAsync raises the busy cursor for as long as its action runs,
+    /// and the payment dialog used to be inside that action - so the
+    /// cashier counted the cash, chose a tender and typed a reference
+    /// with a wait cursor sitting over the screen. It reads as an
+    /// application that has hung, and it is the first thing anybody
+    /// reports.
+    /// </remarks>
+    [Fact]
+    public async Task The_busy_cursor_is_not_held_over_the_payment_dialog()
+    {
+        var sale = SaleWithOneLine();
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(sale));
+        _sales.GetAsync(sale.Id).Returns(Result<SaleDto>.Ok(sale));
+
+        _view.PromptPayment(24m)
+             .Returns(new[] { new PaymentDto("Cash", 24m, null) });
+
+        _sales.FinaliseAsync(sale.Id, Arg.Any<IReadOnlyList<PaymentDto>>())
+              .Returns(Result<FinaliseDto>.Ok(
+                  new FinaliseDto("R-001-000001", 24m)));
+
+        _receipts.PrintAsync(Arg.Any<SaleDto>(),
+                Arg.Any<ReceiptHeaderDto>(), Arg.Any<CancellationToken>())
+            .Returns(PrintOutcome.Printed);
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        // Opening the sale has its own busy period; this is about what
+        // happens from the moment Pay is pressed.
+        _view.ClearReceivedCalls();
+
+        _view.PaymentRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        // Received.InOrder wants the whole filtered sequence to match,
+        // and finalising then opening the next sale raises the cursor
+        // twice. What matters is only which of the two came first.
+        var calls = _view.ReceivedCalls()
+            .Select(c => c.GetMethodInfo().Name)
+            .Where(name => name is "PromptPayment" or "SetBusy")
+            .ToList();
+
+        calls.Should().NotBeEmpty();
+
+        calls[0].Should().Be("PromptPayment",
+            "the dialog goes up before the hourglass, not under it");
+    }
+
+    /// <remarks>
+    /// Nothing is asked of the services until the cashier has answered
+    /// the dialog, so cancelling it costs a round trip to nowhere.
+    /// </remarks>
+    [Fact]
+    public async Task Cancelling_the_payment_dialog_finalises_nothing()
+    {
+        var sale = SaleWithOneLine();
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(sale));
+        _sales.GetAsync(sale.Id).Returns(Result<SaleDto>.Ok(sale));
+
+        _view.PromptPayment(24m).Returns((IReadOnlyList<PaymentDto>?)null);
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+        _view.ClearReceivedCalls();
+
+        _view.PaymentRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        await _sales.DidNotReceive().FinaliseAsync(Arg.Any<Guid>(),
+            Arg.Any<IReadOnlyList<PaymentDto>>());
+
+        _view.DidNotReceive().SetBusy(true);
     }
 
     /// <summary>
@@ -300,8 +379,9 @@ public class PosPresenterTests
               .Returns(Result<FinaliseDto>.Ok(
                   new FinaliseDto("R-001-000001", 24m)));
 
-        _receipts.Print(Arg.Any<SaleDto>(), Arg.Any<ReceiptHeaderDto>())
-                 .Returns(PrintOutcome.Failed);
+        _receipts.PrintAsync(Arg.Any<SaleDto>(),
+                Arg.Any<ReceiptHeaderDto>(), Arg.Any<CancellationToken>())
+            .Returns(PrintOutcome.Failed);
 
         var sut = CreateSut();
         await sut.InitialiseAsync();

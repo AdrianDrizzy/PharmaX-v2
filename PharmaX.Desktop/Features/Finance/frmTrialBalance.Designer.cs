@@ -14,6 +14,7 @@ partial class frmTrialBalance
     private PhxGrid grdBalance = null!;
     private Button btnEntries = null!;
     private Button btnRefresh = null!;
+    private Button btnExport = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -32,8 +33,13 @@ partial class frmTrialBalance
         dtpAsAt = new DateTimePicker();
         grdBalance = new PhxGrid();
         btnEntries = new Button();
+        btnEntries.Name = "btnEntries";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblAsAt.AutoSize = true;
@@ -83,6 +89,13 @@ partial class frmTrialBalance
         btnRefresh.Text = "&Refresh";
         btnRefresh.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnRefresh);
+
+        btnExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnExport.Location = new Point(542, 8);
+        btnExport.Size = new Size(150, 34);
+        btnExport.Text = "&Export to Excel";
+        btnExport.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnExport);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(700, 8);

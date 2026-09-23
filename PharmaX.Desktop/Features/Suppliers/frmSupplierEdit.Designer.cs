@@ -24,15 +24,23 @@ partial class frmSupplierEdit
     {
         components = new System.ComponentModel.Container();
         txtCode = new TextBox();
+        txtCode.Name = "txtCode";
         txtName = new TextBox();
+        txtName.Name = "txtName";
         txtContactName = new TextBox();
+        txtContactName.Name = "txtContactName";
         txtTelephone = new TextBox();
+        txtTelephone.Name = "txtTelephone";
         txtEmail = new TextBox();
+        txtEmail.Name = "txtEmail";
         txtAccountNumber = new TextBox();
+        txtAccountNumber.Name = "txtAccountNumber";
         numTermsDays = new NumericUpDown();
         numLeadTimeDays = new NumericUpDown();
         btnSave = new Button();
+        btnSave.Name = "btnSave";
         btnCancel = new Button();
+        btnCancel.Name = "btnCancel";
         ((System.ComponentModel.ISupportInitialize)numTermsDays).BeginInit();
         ((System.ComponentModel.ISupportInitialize)numLeadTimeDays).BeginInit();
         SuspendLayout();

@@ -153,7 +153,8 @@ public sealed class LabelReprintService : ILabelReprintService
                 "No label printer is set for this workstation. Set one in "
                 + "Printer Setup.");
 
-        foreach (var label in built.Value) _printer.Print(label);
+        foreach (var label in built.Value)
+            await _printer.PrintAsync(label, ct).ConfigureAwait(false);
 
         // A reprinted label is a second instruction to a patient with
         // the same script number on it, so the trail says it happened.

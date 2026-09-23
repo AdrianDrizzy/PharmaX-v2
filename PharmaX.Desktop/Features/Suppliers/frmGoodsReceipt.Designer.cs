@@ -52,11 +52,17 @@ partial class frmGoodsReceipt
         grdCapture = new DataGridView();
         grdPreview = new PhxGrid();
         btnChooseSupplier = new Button();
+        btnChooseSupplier.Name = "btnChooseSupplier";
         btnChooseOrder = new Button();
+        btnChooseOrder.Name = "btnChooseOrder";
         btnAddLine = new Button();
+        btnAddLine.Name = "btnAddLine";
         btnRemoveLine = new Button();
+        btnRemoveLine.Name = "btnRemoveLine";
         btnPost = new Button();
+        btnPost.Name = "btnPost";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)grdCapture).BeginInit();
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
         splMain.Panel1.SuspendLayout();
@@ -175,9 +181,12 @@ partial class frmGoodsReceipt
         splMain.Dock = DockStyle.Fill;
         splMain.Name = "splMain";
         splMain.Orientation = Orientation.Horizontal;
-        splMain.FixedPanel = FixedPanel.Panel1;
-
-        // Applied for real in OnLoad: see SeatSplitter.
+        splMain.FixedPanel = FixedPanel.Panel1;
+
+
+
+        // Applied for real in OnLoad: see SeatSplitter.
+
         splMain.SplitterDistance = 220;
 
         // ---- Totals -----------------------------------------------------

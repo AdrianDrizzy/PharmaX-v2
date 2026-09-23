@@ -27,7 +27,9 @@ partial class frmSystemInfo
         lblCaption = new Label();
         grdRows = new PhxGrid();
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblCaption.AutoSize = false;

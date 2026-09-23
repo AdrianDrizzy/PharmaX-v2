@@ -38,8 +38,11 @@ partial class frmAlerts
         cboFilter = new ComboBox();
         grdAlerts = new PhxGrid();
         btnProduct = new Button();
+        btnProduct.Name = "btnProduct";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblShow.AutoSize = true;

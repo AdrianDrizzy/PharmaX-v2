@@ -14,6 +14,13 @@ public interface IProductService
     Task<Result<ProductPageDto>> SearchAsync(string term, int take = 200,
                                              CancellationToken ct = default);
 
+    /// <summary>
+    /// The same search, expanded a batch at a time: what is on the shelf,
+    /// which batch it came in on, how much is left and when it expires.
+    /// </summary>
+    Task<Result<ProductBatchPageDto>> SearchBatchesAsync(string term,
+        int take = 200, CancellationToken ct = default);
+
     Task<Result<ProductDto>> GetAsync(Guid id, CancellationToken ct = default);
 
     Task<Result<Guid>> CreateAsync(ProductEditDto edit,
@@ -28,20 +35,24 @@ public interface IProductService
 public sealed class ProductService : IProductService
 {
     private readonly IProductRepository _products;
+    private readonly IBatchRepository _batches;
     private readonly IPermissionService _permissions;
     private readonly IAuditWriter _audit;
     private readonly IOutbox _outbox;
     private readonly IUnitOfWork _uow;
+    private readonly IClock _clock;
 
     public ProductService(IProductRepository products,
-        IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow)
+        IBatchRepository batches, IPermissionService permissions,
+        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow, IClock clock)
     {
         _products = products;
+        _batches = batches;
         _permissions = permissions;
         _audit = audit;
         _outbox = outbox;
         _uow = uow;
+        _clock = clock;
     }
 
     public async Task<Result<ProductPageDto>> SearchAsync(string term,
@@ -56,6 +67,60 @@ public sealed class ProductService : IProductService
             products.Select(ProductListItemDto.From).ToList();
 
         return Result<ProductPageDto>.Ok(new ProductPageDto(items, total));
+    }
+
+    public async Task<Result<ProductBatchPageDto>> SearchBatchesAsync(
+        string term, int take = 200, CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ProductRead);
+
+        var products = await _products.SearchAsync(term, take, ct);
+        var total = await _products.CountAsync(term, ct);
+
+        var batches = await _batches.ForProductsAsync(
+            products.Select(p => p.Id).ToList(), ct);
+
+        var byProduct = batches.ToLookup(b => b.ProductId);
+        var today = _clock.Today;
+        var rows = new List<ProductBatchListItemDto>();
+
+        foreach (var product in products)
+        {
+            // Only what is still on the shelf. A batch counted down to
+            // nothing is history, and the movement report is where
+            // history is read.
+            var held = byProduct[product.Id]
+                .Where(b => b.QuantityOnHand > 0m)
+                .OrderBy(b => b.ExpiryDate)
+                .ToList();
+
+            if (held.Count == 0)
+            {
+                // Not batch tracked, or tracked and nothing left. Either
+                // way the product keeps its place in the list rather than
+                // disappearing because a box was ticked.
+                rows.Add(new ProductBatchListItemDto(
+                    product.Id, product.Code, product.Description,
+                    BatchNumber: null, Expiry: null, DaysToExpiry: null,
+                    product.QuantityOnHand, product.IsBatchTracked,
+                    product.IsActive));
+
+                continue;
+            }
+
+            foreach (var batch in held)
+            {
+                rows.Add(new ProductBatchListItemDto(
+                    product.Id, product.Code, product.Description,
+                    batch.BatchNumber, batch.ExpiryDate,
+                    batch.ExpiryDate.DayNumber - today.DayNumber,
+                    batch.QuantityOnHand, product.IsBatchTracked,
+                    product.IsActive));
+            }
+        }
+
+        return Result<ProductBatchPageDto>.Ok(
+            new ProductBatchPageDto(rows, total));
     }
 
     public async Task<Result<ProductDto>> GetAsync(Guid id,
@@ -94,6 +159,9 @@ public sealed class ProductService : IProductService
         product.ChangeCostPrice(Money.Of(edit.CostPrice));
         product.SetReorderLevel(edit.ReorderLevel);
 
+        product.Classify(edit.DepartmentId, edit.CategoryId,
+                         edit.ManufacturerId);
+
         await _products.AddAsync(product, ct);
 
         _audit.Applied("inv.product.create", "Product", product.Id);
@@ -128,6 +196,9 @@ public sealed class ProductService : IProductService
         product.Rename(edit.Description);
         product.ChangeCostPrice(Money.Of(edit.CostPrice));
         product.SetReorderLevel(edit.ReorderLevel);
+
+        product.Classify(edit.DepartmentId, edit.CategoryId,
+                         edit.ManufacturerId);
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();

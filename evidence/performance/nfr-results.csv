@@ -1,0 +1,10 @@
+﻿nfr_id,measure,target,method,n_runs,median_ms,p95_ms,hardware,verdict,notes
+NFR-001,Scan to updated basket total,250 ms,"Timestamp injected keystroke; timestamp UIA property change on total control",0,,,NOT_MEASURED,BLOCKED,DEF-0001 - no runnable application
+NFR-002,"Five-line cash sale, first scan to printed receipt",20 s operator time,"Wall clock, keyboard-only, no artificial pauses",0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-003,"Product/patient search, first page",500 ms,Keystroke to first row rendered,0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-004,Cold start to usable till screen,15 s,Process start to frmPOS accepting input,0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-005,Day-range / month-range report,5 s / 30 s,F12 press to preview rendered,0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-006,Failover when host disappears mid-shift,"5 s, unattended, no lost basket",Host kill timestamp to resumed input acceptance,0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-007,"Label print, authorisation to paper",3 s,Authorisation confirm to spooler completion,0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-008,Reconcile 2000 queued transactions,"10 min, background, non-blocking","Seed 2000, start reconciliation, confirm trading continues",0,,,NOT_MEASURED,BLOCKED,DEF-0001
+NFR-009,Z-read and cash-up report,10 s,Command to rendered,0,,,NOT_MEASURED,BLOCKED,DEF-0001

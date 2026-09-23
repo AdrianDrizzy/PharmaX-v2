@@ -1,3 +1,5 @@
+using PharmaX.Application.Reporting;
+using PharmaX.Application.Abstractions;
 using System.Globalization;
 using System.Text;
 using PharmaX.Application.Claims;
@@ -20,6 +22,8 @@ namespace PharmaX.Desktop.Features.Finance;
 public partial class frmClaims : PhxFormBase, IClaimsView
 {
     private readonly ClaimsPresenter? _presenter;
+    private readonly IWorkbookWriter? _workbooks;
+    private readonly ICurrentUser? _user;
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.LedgerRead;
@@ -58,13 +62,18 @@ public partial class frmClaims : PhxFormBase, IClaimsView
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
 
+        btnExport.Click += (_, _) => Export();
+
         btnClose.Click += (_, _) => CloseView(false);
     }
 
     /// Runtime. Resolved by the container.
-    public frmClaims(ClaimsPresenter presenter) : this()
+    public frmClaims(ClaimsPresenter presenter, IWorkbookWriter workbooks,
+                       ICurrentUser user) : this()
     {
         _presenter = presenter;
+        _workbooks = workbooks;
+        _user = user;
         _presenter.Attach(this);
     }
 
@@ -313,4 +322,30 @@ public partial class frmClaims : PhxFormBase, IClaimsView
     public event EventHandler? SettleRequested;
     public event EventHandler? RejectRequested;
     public event EventHandler? AgeAnalysisRequested;
+
+    /// <summary>
+    /// The grid as it stands, to a workbook the operator names.
+    /// </summary>
+    /// <remarks>
+    /// What is on the screen, filters and all: this is read as a working
+    /// document and the figures were previously only reachable by typing
+    /// them again somewhere else.
+    /// </remarks>
+    private void Export()
+    {
+        if (_workbooks is null || _user is null) return;   // designer
+
+        var saved = GridExport.Offer(this, _workbooks, grdClaims,
+            "Medical Aid Claims", "Outstanding claims", _user.Username);
+
+        if (saved is null)
+        {
+            if (grdClaims.Rows.Count == 0)
+                ShowInfo("There is nothing on the screen to export.");
+
+            return;
+        }
+
+        ShowInfo($"Exported to {saved}");
+    }
 }

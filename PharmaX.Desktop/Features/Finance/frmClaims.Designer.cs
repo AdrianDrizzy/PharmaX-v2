@@ -22,6 +22,7 @@ partial class frmClaims
     private Button btnReject = null!;
     private Button btnAges = null!;
     private Button btnRefresh = null!;
+    private Button btnExport = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -45,11 +46,19 @@ partial class frmClaims
         txtReference = new TextBox();
         grdClaims = new PhxGrid();
         btnSettle = new Button();
+        btnSettle.Name = "btnSettle";
         btnPayAll = new Button();
+        btnPayAll.Name = "btnPayAll";
         btnReject = new Button();
+        btnReject.Name = "btnReject";
         btnAges = new Button();
+        btnAges.Name = "btnAges";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblScheme.AutoSize = true;
@@ -171,6 +180,13 @@ partial class frmClaims
         btnRefresh.Text = "Re&fresh";
         btnRefresh.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnRefresh);
+
+        btnExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnExport.Location = new Point(702, 8);
+        btnExport.Size = new Size(150, 34);
+        btnExport.Text = "&Export to Excel";
+        btnExport.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnExport);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(860, 8);

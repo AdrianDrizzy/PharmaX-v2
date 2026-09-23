@@ -21,6 +21,8 @@ public sealed class ReferenceRepository : IReferenceRepository
         {
             ReferenceKind.Department =>
                 await Query(_db.Departments, term, includeInactive, ct),
+            ReferenceKind.Category =>
+                await Query(_db.Categories, term, includeInactive, ct),
             ReferenceKind.Manufacturer =>
                 await Query(_db.Manufacturers, term, includeInactive, ct),
             ReferenceKind.Branch =>
@@ -36,6 +38,8 @@ public sealed class ReferenceRepository : IReferenceRepository
         {
             ReferenceKind.Department =>
                 await _db.Departments.FirstOrDefaultAsync(x => x.Id == id, ct),
+            ReferenceKind.Category =>
+                await _db.Categories.FirstOrDefaultAsync(x => x.Id == id, ct),
             ReferenceKind.Manufacturer =>
                 await _db.Manufacturers.FirstOrDefaultAsync(x => x.Id == id, ct),
             ReferenceKind.Branch =>
@@ -57,6 +61,8 @@ public sealed class ReferenceRepository : IReferenceRepository
         {
             ReferenceKind.Department => await _db.Departments
                 .FirstOrDefaultAsync(x => x.Code == normalised, ct),
+            ReferenceKind.Category => await _db.Categories
+                .FirstOrDefaultAsync(x => x.Code == normalised, ct),
             ReferenceKind.Manufacturer => await _db.Manufacturers
                 .FirstOrDefaultAsync(x => x.Code == normalised, ct),
             ReferenceKind.Branch => await _db.Branches
@@ -73,6 +79,7 @@ public sealed class ReferenceRepository : IReferenceRepository
         switch (entry)
         {
             case Department d: await _db.Departments.AddAsync(d, ct); break;
+            case Category c: await _db.Categories.AddAsync(c, ct); break;
             case Manufacturer m: await _db.Manufacturers.AddAsync(m, ct); break;
             case Branch b: await _db.Branches.AddAsync(b, ct); break;
             case MedicalAidScheme s:

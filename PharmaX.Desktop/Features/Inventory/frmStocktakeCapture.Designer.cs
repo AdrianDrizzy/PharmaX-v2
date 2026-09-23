@@ -40,9 +40,13 @@ partial class frmStocktakeCapture
         chkVarianceOnly = new CheckBox();
         grdLines = new PhxGrid();
         btnCount = new Button();
+        btnCount.Name = "btnCount";
         btnClearCount = new Button();
+        btnClearCount.Name = "btnClearCount";
         btnPost = new Button();
+        btnPost.Name = "btnPost";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblHeader.AutoSize = false;

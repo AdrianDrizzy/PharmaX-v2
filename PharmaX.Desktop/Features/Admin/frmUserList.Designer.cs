@@ -32,11 +32,17 @@ partial class frmUserList
         lblCount = new Label();
         grdUsers = new PhxGrid();
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnEdit = new Button();
+        btnEdit.Name = "btnEdit";
         btnReset = new Button();
+        btnReset.Name = "btnReset";
         btnUnlock = new Button();
+        btnUnlock.Name = "btnUnlock";
         btnToggleActive = new Button();
+        btnToggleActive.Name = "btnToggleActive";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         chkIncludeInactive.AutoSize = true;

@@ -33,6 +33,10 @@
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="coverlet.collector" />
+
+    <!-- To write and read back a real workbook, so the accounts export
+         is proved end to end: a grid in, a file Excel will open out. -->
+    <PackageReference Include="ClosedXML" />
   </ItemGroup>
 
   <ItemGroup>

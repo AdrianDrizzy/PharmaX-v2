@@ -15,7 +15,16 @@ public sealed class SalePayment : Entity
     public TenderType Tender { get; private set; }
     public Money Amount { get; private set; }
 
+    /// <summary>
     /// Card authorisation code, voucher serial or account reference.
+    /// </summary>
+    /// <remarks>
+    /// Optional for every tender. PharmaX has no payment gateway: the
+    /// card machine and the medical aid platform are operated beside the
+    /// till, and whether the operator copies a code back is left to
+    /// them. Refusing the sale without one stopped the till over a
+    /// transaction that had already been approved on another device.
+    /// </remarks>
     public string? Reference { get; private set; }
 
     private SalePayment() { }
@@ -25,11 +34,6 @@ public sealed class SalePayment : Entity
     {
         if (amount.IsNegative)
             throw new DomainException("A payment cannot be negative.");
-
-        if (tender is TenderType.Card or TenderType.Eft
-            && string.IsNullOrWhiteSpace(reference))
-            throw new DomainException(
-                "A card or EFT payment requires an authorisation reference.");
 
         return new SalePayment
         {

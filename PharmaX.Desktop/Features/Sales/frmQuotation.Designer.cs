@@ -50,6 +50,7 @@ partial class frmQuotation
         btnRemove = new Button();
         btnIssue = new Button();
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblTitle.AutoSize = true;

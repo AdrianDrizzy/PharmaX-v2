@@ -38,7 +38,14 @@ public interface IDispensingService
 /// </summary>
 public interface ILabelPrinter
 {
-    void Print(LabelDto label);
+    /// <remarks>
+    /// Asynchronous for the same reason as the receipt printer: the
+    /// label printer is read from the database and the document goes to
+    /// the spooler, and waiting for either from the user-interface
+    /// thread froze the dispensing screen.
+    /// </remarks>
+    Task PrintAsync(LabelDto label, CancellationToken ct = default);
+
     bool IsAvailable { get; }
 }
 
@@ -52,6 +59,7 @@ public sealed class DispensingService : IDispensingService
     private readonly IUserRepository _users;
     private readonly IClaimRepository _claims;
     private readonly IReferenceRepository _reference;
+    private readonly ITariffRepository _tariffs;
     private readonly IJournalPoster _journals;
     private readonly IDocumentNumbering _numbering;
     private readonly IAuditWriter _audit;
@@ -64,13 +72,15 @@ public sealed class DispensingService : IDispensingService
         IScriptRepository scripts, IProductRepository products,
         IBatchRepository batches, IPatientRepository patients,
         IUserRepository users, IClaimRepository claims,
-        IReferenceRepository reference, IJournalPoster journals,
+        IReferenceRepository reference, ITariffRepository tariffs,
+        IJournalPoster journals,
         IDocumentNumbering numbering,
         IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
         ICurrentUser user, IClock clock)
     {
         _claims = claims;
         _reference = reference;
+        _tariffs = tariffs;
         _journals = journals;
         _dispensings = dispensings;
         _scripts = scripts;
@@ -144,15 +154,42 @@ public sealed class DispensingService : IDispensingService
             expiry = batch.ExpiryDate;
         }
 
+        // What the society has agreed to pay for this product today.
+        // Null where the patient pays for themselves, or where the
+        // society has no tariff on file for what is being handed over -
+        // in both of which cases the shelf price stands and the whole
+        // amount is the patient's.
+        var patient = await _patients.GetAsync(dispensing.PatientId, ct);
+
+        var tariff = patient is { IsOnMedicalAid: true }
+            ? await _tariffs.EffectiveAsync(patient.MedicalAidSchemeId!.Value,
+                product.Id, _clock.Today, ct)
+            : null;
+
         var line = dispensing.AddLine(DispensingLine.Create(
             productId: product.Id,
             description: product.Description,
             quantity: directions.Quantity,
             directions: directions.Directions,
-            tariffAmount: product.ResolvePrice(dispensing.PatientId).Amount,
+
+            // Section 7.8: a rated line is priced from the tariff table
+            // rather than from the shelf. Section 15.4 works the split
+            // through - a tariff of 180.00 against a contribution of
+            // 150.00 and a co-payment of 30.00 - which is the society's
+            // price, plus the dispensing fee it allows on top of it.
+            tariffAmount: tariff?.Total
+                ?? product.ResolvePrice(dispensing.PatientId).Amount,
             batchId: batchId,
             batchNumber: batchNumber,
             batchExpiry: expiry));
+
+        // The line that was missing. SetSchemeContribution had no caller
+        // outside three unit tests, so a rated line billed nobody for the
+        // society's share: ContributionTotal was always zero, the claim
+        // builder returned before it could raise anything, and the
+        // patient was charged the full amount at the till. No claim could
+        // be made against any society on any installation.
+        if (tariff is not null) line.SetSchemeContribution(tariff.Price);
 
         // Warnings are computed here, from the clinical profile and what is
         // already on the dispensing. The presenter only routes them.

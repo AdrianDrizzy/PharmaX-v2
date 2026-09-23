@@ -39,10 +39,15 @@ partial class frmReferenceList
         txtSearch = new TextBox();
         grdItems = new PhxGrid();
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnEdit = new Button();
+        btnEdit.Name = "btnEdit";
         btnToggle = new Button();
+        btnToggle.Name = "btnToggle";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblSearch.AutoSize = true;

@@ -1,0 +1,268 @@
+﻿{
+ "totals": {
+  "passed": 407,
+  "failed": 0,
+  "total": 407
+ },
+ "suites": [
+  {
+   "area": "Tests.Integration.Finance",
+   "suite": "DayEndPostingTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "CurrencyTests",
+   "passed": 3,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "DispensingFlowTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "PriceListSeederTests",
+   "passed": 5,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "ReceivingFlowTests",
+   "passed": 9,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "ReturnFlowTests",
+   "passed": 8,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "SaleFlowTests",
+   "passed": 8,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "StartUpTests",
+   "passed": 8,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Persistence",
+   "suite": "StocktakeFlowTests",
+   "passed": 8,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Reporting",
+   "suite": "PresetCatalogueTests",
+   "passed": 5,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Integration.Reporting",
+   "suite": "ReportExecutionTests",
+   "passed": 17,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Adapters",
+   "suite": "AttachmentStoreTests",
+   "passed": 6,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Adapters",
+   "suite": "ReceiptDocumentTests",
+   "passed": 2,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Adapters",
+   "suite": "WorkstationProvisioningTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "AccountServiceTests",
+   "passed": 10,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "AuthenticationServiceTests",
+   "passed": 12,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "ClaimServiceTests",
+   "passed": 12,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "CollectionServiceTests",
+   "passed": 11,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "JournalPosterTests",
+   "passed": 13,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "LedgerServiceTests",
+   "passed": 12,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "PatientMergeServiceTests",
+   "passed": 8,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "SaleServiceTests",
+   "passed": 11,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "StockAlertServiceTests",
+   "passed": 11,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Application",
+   "suite": "UserServiceTests",
+   "passed": 14,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Architecture",
+   "suite": "ContainerTests",
+   "passed": 23,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Architecture",
+   "suite": "DocumentSeriesTests",
+   "passed": 4,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Architecture",
+   "suite": "LayerRuleTests",
+   "passed": 4,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "DispensingCollectionTests",
+   "passed": 11,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "FefoAllocatorTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "GoodsReceiptTests",
+   "passed": 9,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "JournalBatchTests",
+   "passed": 10,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "LedgerAccountTests",
+   "passed": 6,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "MedicalAidClaimTests",
+   "passed": 12,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "MoneyTests",
+   "passed": 11,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "PurchaseOrderTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "QuotationTests",
+   "passed": 12,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "ReferenceEntryTests",
+   "passed": 6,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "SaleReturnTests",
+   "passed": 15,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "SaleTests",
+   "passed": 14,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "StocktakeTests",
+   "passed": 15,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "TariffTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Domain",
+   "suite": "VatCalculatorTests",
+   "passed": 7,
+   "failed": 0
+  },
+  {
+   "area": "Tests.Unit.Presenters",
+   "suite": "PosPresenterTests",
+   "passed": 13,
+   "failed": 0
+  }
+ ]
+}
+

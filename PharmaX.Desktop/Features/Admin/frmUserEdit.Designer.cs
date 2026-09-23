@@ -40,7 +40,9 @@ partial class frmUserEdit
         txtDiscountLimit = new MoneyTextBox();
         lstRoles = new CheckedListBox();
         btnSave = new Button();
+        btnSave.Name = "btnSave";
         btnCancel = new Button();
+        btnCancel.Name = "btnCancel";
         SuspendLayout();
 
         lblUsername.AutoSize = true;

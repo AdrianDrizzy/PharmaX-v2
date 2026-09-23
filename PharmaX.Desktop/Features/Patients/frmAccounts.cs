@@ -1,3 +1,5 @@
+using PharmaX.Application.Reporting;
+using PharmaX.Application.Abstractions;
 using System.Globalization;
 using System.Text;
 using PharmaX.Application.Patients;
@@ -17,6 +19,8 @@ namespace PharmaX.Desktop.Features.Patients;
 public sealed class frmAccounts : PhxFormBase, IAccountsView
 {
     private readonly AccountsPresenter? _presenter;
+    private readonly IWorkbookWriter? _workbooks;
+    private readonly ICurrentUser? _user;
 
     private readonly TextBox _search = new();
     private readonly CheckBox _owingOnly = new();
@@ -29,6 +33,7 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     private readonly Button _limit = new();
     private readonly Button _hold = new();
     private readonly Button _refresh = new();
+    private readonly Button _export = new();
     private readonly Button _close = new();
 
     private readonly System.Windows.Forms.Timer _debounce =
@@ -73,6 +78,8 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
         _refresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
 
+        _export.Click += (_, _) => Export();
+
         _close.Click += (_, _) => CloseView(false);
 
         _grid.DoubleClick += (_, _) =>
@@ -84,9 +91,13 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     }
 
     /// Runtime. Resolved by the container.
-    public frmAccounts(AccountsPresenter presenter) : this()
+    public frmAccounts(AccountsPresenter presenter,
+                       IWorkbookWriter workbooks, ICurrentUser user)
+        : this()
     {
         _presenter = presenter;
+        _workbooks = workbooks;
+        _user = user;
         _presenter.Attach(this);
     }
 
@@ -302,7 +313,8 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             (_open, "&New Account", 130),
             (_limit, "Credit &Limit", 120),
             (_hold, "&Hold", 90),
-            (_refresh, "&Refresh", 100)
+            (_refresh, "&Refresh", 100),
+            (_export, "&Export to Excel", 150)
         })
         {
             button.Location = new Point(x, 8);
@@ -316,14 +328,14 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
         PhxTheme.MakePrimary(_payment);
 
         _close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _close.Location = new Point(790, 8);
+        _close.Location = new Point(950, 8);
         _close.Size = new Size(100, 34);
         _close.Text = "&Close";
         _close.UseVisualStyleBackColor = true;
         bottom.Controls.Add(_close);
 
         CancelButton = _close;
-        ClientSize = new Size(910, 560);
+        ClientSize = new Size(1070, 560);
         Controls.Add(_grid);
         Controls.Add(top);
         Controls.Add(bottom);
@@ -371,4 +383,32 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     public event EventHandler? StatementRequested;
     public event EventHandler? CreditLimitRequested;
     public event EventHandler? HoldRequested;
+
+    /// <summary>
+    /// The debtors list as it stands, to a workbook the operator names.
+    /// </summary>
+    /// <remarks>
+    /// Whoever is chasing the money works off this list away from the
+    /// till, and the only way off it was reading the figures and typing
+    /// them again.
+    /// </remarks>
+    private void Export()
+    {
+        if (_workbooks is null || _user is null) return;   // designer
+
+        var saved = GridExport.Offer(this, _workbooks, _grid,
+            "Patient Accounts",
+            _owingOnly.Checked ? "Owing only" : "All accounts",
+            _user.Username);
+
+        if (saved is null)
+        {
+            if (_grid.Rows.Count == 0)
+                ShowInfo("There is nothing on the screen to export.");
+
+            return;
+        }
+
+        ShowInfo($"Exported to {saved}");
+    }
 }

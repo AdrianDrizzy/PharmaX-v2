@@ -31,6 +31,11 @@
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+
+    <!-- To read an exported workbook back. A spreadsheet that is written
+         but will not open again is the failure worth catching, and file
+         length does not catch it. -->
+    <PackageReference Include="ClosedXML" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 

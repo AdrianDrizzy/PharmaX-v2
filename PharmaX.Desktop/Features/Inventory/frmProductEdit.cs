@@ -1,4 +1,5 @@
 using PharmaX.Application.Inventory.Dtos;
+using PharmaX.Application.Reference;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Inventory;
@@ -51,6 +52,72 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         if (_presenter is not null) await _presenter.InitialiseAsync();
     }
 
+    /// <summary>
+    /// One entry in a filing list: the name is read, the id is stored.
+    /// </summary>
+    private sealed class Choice
+    {
+        public Choice(Guid? id, string label)
+        {
+            Id = id;
+            Label = label;
+        }
+
+        public Guid? Id { get; }
+        public string Label { get; }
+
+        public override string ToString() => Label;
+    }
+
+    public void ShowFilingOptions(
+        IReadOnlyList<ReferenceItemDto> departments,
+        IReadOnlyList<ReferenceItemDto> categories,
+        IReadOnlyList<ReferenceItemDto> manufacturers)
+    {
+        ArgumentNullException.ThrowIfNull(departments);
+        ArgumentNullException.ThrowIfNull(categories);
+        ArgumentNullException.ThrowIfNull(manufacturers);
+
+        Fill(cboDepartment, departments);
+        Fill(cboCategory, categories);
+        Fill(cboManufacturer, manufacturers);
+    }
+
+    /// <remarks>
+    /// A blank first entry, because filing is optional: a pharmacy that
+    /// has not decided where something belongs must be able to say so.
+    /// </remarks>
+    private static void Fill(ComboBox combo,
+                             IReadOnlyList<ReferenceItemDto> entries)
+    {
+        combo.Items.Clear();
+        combo.Items.Add(new Choice(null, "(none)"));
+
+        foreach (var entry in entries)
+            combo.Items.Add(new Choice(entry.Id, entry.Name));
+
+        combo.SelectedIndex = 0;
+    }
+
+    private static void Select(ComboBox combo, Guid? id)
+    {
+        for (var i = 0; i < combo.Items.Count; i++)
+        {
+            if (combo.Items[i] is Choice choice && choice.Id == id)
+            {
+                combo.SelectedIndex = i;
+                return;
+            }
+        }
+
+        // Filed against something since deactivated, or since deleted.
+        // Falls back to blank rather than showing the wrong one.
+        combo.SelectedIndex = 0;
+    }
+
+    private static Guid? Chosen(ComboBox combo) =>
+        (combo.SelectedItem as Choice)?.Id;
+
     public void ShowProduct(ProductDto product)
     {
         ArgumentNullException.ThrowIfNull(product);
@@ -67,6 +134,10 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         txtReorderLevel.Amount = product.ReorderLevel;
         txtPackSize.Text = product.PackSize ?? "";
 
+        Select(cboDepartment, product.DepartmentId);
+        Select(cboCategory, product.CategoryId);
+        Select(cboManufacturer, product.ManufacturerId);
+
         lblOnHandValue.Text = Format.Quantity(product.QuantityOnHand);
     }
 
@@ -81,7 +152,10 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         Schedule: (int)numSchedule.Value,
         IsBatchTracked: chkBatchTracked.Checked,
         ReorderLevel: txtReorderLevel.Amount ?? 0m,
-        PackSize: Blank(txtPackSize.Text));
+        PackSize: Blank(txtPackSize.Text),
+        DepartmentId: Chosen(cboDepartment),
+        CategoryId: Chosen(cboCategory),
+        ManufacturerId: Chosen(cboManufacturer));
 
     private static string? Blank(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

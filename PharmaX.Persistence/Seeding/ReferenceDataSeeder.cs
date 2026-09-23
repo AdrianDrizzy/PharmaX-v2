@@ -121,6 +121,7 @@ public sealed class ReferenceDataSeeder
                 PermissionCode.PriceChange,
                 PermissionCode.StockTakePost,
                 PermissionCode.SupplierMaintain,
+                PermissionCode.ReferenceMaintain,
                 PermissionCode.PurchaseOrderRaise,
                 PermissionCode.GoodsReceive,
                 PermissionCode.ReportOperational,
@@ -162,6 +163,14 @@ public sealed class ReferenceDataSeeder
                 PermissionCode.ProductRead,
                 PermissionCode.StockTakePost,
                 PermissionCode.SupplierMaintain,
+
+                // The lists stock is filed against. A stock controller
+                // files stock all day and could not add the department
+                // or category to file it in, because maintaining those
+                // demanded the price-change permission - which is the
+                // one thing a stock controller is deliberately not given.
+                PermissionCode.ReferenceMaintain,
+
                 PermissionCode.PurchaseOrderRaise,
                 PermissionCode.GoodsReceive,
                 PermissionCode.ReportOperational
@@ -219,9 +228,12 @@ public sealed class ReferenceDataSeeder
     {
         var till = _options.Workstation.TillNumber;
 
-        foreach (var series in new[]
-                 { "SALE", "DISP", "RET", "PAT", "SCR", "GRN", "PO", "STK",
-                   "QUO", "JNL" })
+        // DocumentSeries.All, never a list repeated here. This method
+        // held its own copy and had fallen two series behind it: CLM and
+        // ACC were missing, so opening a patient account and raising a
+        // medical aid claim both died at "no document numbers left" -
+        // the fourth time this exact drift has shipped.
+        foreach (var series in DocumentSeries.All)
         {
             var exists = await _db.DocumentNumberBlocks
                 .AnyAsync(b => b.Series == series
@@ -241,37 +253,5 @@ public sealed class ReferenceDataSeeder
                 NextValue = 1
             });
         }
-    }
-
-    /// <summary>
-    /// The handful of ledger accounts a day's takings post to.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately minimal. This is not the pharmacy's chart of
-    /// accounts - their accountant owns that - it is the set PharmaX
-    /// itself posts to, with the codes the AccountingOptions defaults
-    /// name, so that a fresh installation balances before anybody has
-    /// configured anything. A site with its own codes overrides them in
-    /// configuration and renames these.
-    /// </remarks>
-    private async Task SeedChartOfAccountsAsync(CancellationToken ct)
-    {
-        if (await _db.LedgerAccounts.AnyAsync(ct)) return;
-
-        var accounts = new (string Code, string Name, LedgerAccountType Type)[]
-        {
-            ("1000", "Cash on hand", LedgerAccountType.Asset),
-            ("1010", "Card clearing", LedgerAccountType.Asset),
-            ("1020", "EFT clearing", LedgerAccountType.Asset),
-            ("1100", "Trade debtors", LedgerAccountType.Asset),
-            ("1110", "Medical aid debtors", LedgerAccountType.Asset),
-            ("1200", "Vouchers redeemed", LedgerAccountType.Asset),
-            ("2200", "VAT output", LedgerAccountType.Liability),
-            ("4000", "Sales", LedgerAccountType.Income),
-            ("4900", "Rounding differences", LedgerAccountType.Income)
-        };
-
-        foreach (var (code, name, type) in accounts)
-            _db.LedgerAccounts.Add(LedgerAccount.Create(code, name, type));
     }
 }

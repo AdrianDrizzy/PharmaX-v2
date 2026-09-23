@@ -31,10 +31,15 @@ partial class frmScriptList
         lblCount = new Label();
         grdScripts = new PhxGrid();
         btnCapture = new Button();
+        btnCapture.Name = "btnCapture";
         btnCancelScript = new Button();
+        btnCancelScript.Name = "btnCancelScript";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnChoose = new Button();
+        btnChoose.Name = "btnChoose";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblPatient.AutoSize = false;

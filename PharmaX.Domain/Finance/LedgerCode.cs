@@ -36,6 +36,16 @@ public static class LedgerCode
     public const string MedicalAidDebtors = "1150";
     public const string StockOnHand = "1200";
 
+    /// <summary>
+    /// Vouchers taken as tender and not yet redeemed against the issuer.
+    /// </summary>
+    /// <remarks>
+    /// Kept out of the bank accounts because a voucher is not money until
+    /// somebody honours it, and a cash-up that counted vouchers as cash
+    /// would balance against a drawer that does not contain them.
+    /// </remarks>
+    public const string VouchersRedeemed = "1250";
+
     public const string TradeCreditors = "2000";
     public const string VatControl = "2100";
 
@@ -43,6 +53,18 @@ public static class LedgerCode
     public const string RetainedEarnings = "3100";
 
     public const string Sales = "4000";
+
+    /// <summary>
+    /// Where the fractions go when a line total is rounded to the minor
+    /// unit under pos.rounding.mode.
+    /// </summary>
+    /// <remarks>
+    /// Small and unavoidable rather than exceptional: without somewhere
+    /// for the half-cent to land, a rounded sale posts a journal that
+    /// does not balance, and an unbalanced journal is worse than a
+    /// visible line an accountant can total at year end.
+    /// </remarks>
+    public const string RoundingDifferences = "4900";
 
     public const string Purchases = "5000";
     public const string StockWrittenOff = "5100";
@@ -76,6 +98,7 @@ public static class LedgerCode
         (TradeDebtors, "Trade Debtors", LedgerAccountType.Asset),
         (MedicalAidDebtors, "Medical Aid Debtors", LedgerAccountType.Asset),
         (StockOnHand, "Stock on Hand", LedgerAccountType.Asset),
+        (VouchersRedeemed, "Vouchers Redeemed", LedgerAccountType.Asset),
 
         (TradeCreditors, "Trade Creditors", LedgerAccountType.Liability),
         (VatControl, "VAT Control", LedgerAccountType.Liability),
@@ -84,6 +107,7 @@ public static class LedgerCode
         (RetainedEarnings, "Retained Earnings", LedgerAccountType.Equity),
 
         (Sales, "Sales", LedgerAccountType.Income),
+        (RoundingDifferences, "Rounding Differences", LedgerAccountType.Income),
 
         (Purchases, "Purchases", LedgerAccountType.Expense),
         (StockWrittenOff, "Stock Written Off", LedgerAccountType.Expense),

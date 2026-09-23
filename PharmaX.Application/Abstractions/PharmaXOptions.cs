@@ -11,7 +11,6 @@ public sealed class PharmaXOptions
     public AlertOptions Alerts { get; init; } = new();
     public AccountingOptions Accounting { get; init; } = new();
     public LoggingOptions Logging { get; init; } = new();
-    public AccountingOptions Accounting { get; init; } = new();
     public DevelopmentOptions Development { get; init; } = new();
 }
 
@@ -141,12 +140,21 @@ public sealed class AlertOptions
 }
 
 /// <summary>
-/// The pharmacy's own books.
+/// The pharmacy's own books: whether PharmaX keeps a ledger, and which
+/// accounts a day's takings post to.
 /// </summary>
 /// <remarks>
 /// Not to be confused with Features.AccountingPosting, which is about
 /// handing figures to an outside accounting package. This one is about
-/// whether PharmaX keeps a ledger of its own at all.
+/// whether PharmaX keeps a ledger of its own at all, and where the
+/// figures land when it does.
+/// <para>
+/// The account codes are configuration rather than constants because
+/// every pharmacy's accountant has their own chart, and a hard-coded
+/// account code posts somebody else's trial balance into the wrong row.
+/// The defaults match the chart PharmaX seeds, so an installation that
+/// has not been told otherwise still balances.
+/// </para>
 /// </remarks>
 public sealed class AccountingOptions
 {
@@ -161,6 +169,38 @@ public sealed class AccountingOptions
     /// journals and the trial balance all keep working.
     /// </remarks>
     public bool AutoPost { get; init; } = true;
+
+    // Defaults are taken from LedgerCode rather than written as literals,
+    // so that the configurable chart and the seeded one cannot drift
+    // apart. They did drift once (DEF-0004): two charts numbered the same
+    // accounts differently, and a cash sale posted to two different
+    // places depending on which engine wrote the journal.
+    public string Cash { get; init; } = Domain.Finance.LedgerCode.CashOnHand;
+    public string Card { get; init; } = Domain.Finance.LedgerCode.Bank;
+    public string Eft { get; init; } = Domain.Finance.LedgerCode.Bank;
+    public string AccountsReceivable { get; init; } = Domain.Finance.LedgerCode.TradeDebtors;
+    public string MedicalAidReceivable { get; init; } = Domain.Finance.LedgerCode.MedicalAidDebtors;
+    public string Voucher { get; init; } = Domain.Finance.LedgerCode.VouchersRedeemed;
+    public string SalesIncome { get; init; } = Domain.Finance.LedgerCode.Sales;
+    public string VatOutput { get; init; } = Domain.Finance.LedgerCode.VatControl;
+    public string Rounding { get; init; } = Domain.Finance.LedgerCode.RoundingDifferences;
+
+    /// <summary>
+    /// Where a tender lands. An unrecognised tender goes to cash rather
+    /// than to nothing at all: a journal that refuses to balance because
+    /// somebody added a tender type is worse than one posting a line an
+    /// accountant can see and move.
+    /// </summary>
+    public string CodeFor(Domain.Sales.TenderType tender) => tender switch
+    {
+        Domain.Sales.TenderType.Cash => Cash,
+        Domain.Sales.TenderType.Card => Card,
+        Domain.Sales.TenderType.Eft => Eft,
+        Domain.Sales.TenderType.Account => AccountsReceivable,
+        Domain.Sales.TenderType.MedicalAid => MedicalAidReceivable,
+        Domain.Sales.TenderType.Voucher => Voucher,
+        _ => Cash
+    };
 }
 
 public sealed class ConnectivityOptions
@@ -206,44 +246,4 @@ public sealed class LoggingOptions
 
     public string ResolvedDirectory =>
         Environment.ExpandEnvironmentVariables(Directory);
-}
-
-/// <summary>
-/// The ledger accounts a day's takings post to.
-/// </summary>
-/// <remarks>
-/// Configuration rather than constants because every pharmacy's
-/// accountant has their own chart, and a hard-coded account code posts
-/// somebody else's trial balance into the wrong row. The defaults match
-/// the chart PharmaX seeds, so an installation that has not been told
-/// otherwise still balances.
-/// </remarks>
-public sealed class AccountingOptions
-{
-    public string Cash { get; init; } = "1000";
-    public string Card { get; init; } = "1010";
-    public string Eft { get; init; } = "1020";
-    public string AccountsReceivable { get; init; } = "1100";
-    public string MedicalAidReceivable { get; init; } = "1110";
-    public string Voucher { get; init; } = "1200";
-    public string SalesIncome { get; init; } = "4000";
-    public string VatOutput { get; init; } = "2200";
-    public string Rounding { get; init; } = "4900";
-
-    /// <summary>
-    /// Where a tender lands. An unrecognised tender goes to cash rather
-    /// than to nothing at all: a journal that refuses to balance because
-    /// somebody added a tender type is worse than one posting a line an
-    /// accountant can see and move.
-    /// </summary>
-    public string CodeFor(Domain.Sales.TenderType tender) => tender switch
-    {
-        Domain.Sales.TenderType.Cash => Cash,
-        Domain.Sales.TenderType.Card => Card,
-        Domain.Sales.TenderType.Eft => Eft,
-        Domain.Sales.TenderType.Account => AccountsReceivable,
-        Domain.Sales.TenderType.MedicalAid => MedicalAidReceivable,
-        Domain.Sales.TenderType.Voucher => Voucher,
-        _ => Cash
-    };
 }

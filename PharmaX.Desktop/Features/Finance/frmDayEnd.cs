@@ -1,3 +1,4 @@
+using PharmaX.Application.Reporting;
 using System.Globalization;
 using System.Text;
 using PharmaX.Application.Abstractions;
@@ -20,8 +21,10 @@ public partial class frmDayEnd : PhxFormBase
 {
     private readonly IDayEndPostingService? _posting;
     private readonly PharmaXOptions? _options;
+    private readonly IWorkbookWriter? _workbooks;
+    private readonly ICurrentUser? _user;
 
-    private IReadOnlyList<JournalBatchDto> _batches = Array.Empty<JournalBatchDto>();
+    private IReadOnlyList<DayEndJournalBatchDto> _batches = Array.Empty<DayEndJournalBatchDto>();
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ReportFinancial;
@@ -37,13 +40,15 @@ public partial class frmDayEnd : PhxFormBase
         btnPrepare.Click += (_, _) => _ = PrepareAsync();
         btnPost.Click += (_, _) => _ = PostAsync();
         btnExport.Click += (_, _) => Export();
+        btnExportExcel.Click += (_, _) => ExportToExcel();
         btnClose.Click += (_, _) => CloseView(true);
 
         grdBatches.SelectionChanged += (_, _) => ShowSelectedLines();
     }
 
     /// Runtime. Resolved by the container.
-    public frmDayEnd(IDayEndPostingService posting, PharmaXOptions options)
+    public frmDayEnd(IDayEndPostingService posting, PharmaXOptions options,
+                     IWorkbookWriter workbooks, ICurrentUser user)
         : this()
     {
         _posting = posting;
@@ -122,7 +127,7 @@ public partial class frmDayEnd : PhxFormBase
 
     private Task PostAsync() => GuardAsync(async () =>
     {
-        if (_posting is null || Selected() is not JournalBatchDto batch) return;
+        if (_posting is null || Selected() is not DayEndJournalBatchDto batch) return;
 
         if (batch.IsPosted)
         {
@@ -155,7 +160,7 @@ public partial class frmDayEnd : PhxFormBase
     /// </summary>
     private void Export()
     {
-        if (Selected() is not JournalBatchDto batch) return;
+        if (Selected() is not DayEndJournalBatchDto batch) return;
 
         using var save = new SaveFileDialog
         {
@@ -187,6 +192,29 @@ public partial class frmDayEnd : PhxFormBase
         ShowInfo($"Exported to {save.FileName}");
     }
 
+    /// <summary>
+    /// The same journal as a workbook.
+    /// </summary>
+    /// <remarks>
+    /// Beside the CSV rather than instead of it: the CSV is the shape an
+    /// accounting package imports, and the workbook is the shape a person
+    /// reads. They are different jobs and the screen does both.
+    /// </remarks>
+    private void ExportToExcel()
+    {
+        if (_workbooks is null || _user is null) return;   // designer
+        if (Selected() is not DayEndJournalBatchDto batch) return;
+
+        var saved = GridExport.Offer(this, _workbooks, grdLines,
+            "Day-End Journal",
+            string.Format(CultureInfo.CurrentCulture,
+                "Batch {0}, posted {1:dd/MM/yyyy}",
+                batch.BatchNumber, batch.PostingDate),
+            _user.Username);
+
+        if (saved is not null) ShowInfo($"Exported to {saved}");
+    }
+
     /// A field containing a comma or a quote would otherwise split a row.
     private static string Quote(string value) =>
         "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
@@ -212,7 +240,7 @@ public partial class frmDayEnd : PhxFormBase
     {
         foreach (DataGridViewRow row in grdBatches.Rows)
         {
-            if (row.DataBoundItem is not JournalBatchDto b || b.Id != id)
+            if (row.DataBoundItem is not DayEndJournalBatchDto b || b.Id != id)
                 continue;
 
             row.Selected = true;
@@ -221,17 +249,18 @@ public partial class frmDayEnd : PhxFormBase
         }
     }
 
-    private JournalBatchDto? Selected() =>
-        grdBatches.CurrentRow?.DataBoundItem as JournalBatchDto;
+    private DayEndJournalBatchDto? Selected() =>
+        grdBatches.CurrentRow?.DataBoundItem as DayEndJournalBatchDto;
 
     private void ShowSelectedLines()
     {
-        if (Selected() is not JournalBatchDto batch)
+        if (Selected() is not DayEndJournalBatchDto batch)
         {
             grdLines.DataSource = null;
             lblBalance.Text = "";
             btnPost.Enabled = false;
             btnExport.Enabled = false;
+            btnExportExcel.Enabled = false;
             return;
         }
 
@@ -246,6 +275,7 @@ public partial class frmDayEnd : PhxFormBase
 
         btnPost.Enabled = !batch.IsPosted && batch.IsBalanced;
         btnExport.Enabled = true;
+        btnExportExcel.Enabled = true;
     }
 
     /// The same guard the presenters use; this screen has no presenter.

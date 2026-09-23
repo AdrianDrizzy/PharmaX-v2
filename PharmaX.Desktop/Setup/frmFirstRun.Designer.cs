@@ -68,8 +68,11 @@ partial class frmFirstRun
 
         grpKind = new GroupBox();
         radStandalone = new RadioButton();
+        radStandalone.Name = "radStandalone";
         radServer = new RadioButton();
+        radServer.Name = "radServer";
         radTill = new RadioButton();
+        radTill.Name = "radTill";
 
         grpDatabase = new GroupBox();
         lblHost = new Label();

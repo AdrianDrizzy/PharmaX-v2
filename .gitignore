@@ -12,3 +12,7 @@ publish/
 TestResults/
 *.log
 dist/
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -122,6 +122,8 @@ public sealed class StockOnHandReport : IReportDefinition
                 p.Id,
                 p.Code,
                 p.Description,
+                p.DepartmentId,
+                p.CategoryId,
                 p.QuantityOnHand,
                 p.ReorderLevel,
                 Cost = p.CostPrice.Amount,
@@ -129,6 +131,15 @@ public sealed class StockOnHandReport : IReportDefinition
             })
             .ToListAsync(ct)
             .ConfigureAwait(false);
+
+        // The preset has offered this filter since it was written and
+        // the report never read it, so choosing a department changed
+        // nothing at all.
+        if (r.Guid("department") is Guid department)
+            rows = rows.Where(x => x.DepartmentId == department).ToList();
+
+        if (r.Guid("category") is Guid category)
+            rows = rows.Where(x => x.CategoryId == category).ToList();
 
         if (r.Bool("belowReorderOnly"))
             rows = rows.Where(x => x.QuantityOnHand <= x.ReorderLevel)

@@ -74,6 +74,26 @@ public sealed class Department : ReferenceEntry
 }
 
 /// <summary>
+/// What kind of thing an item is - analgesics, antibiotics, baby
+/// formula - cutting across the department it is sold from.
+/// </summary>
+/// <remarks>
+/// Not the same axis as a department, which is where in the shop it
+/// sits: paracetamol is an analgesic whether it is sold over the counter
+/// or dispensed against a script. Specification INV-001 asks for both,
+/// and for a therapeutic class above them, which is a third axis this
+/// does not attempt.
+/// </remarks>
+public sealed class Category : ReferenceEntry
+{
+    private Category() { }
+
+    public static Category Create(string code, string name,
+        string? detail = null) =>
+        Init(new Category(), code, name, detail);
+}
+
+/// <summary>
 /// Who makes the product. Kept against the product so that a recall
 /// notice naming a manufacturer can be answered with a list.
 /// </summary>

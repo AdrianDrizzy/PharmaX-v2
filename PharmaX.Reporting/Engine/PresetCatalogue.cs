@@ -73,11 +73,27 @@ public sealed class PresetCatalogue : IPresetCatalogue
         new("inv.stock.on-hand", "Stock On Hand",
             "StockOnHand",
             new Dictionary<string, string?>(),
-            new[] { "department", "belowReorderOnly" },
+            new[] { "department", "category", "belowReorderOnly" },
             PermissionCode.ReportOperational),
 
+        // Every batch on the shelf, with how much is left and when it
+        // stops being sellable. StockOnHand answers what the stock is
+        // worth, a row per product; this answers what is actually in the
+        // dispensary, a row per batch.
+        new("inv.stock.by-batch", "Stock On Hand by Batch",
+            "StockByBatch",
+            new Dictionary<string, string?>(),
+            new[] { "department", "category", "withinDays", "includeZero" },
+            PermissionCode.ReportOperational),
+
+        // Named StockOnHand and given expiringOnly and withinDays, which
+        // that definition has never read: it has no expiry to filter on,
+        // because expiry belongs to a batch and it reports products. So
+        // this preset returned the plain stock list and quietly ignored
+        // both of its own parameters. It points at the batch report now,
+        // which is the one that can answer it.
         new("inv.stock.expiring", "Stock Expiring",
-            "StockOnHand",
+            "StockByBatch",
             new Dictionary<string, string?> { ["expiringOnly"] = "true" },
             new[] { "withinDays" },
             PermissionCode.ReportOperational),
@@ -178,6 +194,10 @@ public sealed class PresetCatalogue : IPresetCatalogue
 
             ["withinDays"] = new("withinDays", "Expiring within (days)",
                 "number", Array.Empty<SlicerOptionDto>()),
+
+            ["includeZero"] = new("includeZero",
+                "Include empty batches", "flag",
+                Array.Empty<SlicerOptionDto>()),
 
             ["movementType"] = new("movementType", "Movement type",
                 "lookup", new[]

@@ -21,6 +21,20 @@ public static class PermissionCode
     public const string PriceChange = "inv.price.change";
     public const string StockTakePost = "inv.stocktake.post";
     public const string SupplierMaintain = "inv.supplier.maintain";
+
+    /// <summary>
+    /// Maintaining the lists a product is filed against:
+    /// departments, categories, manufacturers, branches, societies.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission rather than borrowing inv.price.change,
+    /// which is what these screens used to demand. Renaming a
+    /// department and repricing the shelf are different authorities,
+    /// and tying them together meant a stock controller who files
+    /// stock all day could not add the department to file it in,
+    /// while anyone who could had also been handed the prices.
+    /// </remarks>
+    public const string ReferenceMaintain = "inv.reference.maintain";
     public const string PurchaseOrderRaise = "inv.purchase.order";
     public const string GoodsReceive = "inv.goods.receive";
 
@@ -40,7 +54,7 @@ public static class PermissionCode
         SaleCreate, SaleDiscountAboveLimit, ReturnAuthorise,
         SessionCloseOtherUser, ScriptAuthorise, ScriptReverse,
         ProductRead, PriceChange, StockTakePost, SupplierMaintain,
-        PurchaseOrderRaise, GoodsReceive,
+        ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,
         UserRoleAssign, SettingsChange

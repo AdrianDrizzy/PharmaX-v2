@@ -15,6 +15,9 @@ partial class frmProductEdit
     private MoneyTextBox txtVatRate = null!;
     private MoneyTextBox txtReorderLevel = null!;
     private NumericUpDown numSchedule = null!;
+    private ComboBox cboDepartment = null!;
+    private ComboBox cboCategory = null!;
+    private ComboBox cboManufacturer = null!;
     private CheckBox chkBatchTracked = null!;
     private Label lblOnHand = null!;
     private Label lblOnHandValue = null!;
@@ -31,15 +34,30 @@ partial class frmProductEdit
     {
         components = new System.ComponentModel.Container();
         txtCode = new TextBox();
+        txtCode.Name = "txtCode";
         txtDescription = new TextBox();
+        txtDescription.Name = "txtDescription";
         txtGenericName = new TextBox();
+        txtGenericName.Name = "txtGenericName";
         txtTaxCode = new TextBox();
+        txtTaxCode.Name = "txtTaxCode";
         txtPackSize = new TextBox();
+        txtPackSize.Name = "txtPackSize";
         txtRetail = new MoneyTextBox();
+        txtRetail.Name = "txtRetail";
         txtCost = new MoneyTextBox();
+        txtCost.Name = "txtCost";
         txtVatRate = new MoneyTextBox();
+        txtVatRate.Name = "txtVatRate";
         txtReorderLevel = new MoneyTextBox();
+        txtReorderLevel.Name = "txtReorderLevel";
         numSchedule = new NumericUpDown();
+        cboDepartment = new ComboBox();
+        cboDepartment.Name = "cboDepartment";
+        cboCategory = new ComboBox();
+        cboCategory.Name = "cboCategory";
+        cboManufacturer = new ComboBox();
+        cboManufacturer.Name = "cboManufacturer";
         chkBatchTracked = new CheckBox();
         lblOnHand = new Label();
         lblOnHandValue = new Label();
@@ -59,6 +77,16 @@ partial class frmProductEdit
         Field("Reorder &level", txtReorderLevel, 8, 140);
         Field("Pack si&ze", txtPackSize, 9, 140);
 
+        // Where the product is filed. Three lists the pharmacy
+        // maintains itself, so they are chosen rather than typed.
+        Field("Dep&artment", cboDepartment, 10, 240);
+        Field("Categor&y", cboCategory, 11, 240);
+        Field("&Manufacturer", cboManufacturer, 12, 240);
+
+        foreach (var combo in new[]
+                 { cboDepartment, cboCategory, cboManufacturer })
+            combo.DropDownStyle = ComboBoxStyle.DropDownList;
+
         txtCode.MaxLength = 30;
         txtDescription.MaxLength = 200;
         txtGenericName.MaxLength = 200;
@@ -71,37 +99,37 @@ partial class frmProductEdit
         numSchedule.Name = "numSchedule";
 
         chkBatchTracked.AutoSize = true;
-        chkBatchTracked.Location = new Point(150, 20 + 10 * 34);
+        chkBatchTracked.Location = new Point(150, 20 + 13 * 34);
         chkBatchTracked.Name = "chkBatchTracked";
         chkBatchTracked.Size = new Size(180, 19);
-        chkBatchTracked.TabIndex = 10;
+        chkBatchTracked.TabIndex = 13;
         chkBatchTracked.Text = "&Batch tracked (FEFO applies)";
         chkBatchTracked.UseVisualStyleBackColor = true;
 
         // Read-only on purpose: stock moves through receipts, sales and
         // adjustments, never by typing a new figure into a form.
         lblOnHand.AutoSize = true;
-        lblOnHand.Location = new Point(20, 24 + 11 * 34);
+        lblOnHand.Location = new Point(20, 24 + 14 * 34);
         lblOnHand.Text = "On hand";
 
         lblOnHandValue.AutoSize = false;
         lblOnHandValue.Font = new Font("Consolas", 10F);
-        lblOnHandValue.Location = new Point(150, 24 + 11 * 34);
+        lblOnHandValue.Location = new Point(150, 24 + 14 * 34);
         lblOnHandValue.Name = "lblOnHandValue";
         lblOnHandValue.Size = new Size(140, 20);
         lblOnHandValue.Text = "0.000";
 
-        btnSave.Location = new Point(388, 40 + 12 * 34);
+        btnSave.Location = new Point(388, 40 + 15 * 34);
         btnSave.Name = "btnSave";
         btnSave.Size = new Size(80, 30);
-        btnSave.TabIndex = 11;
+        btnSave.TabIndex = 14;
         btnSave.Text = "&Save";
         btnSave.UseVisualStyleBackColor = true;
 
-        btnCancel.Location = new Point(474, 40 + 12 * 34);
+        btnCancel.Location = new Point(474, 40 + 15 * 34);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(80, 30);
-        btnCancel.TabIndex = 12;
+        btnCancel.TabIndex = 15;
         btnCancel.Text = "Cancel";
         btnCancel.UseVisualStyleBackColor = true;
 
@@ -115,7 +143,7 @@ partial class frmProductEdit
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(574, 90 + 12 * 34);
+        ClientSize = new Size(574, 90 + 15 * 34);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

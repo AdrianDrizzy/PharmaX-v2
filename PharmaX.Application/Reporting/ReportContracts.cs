@@ -30,6 +30,21 @@ public sealed record ReportProvenance(
 
 public enum ExportFormat { Pdf, Excel, Csv }
 
+/// <summary>
+/// Writes a result to a spreadsheet at a path somebody has chosen,
+/// rather than to a generated name in a folder.
+/// </summary>
+/// <remarks>
+/// The reports screen exports through IReportExporter, which names the
+/// file itself. The accounts and ledger screens export what is on the
+/// grid to wherever the operator points a save dialog, so they need the
+/// same workbook and a different way of saying where it goes.
+/// </remarks>
+public interface IWorkbookWriter
+{
+    void WriteTo(ReportResult report, string path);
+}
+
 public interface IReportRunner
 {
     Task<ReportResult> RunAsync(ReportRequest request,
@@ -63,6 +78,21 @@ public sealed record SlicerDto(string Key, string Label, string Kind,
     IReadOnlyList<SlicerOptionDto> Options, bool IsMultiSelect = false);
 
 public sealed record SlicerOptionDto(string Value, string Label);
+
+/// <summary>
+/// The choices for a slicer the catalogue cannot know in advance,
+/// because they are rows in this pharmacy's database rather than a fixed
+/// list: its departments, its till sessions, its staff.
+/// </summary>
+/// <remarks>
+/// Returns an empty list for a slicer it has nothing to offer, which the
+/// screen reads as "leave this one as typed text".
+/// </remarks>
+public interface IReportLookups
+{
+    Task<IReadOnlyList<SlicerOptionDto>> OptionsForAsync(string slicerKey,
+        CancellationToken ct = default);
+}
 
 public interface IPresetCatalogue
 {

@@ -8,13 +8,13 @@ using PharmaX.Domain.Security;
 
 namespace PharmaX.Application.Finance;
 
-public sealed record JournalLineDto(int LineNo, string AccountCode,
+public sealed record DayEndJournalLineDto(int LineNo, string AccountCode,
     string AccountName, decimal Debit, decimal Credit, string? Narration);
 
-public sealed record JournalBatchDto(Guid Id, string BatchNumber,
+public sealed record DayEndJournalBatchDto(Guid Id, string BatchNumber,
     DateOnly PostingDate, string Source, string? Narration, bool IsPosted,
     decimal TotalDebits, decimal TotalCredits, bool IsBalanced,
-    IReadOnlyList<JournalLineDto> Lines);
+    IReadOnlyList<DayEndJournalLineDto> Lines);
 
 /// <summary>
 /// What a day's trading came to, before it is turned into journals.
@@ -56,17 +56,17 @@ public interface IDayEndPostingService
     /// Builds the journal for a day's takings. Built and saved unposted,
     /// so it can be read before anyone commits to it.
     /// </summary>
-    Task<Result<JournalBatchDto>> PrepareAsync(DateOnly day,
+    Task<Result<DayEndJournalBatchDto>> PrepareAsync(DateOnly day,
         CancellationToken ct = default);
 
     /// <summary>
     /// Commits a prepared batch. A posted batch is immutable, which is
     /// what makes it safe to hand to an accounting package.
     /// </summary>
-    Task<Result<JournalBatchDto>> PostAsync(Guid batchId,
+    Task<Result<DayEndJournalBatchDto>> PostAsync(Guid batchId,
         CancellationToken ct = default);
 
-    Task<Result<IReadOnlyList<JournalBatchDto>>> RecentAsync(
+    Task<Result<IReadOnlyList<DayEndJournalBatchDto>>> RecentAsync(
         CancellationToken ct = default);
 }
 
@@ -141,7 +141,7 @@ public sealed class DayEndPostingService : IDayEndPostingService
             existing is not null));
     }
 
-    public async Task<Result<JournalBatchDto>> PrepareAsync(DateOnly day,
+    public async Task<Result<DayEndJournalBatchDto>> PrepareAsync(DateOnly day,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ReportFinancial);
@@ -152,7 +152,7 @@ public sealed class DayEndPostingService : IDayEndPostingService
         var already = await _journals.ForDayAsync(Source, day, ct);
 
         if (already is not null)
-            return Result<JournalBatchDto>.Fail("FIN-002",
+            return Result<DayEndJournalBatchDto>.Fail("FIN-002",
                 $"{day:dd/MM/yyyy} already has journal "
                 + $"{already.BatchNumber}"
                 + (already.IsPosted ? " and it is posted." : " waiting to be posted."));
@@ -160,11 +160,11 @@ public sealed class DayEndPostingService : IDayEndPostingService
         var sales = await _journals.FinalisedOnAsync(day, ct);
 
         if (sales.Count == 0)
-            return Result<JournalBatchDto>.Fail("FIN-001",
+            return Result<DayEndJournalBatchDto>.Fail("FIN-001",
                 $"Nothing was sold on {day:dd/MM/yyyy}, so there is "
                 + "nothing to post.");
 
-        var number = await _numbering.NextAsync("JNL", ct);
+        var number = await _numbering.NextAsync(DocumentSeries.Journal, ct);
         var accounts = _options.Accounting;
 
         var batch = JournalBatch.Create(number, day, Source,
@@ -219,10 +219,10 @@ public sealed class DayEndPostingService : IDayEndPostingService
         await _journals.AddAsync(batch, ct);
         await _uow.SaveChangesAsync(ct);
 
-        return Result<JournalBatchDto>.Ok(await DescribeAsync(batch, ct));
+        return Result<DayEndJournalBatchDto>.Ok(await DescribeAsync(batch, ct));
     }
 
-    public async Task<Result<JournalBatchDto>> PostAsync(Guid batchId,
+    public async Task<Result<DayEndJournalBatchDto>> PostAsync(Guid batchId,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ReportFinancial);
@@ -230,13 +230,13 @@ public sealed class DayEndPostingService : IDayEndPostingService
         var batch = await _journals.GetAsync(batchId, ct);
 
         if (batch is null)
-            return Result<JournalBatchDto>.Fail("FIN-000",
+            return Result<DayEndJournalBatchDto>.Fail("FIN-000",
                 "That journal no longer exists.");
 
         // Post refuses an unbalanced batch on its own account; this is
         // the message the operator should see rather than an exception.
         if (!batch.IsBalanced)
-            return Result<JournalBatchDto>.Fail("FIN-003",
+            return Result<DayEndJournalBatchDto>.Fail("FIN-003",
                 $"Debits {batch.TotalDebits} do not equal credits "
                 + $"{batch.TotalCredits}. This journal will not post.");
 
@@ -248,10 +248,10 @@ public sealed class DayEndPostingService : IDayEndPostingService
 
         await _uow.SaveChangesAsync(ct);
 
-        return Result<JournalBatchDto>.Ok(await DescribeAsync(batch, ct));
+        return Result<DayEndJournalBatchDto>.Ok(await DescribeAsync(batch, ct));
     }
 
-    public async Task<Result<IReadOnlyList<JournalBatchDto>>> RecentAsync(
+    public async Task<Result<IReadOnlyList<DayEndJournalBatchDto>>> RecentAsync(
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ReportFinancial);
@@ -259,22 +259,22 @@ public sealed class DayEndPostingService : IDayEndPostingService
         var batches = await _journals.RecentAsync(ct: ct);
         var names = await _journals.AccountNamesAsync(ct);
 
-        IReadOnlyList<JournalBatchDto> dtos =
+        IReadOnlyList<DayEndJournalBatchDto> dtos =
             batches.Select(b => Describe(b, names)).ToList();
 
-        return Result<IReadOnlyList<JournalBatchDto>>.Ok(dtos);
+        return Result<IReadOnlyList<DayEndJournalBatchDto>>.Ok(dtos);
     }
 
-    private async Task<JournalBatchDto> DescribeAsync(JournalBatch batch,
+    private async Task<DayEndJournalBatchDto> DescribeAsync(JournalBatch batch,
         CancellationToken ct) =>
         Describe(batch, await _journals.AccountNamesAsync(ct));
 
-    private static JournalBatchDto Describe(JournalBatch b,
+    private static DayEndJournalBatchDto Describe(JournalBatch b,
         IReadOnlyDictionary<string, string> names) =>
         new(b.Id, b.BatchNumber, b.PostingDate, b.Source, b.Narration,
             b.IsPosted, b.TotalDebits.Amount, b.TotalCredits.Amount,
             b.IsBalanced,
-            b.Lines.OrderBy(l => l.LineNo).Select(l => new JournalLineDto(
+            b.Lines.OrderBy(l => l.LineNo).Select(l => new DayEndJournalLineDto(
                 l.LineNo, l.AccountCode,
                 names.GetValueOrDefault(l.AccountCode, ""),
                 l.IsDebit ? l.Amount.Amount : 0m,

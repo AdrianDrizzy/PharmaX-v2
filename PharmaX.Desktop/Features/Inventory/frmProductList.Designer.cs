@@ -11,6 +11,8 @@ partial class frmProductList
     private Label lblCount = null!;
     private TextBox txtSearch = null!;
     private PhxGrid grdProducts = null!;
+    private PhxGrid grdBatches = null!;
+    private CheckBox chkBatches = null!;
     private Button btnAdd = null!;
     private Button btnEdit = null!;
     private Button btnRefresh = null!;
@@ -37,11 +39,19 @@ partial class frmProductList
         lblCount = new Label();
         txtSearch = new TextBox();
         grdProducts = new PhxGrid();
+        grdBatches = new PhxGrid();
+        chkBatches = new CheckBox();
+        chkBatches.Name = "chkBatches";
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnEdit = new Button();
+        btnEdit.Name = "btnEdit";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnChoose = new Button();
+        btnChoose.Name = "btnChoose";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblSearch.AutoSize = true;
@@ -60,8 +70,16 @@ partial class frmProductList
         lblCount.Size = new Size(160, 20);
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
+        // Off by default: the product list is what this screen is for,
+        // and most of the shelf is not batch tracked.
+        chkBatches.AutoSize = true;
+        chkBatches.Location = new Point(446, 15);
+        chkBatches.TabIndex = 1;
+        chkBatches.Text = "Show &batches and expiry";
+        chkBatches.UseVisualStyleBackColor = true;
+
         pnlTop.Controls.AddRange(new Control[]
-            { lblCount, txtSearch, lblSearch });
+            { lblCount, chkBatches, txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 50;
         pnlTop.Name = "pnlTop";
@@ -77,6 +95,22 @@ partial class frmProductList
         Bind(grdProducts, "Schedule", "Sch", 40, rightAlign: true);
         Bind(grdProducts, "IsBatchTracked", "Batch", 50);
         Bind(grdProducts, "IsActive", "Active", 50);
+
+        // The same shelf, a batch at a time. A second grid rather than
+        // rebinding the first: the two have different columns, and a grid
+        // that swaps its column set on a tick is where the sorting, the
+        // widths and the selected row all quietly come apart.
+        grdBatches.AutoGenerateColumns = false;
+        grdBatches.Dock = DockStyle.Fill;
+        grdBatches.Name = "grdBatches";
+        grdBatches.Visible = false;
+
+        Bind(grdBatches, "Code", "Code", 70);
+        Bind(grdBatches, "Description", "Description", 260);
+        Bind(grdBatches, "BatchNumber", "Batch", 110);
+        Bind(grdBatches, "Expiry", "Expires", 90, "dd/MM/yyyy");
+        Bind(grdBatches, "DaysToExpiry", "Days left", 70, "N0", true);
+        Bind(grdBatches, "QuantityOnHand", "On hand", 80, "0.###", true);
 
         btnAdd.Location = new Point(12, 8);
         btnAdd.Size = new Size(90, 30);
@@ -121,6 +155,7 @@ partial class frmProductList
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(840, 560);
+        Controls.Add(grdBatches);
         Controls.Add(grdProducts);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

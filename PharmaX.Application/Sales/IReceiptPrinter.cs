@@ -26,7 +26,17 @@ public sealed record ReceiptHeaderDto(string TradingName,
 /// </summary>
 public interface IReceiptPrinter
 {
-    PrintOutcome Print(SaleDto sale, ReceiptHeaderDto header);
+    /// <remarks>
+    /// Asynchronous because printing reads the till's chosen printer out
+    /// of the database and then hands a document to the spooler, and
+    /// both of those were being waited on from the user-interface
+    /// thread. The wait on the database was a deadlock: the query's
+    /// continuation needed the very thread that was blocked waiting for
+    /// it, so the till froze with the hourglass up and never came back.
+    /// </remarks>
+    Task<PrintOutcome> PrintAsync(SaleDto sale, ReceiptHeaderDto header,
+                                  CancellationToken ct = default);
+
     bool IsAvailable { get; }
 }
 
@@ -37,23 +47,12 @@ public interface IReceiptPrinter
 /// </summary>
 public interface ICashDrawer
 {
-    void Open();
-    bool IsAvailable { get; }
-}
+    /// <remarks>
+    /// Asynchronous for the same reason as the printers: which printer
+    /// the drawer hangs off is a row in the database, and waiting for it
+    /// from the user-interface thread deadlocked the till.
+    /// </remarks>
+    Task OpenAsync(CancellationToken ct = default);
 
-public sealed record CardAuthorisationDto(bool Approved, string? Reference,
-                                          string? Message);
-
-/// <summary>
-/// A card terminal. The manual implementation is always available and is
-/// what a site uses before an integrated terminal is commissioned: the
-/// operator reads the authorisation code off the slip and types it in.
-/// </summary>
-public interface ICardTerminal
-{
-    string Name { get; }
-    bool IsIntegrated { get; }
-
-    Task<CardAuthorisationDto> AuthoriseAsync(decimal amount,
-        CancellationToken ct = default);
+    Task<bool> IsAvailableAsync(CancellationToken ct = default);
 }

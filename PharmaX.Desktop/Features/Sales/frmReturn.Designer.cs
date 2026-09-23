@@ -37,8 +37,11 @@ partial class frmReturn
         cboKind = new ComboBox();
         grdLines = new DataGridView();
         btnFind = new Button();
+        btnFind.Name = "btnFind";
         btnPost = new Button();
+        btnPost.Name = "btnPost";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)grdLines).BeginInit();
         SuspendLayout();
 

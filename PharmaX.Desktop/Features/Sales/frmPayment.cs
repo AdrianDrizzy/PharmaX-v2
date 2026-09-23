@@ -16,6 +16,53 @@ public partial class frmPayment : Form
     private readonly decimal _amountDue;
     private readonly List<PaymentDto> _payments = new();
 
+    /// <summary>
+    /// A tender as the cashier reads it against the name the sale
+    /// stores.
+    /// </summary>
+    /// <remarks>
+    /// The list used to be Enum.GetNames, so the busiest screen in the
+    /// pharmacy offered "Eft" and "MedicalAid". The stored name is still
+    /// the enum's, because that is what the domain parses.
+    /// </remarks>
+    private sealed class Tender
+    {
+        public Tender(TenderType type, string label)
+        {
+            Type = type;
+            Label = label;
+        }
+
+        public TenderType Type { get; }
+        public string Label { get; }
+        public string Name => Type.ToString();
+
+        public override string ToString() => Label;
+    }
+
+    private static readonly Tender[] Tenders =
+    {
+        new(TenderType.Cash, "Cash"),
+        new(TenderType.Card, "Card"),
+        new(TenderType.Eft, "EFT"),
+        new(TenderType.Account, "Account"),
+        new(TenderType.MedicalAid, "Medical aid"),
+        new(TenderType.Voucher, "Voucher")
+    };
+
+    /// <summary>
+    /// The tenders settled on a machine of their own, away from PharmaX.
+    /// </summary>
+    /// <remarks>
+    /// There is no payment gateway. The card machine and the medical aid
+    /// platform sit beside the till and the cashier works them directly,
+    /// so PharmaX records what was taken and on which tender, and leaves
+    /// the reference to the operator's discretion.
+    /// </remarks>
+    private static bool SettledElsewhere(TenderType tender) =>
+        tender is TenderType.Card or TenderType.Eft
+            or TenderType.MedicalAid;
+
     public IReadOnlyList<PaymentDto> Payments => _payments;
 
     public frmPayment(decimal amountDue)
@@ -24,8 +71,10 @@ public partial class frmPayment : Form
 
         _amountDue = amountDue;
 
-        cboTender.Items.AddRange(Enum.GetNames<TenderType>());
+        cboTender.Items.AddRange(Tenders);
         cboTender.SelectedIndex = 0;
+
+        cboTender.SelectedIndexChanged += (_, _) => ShowReferencePrompt();
 
         // Pre-filled with the whole amount: the overwhelmingly common
         // case is one tender for the full total, and Enter should finish
@@ -40,39 +89,77 @@ public partial class frmPayment : Form
         CancelButton = btnCancel;
 
         Redraw();
+        ShowReferencePrompt();
         Shown += (_, _) => { txtAmount.Focus(); txtAmount.SelectAll(); };
+    }
+
+    private Tender Selected =>
+        cboTender.SelectedItem as Tender ?? Tenders[0];
+
+    /// <summary>
+    /// Says where the reference comes from, and only asks for one where
+    /// there is something to read it off.
+    /// </summary>
+    private void ShowReferencePrompt()
+    {
+        lblReference.Text = "&Reference";
+
+        txtReference.PlaceholderText = SettledElsewhere(Selected.Type)
+            ? "Optional - slip or approval number"
+            : "Optional";
     }
 
     private decimal Outstanding =>
         _amountDue - _payments.Sum(p => p.Amount);
 
+    /// <summary>
+    /// Why this tender cannot be added, or null if it can.
+    /// </summary>
+    /// <remarks>
+    /// The amount is the only thing the till insists on. Card, EFT and
+    /// medical aid are settled on their own machine before the cashier
+    /// reaches this dialog, so a reference is theirs to add or not -
+    /// demanding one only ever blocked a payment that had already gone
+    /// through somewhere else.
+    ///
+    /// The rule rather than the click that runs it, so it can be checked
+    /// without a window: a form that has never been shown cannot be
+    /// clicked, and the rule is the part worth testing anyway.
+    /// </remarks>
+    internal static string? Refuse(TenderType tender, decimal? amount,
+                                   string? reference)
+    {
+        _ = tender;
+        _ = reference;
+
+        return amount is not decimal value || value <= 0m
+            ? "Enter an amount greater than zero."
+            : null;
+    }
+
     private void AddTender()
     {
-        if (txtAmount.Amount is not decimal amount || amount <= 0m)
-        {
-            lblError.Text = "Enter an amount greater than zero.";
-            return;
-        }
-
-        var tender = cboTender.SelectedItem?.ToString() ?? nameof(TenderType.Cash);
+        var tender = Selected;
         var reference = txtReference.Text.Trim();
 
-        // Card and EFT need the authorisation code off the slip, which is
-        // what reconciles the merchant statement to the day's takings.
-        if (tender is nameof(TenderType.Card) or nameof(TenderType.Eft)
-            && reference.Length == 0)
+        if (Refuse(tender.Type, txtAmount.Amount, reference) is string problem)
         {
-            lblError.Text = "A card or EFT payment needs its authorisation "
-                            + "reference from the terminal slip.";
-            txtReference.Focus();
+            lblError.Text = problem;
+            txtAmount.Focus();
+            txtAmount.SelectAll();
             return;
         }
 
-        _payments.Add(new PaymentDto(tender, amount,
+        _payments.Add(new PaymentDto(tender.Name, txtAmount.Amount ?? 0m,
             reference.Length == 0 ? null : reference));
 
         txtReference.Clear();
         Redraw();
+
+        // Straight back to the amount for the next tender of a split,
+        // which is where the cashier's hands already are.
+        txtAmount.Focus();
+        txtAmount.SelectAll();
     }
 
     private void RemoveSelected()
@@ -120,17 +207,20 @@ public partial class frmPayment : Form
 
         cboTender.Items.Clear();
 
-        foreach (var tender in tendersUsed) cboTender.Items.Add(tender);
+        foreach (var tender in Tenders
+                     .Where(t => tendersUsed.Contains(t.Name,
+                                                      StringComparer.Ordinal)))
+            cboTender.Items.Add(tender);
 
         // The others stay available, because a customer paying by card
         // and wanting cash back is a conversation, not an impossibility.
-        foreach (var tender in Enum.GetNames<TenderType>())
-        {
-            if (!tendersUsed.Contains(tender, StringComparer.Ordinal))
-                cboTender.Items.Add(tender);
-        }
+        foreach (var tender in Tenders
+                     .Where(t => !tendersUsed.Contains(t.Name,
+                                                       StringComparer.Ordinal)))
+            cboTender.Items.Add(tender);
 
         cboTender.SelectedIndex = 0;
+        ShowReferencePrompt();
     }
 
     private void Redraw()
@@ -141,7 +231,15 @@ public partial class frmPayment : Form
         grdPayments.Rows.Clear();
 
         foreach (var p in _payments)
-            grdPayments.Rows.Add(p.TenderType, p.Amount, p.Reference ?? "");
+        {
+            // Read back the way it was offered, so a receipt query about
+            // "the EFT" is not answered by a grid saying "Eft".
+            var label = Tenders
+                .FirstOrDefault(t => string.Equals(t.Name, p.TenderType,
+                    StringComparison.Ordinal))?.Label ?? p.TenderType;
+
+            grdPayments.Rows.Add(label, p.Amount, p.Reference ?? "");
+        }
 
         lblDueValue.Text = Format.Money(_amountDue);
         lblOutstandingValue.Text = Format.Money(Outstanding);

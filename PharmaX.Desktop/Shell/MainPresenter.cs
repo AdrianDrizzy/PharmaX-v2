@@ -295,6 +295,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "departments":
                 ShowReferenceList(ReferenceKind.Department);
                 break;
+            case "categories":
+                ShowReferenceList(ReferenceKind.Category);
+                break;
             case "manufacturers":
                 ShowReferenceList(ReferenceKind.Manufacturer);
                 break;

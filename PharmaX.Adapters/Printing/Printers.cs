@@ -23,7 +23,8 @@ public sealed class ReceiptPrinter : IReceiptPrinter
 
     public bool IsAvailable => PrinterSettings.InstalledPrinters.Count > 0;
 
-    public PrintOutcome Print(SaleDto sale, ReceiptHeaderDto header)
+    public async Task<PrintOutcome> PrintAsync(SaleDto sale,
+        ReceiptHeaderDto header, CancellationToken ct = default)
     {
         if (!IsAvailable)
         {
@@ -35,17 +36,24 @@ public sealed class ReceiptPrinter : IReceiptPrinter
         {
             using var doc = new ReceiptDocument(sale, header);
 
-            // Blocking on the setting read is deliberate: printing is
-            // already synchronous, and the alternative is an async
-            // interface for one string lookup against a local file.
-            var chosen = _settings
-                .GetAsync(WorkstationSettingKey.ReceiptPrinter)
-                .GetAwaiter().GetResult();
+            // Awaited, not waited on. This read used to be blocked on
+            // from the till's own thread, and its continuation needed
+            // that same thread to finish - so the sale finalised, the
+            // hourglass came up, and the window never repainted again.
+            var chosen = await _settings
+                .GetAsync(WorkstationSettingKey.ReceiptPrinter, ct)
+                .ConfigureAwait(false);
 
             if (!string.IsNullOrWhiteSpace(chosen))
                 doc.PrinterSettings.PrinterName = chosen;
 
-            doc.Print();
+            // Off the till's thread. Handing a document to the spooler
+            // takes as long as the driver takes, and a driver that stops
+            // to ask where to save a PDF takes as long as the operator
+            // does - neither is a reason for the screen to stop
+            // redrawing.
+            await Task.Run(doc.Print, ct).ConfigureAwait(false);
+
             return PrintOutcome.Printed;
         }
 #pragma warning disable CA1031 // Deliberately broad: see the comment below.
@@ -153,7 +161,8 @@ public sealed class LabelPrinter : ILabelPrinter
 
     public bool IsAvailable => PrinterSettings.InstalledPrinters.Count > 0;
 
-    public void Print(LabelDto label)
+    public async Task PrintAsync(LabelDto label,
+                                 CancellationToken ct = default)
     {
         if (!IsAvailable)
         {
@@ -165,14 +174,14 @@ public sealed class LabelPrinter : ILabelPrinter
         {
             using var doc = new LabelDocument(label);
 
-            var chosen = _settings
-                .GetAsync(WorkstationSettingKey.LabelPrinter)
-                .GetAwaiter().GetResult();
+            var chosen = await _settings
+                .GetAsync(WorkstationSettingKey.LabelPrinter, ct)
+                .ConfigureAwait(false);
 
             if (!string.IsNullOrWhiteSpace(chosen))
                 doc.PrinterSettings.PrinterName = chosen;
 
-            doc.Print();
+            await Task.Run(doc.Print, ct).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Deliberately broad: see the comment below.
         catch (Exception ex)

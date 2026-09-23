@@ -10,6 +10,7 @@ namespace PharmaX.Application.Reference;
 public enum ReferenceKind
 {
     Department,
+    Category,
     Manufacturer,
     Branch,
     MedicalAidScheme
@@ -26,6 +27,8 @@ public sealed record ReferenceLabels(string Plural, string Singular,
     {
         ReferenceKind.Department =>
             new("Departments", "department", "Notes"),
+        ReferenceKind.Category =>
+            new("Categories", "category", "Notes"),
         ReferenceKind.Manufacturer =>
             new("Manufacturers", "manufacturer", "Agent or contact"),
         ReferenceKind.Branch =>

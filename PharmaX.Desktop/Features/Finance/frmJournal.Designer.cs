@@ -18,6 +18,7 @@ partial class frmJournal
     private DataGridViewComboBoxColumn colAccount = null!;
     private Button btnPost = null!;
     private Button btnClear = null!;
+    private Button btnExport = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -39,8 +40,13 @@ partial class frmJournal
         txtNarration = new TextBox();
         grdLines = new PhxGrid();
         btnPost = new Button();
+        btnPost.Name = "btnPost";
         btnClear = new Button();
+        btnClear.Name = "btnClear";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblDate.AutoSize = true;
@@ -135,6 +141,13 @@ partial class frmJournal
         btnClear.Text = "C&lear";
         btnClear.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnClear);
+
+        btnExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnExport.Location = new Point(502, 8);
+        btnExport.Size = new Size(150, 34);
+        btnExport.Text = "&Export to Excel";
+        btnExport.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnExport);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(660, 8);

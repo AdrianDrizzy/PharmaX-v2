@@ -29,10 +29,15 @@ partial class frmStocktakeList
         lblSummary = new Label();
         grdStocktakes = new PhxGrid();
         btnNew = new Button();
+        btnNew.Name = "btnNew";
         btnContinue = new Button();
+        btnContinue.Name = "btnContinue";
         btnCancelStocktake = new Button();
+        btnCancelStocktake.Name = "btnCancelStocktake";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblSummary.AutoSize = false;

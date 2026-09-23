@@ -45,8 +45,11 @@ partial class frmReports
         dtpTo = new DateTimePicker();
         grdPreview = new PhxGrid();
         btnPreview = new Button();
+        btnPreview.Name = "btnPreview";
         btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
         splMain.Panel1.SuspendLayout();
         splMain.Panel2.SuspendLayout();
@@ -122,9 +125,12 @@ partial class frmReports
         splMain.Panel2.Controls.Add(pnlParameters);
         splMain.Dock = DockStyle.Fill;
         splMain.Name = "splMain";
-        splMain.FixedPanel = FixedPanel.Panel1;
-
-        // Applied for real in OnLoad: see SeatSplitter.
+        splMain.FixedPanel = FixedPanel.Panel1;
+
+
+
+        // Applied for real in OnLoad: see SeatSplitter.
+
         splMain.SplitterDistance = 300;
         splMain.TabIndex = 0;
 

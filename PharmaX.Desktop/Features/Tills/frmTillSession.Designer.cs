@@ -62,10 +62,15 @@ partial class frmTillSession
         grdExpected = new PhxGrid();
         grdVariance = new PhxGrid();
         btnOpen = new Button();
+        btnOpen.Name = "btnOpen";
         btnXRead = new Button();
+        btnXRead.Name = "btnXRead";
         btnDeclare = new Button();
+        btnDeclare.Name = "btnDeclare";
         btnCloseSession = new Button();
+        btnCloseSession.Name = "btnCloseSession";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)grdDenominations).BeginInit();
         SuspendLayout();
 

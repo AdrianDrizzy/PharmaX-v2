@@ -164,6 +164,20 @@ public sealed class BatchRepository : IBatchRepository
             .Where(b => b.ProductId == productId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Batch>> ForProductsAsync(
+        IReadOnlyCollection<Guid> productIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+
+        if (productIds.Count == 0) return Array.Empty<Batch>();
+
+        return await _db.Batches
+            .Where(b => productIds.Contains(b.ProductId))
+            .OrderBy(b => b.ExpiryDate)
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<Batch>> ExpiringBeforeAsync(
         DateOnly expiringBefore, CancellationToken ct = default) =>
         await _db.Batches

@@ -301,6 +301,13 @@ internal static class Program
         services.GetRequiredService<PriceListSeeder>()
                 .SeedAsync().GetAwaiter().GetResult();
 
+        // Same flag again, and last of the seeders because it builds
+        // on all of them: the maintained lists, patients, accounts and
+        // a day's trading, so that every screen opens with something
+        // on it rather than an empty grid.
+        services.GetRequiredService<DemoDataSeeder>()
+                .SeedAsync().GetAwaiter().GetResult();
+
         // Last, and every start: an amount stored under a currency this
         // installation no longer trades in cannot be added to one it
         // does, and the first cash-up to mix the two would throw. Costs

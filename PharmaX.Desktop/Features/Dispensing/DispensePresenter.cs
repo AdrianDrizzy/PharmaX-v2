@@ -153,7 +153,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         }
 
         foreach (var label in result.Value.Labels)
-            _labels.Print(label);
+            await _labels.PrintAsync(label);
 
         View.ShowInfo($"Issued. Script {result.Value.ScriptNumber}. " +
                       $"Co-payment {result.Value.CoPayment:N2} " +

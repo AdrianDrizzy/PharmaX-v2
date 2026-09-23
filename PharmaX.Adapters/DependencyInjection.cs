@@ -14,18 +14,13 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Scoped, not singleton: both read the workstation's chosen
+        // Scoped, not singleton: all three read the workstation's chosen
         // printer through a scoped store, and a singleton holding that
         // would capture one screen's database context for the life of
         // the process.
         services.AddScoped<IReceiptPrinter, ReceiptPrinter>();
         services.AddScoped<ILabelPrinter, LabelPrinter>();
-        services.AddSingleton<ICashDrawer, EscPosCashDrawer>();
-
-        // The manual terminal is the default and the fallback. An
-        // integrated terminal replaces this one line and nothing else
-        // (specification Section 7.6).
-        services.AddSingleton<ICardTerminal, ManualCardTerminal>();
+        services.AddScoped<ICashDrawer, EscPosCashDrawer>();
 
         // Scanned documents live on this workstation's disk.
 

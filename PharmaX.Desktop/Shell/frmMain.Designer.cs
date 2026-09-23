@@ -91,6 +91,7 @@ partial class frmMain
             Menu("&Inventory", "inventory",
                 Item("Stock Alerts", "alerts", Keys.F12),
                 Item("Departments", "departments"),
+                Item("Categories", "categories"),
                 Item("Suppliers", "suppliers"),
                 Item("Purchase Orders", "purchase-orders", Keys.F7),
                 Item("Goods Receipt", "goods-receipt", Keys.F8),

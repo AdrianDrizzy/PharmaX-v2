@@ -288,17 +288,35 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         return StartNewSaleAsync();
     });
 
-    private Task OnPaymentAsync() => GuardAsync(async () =>
+    /// <summary>
+    /// Takes the money, finalises, prints.
+    /// </summary>
+    /// <remarks>
+    /// The payment dialog is put up before the busy cursor rather than
+    /// under it. GuardAsync raises the hourglass for as long as its
+    /// action runs, and the action used to include the dialog - so the
+    /// cashier counted the cash, chose a tender and typed a reference
+    /// with a wait cursor over the screen, which reads as an application
+    /// that has hung. Waiting for a person is not the application being
+    /// busy.
+    /// </remarks>
+    private Task OnPaymentAsync()
     {
         if (_sale is null || _sale.Lines.Count == 0)
         {
             View.ShowError("Add at least one item before taking payment.");
-            return;
+            return Task.CompletedTask;
         }
 
         var payments = View.PromptPayment(_sale.Totals.Total);
-        if (payments is null) return;
+        if (payments is null) return Task.CompletedTask;
 
+        return FinaliseAsync(payments);
+    }
+
+    private Task FinaliseAsync(IReadOnlyList<PaymentDto> payments) =>
+        GuardAsync(async () =>
+    {
         var result = await _sales.FinaliseAsync(_saleId, payments);
 
         if (result.IsFailure)
@@ -334,9 +352,10 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
         if (payments.Any(p => string.Equals(p.TenderType, "Cash",
                 StringComparison.OrdinalIgnoreCase)))
-            _drawer.Open();
+            await _drawer.OpenAsync();
 
-        var outcome = _receipts.Print(final.Value, _headers.Build());
+        var outcome = await _receipts.PrintAsync(final.Value,
+                                                 _headers.Build());
 
         if (outcome != PrintOutcome.Printed)
             View.ShowError(

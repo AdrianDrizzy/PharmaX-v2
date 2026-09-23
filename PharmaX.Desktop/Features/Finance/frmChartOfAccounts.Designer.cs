@@ -13,6 +13,7 @@ partial class frmChartOfAccounts
     private Button btnAdd = null!;
     private Button btnRename = null!;
     private Button btnDeactivate = null!;
+    private Button btnExport = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -30,9 +31,15 @@ partial class frmChartOfAccounts
         lblCount = new Label();
         grdAccounts = new PhxGrid();
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnRename = new Button();
+        btnRename.Name = "btnRename";
         btnDeactivate = new Button();
+        btnDeactivate.Name = "btnDeactivate";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         chkInactive.AutoSize = true;
@@ -77,8 +84,15 @@ partial class frmChartOfAccounts
             x += 146;
         }
 
+        btnExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnExport.Location = new Point(532, 8);
+        btnExport.Size = new Size(150, 34);
+        btnExport.Text = "&Export to Excel";
+        btnExport.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnExport);
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(520, 8);
+        btnClose.Location = new Point(690, 8);
         btnClose.Size = new Size(110, 32);
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
@@ -91,7 +105,7 @@ partial class frmChartOfAccounts
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(650, 500);
+        ClientSize = new Size(820, 500);
         Controls.Add(grdAccounts);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

@@ -7,7 +7,17 @@
 
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors></WarningsNotAsErrors>
+
+    <!-- One exemption. NU1900 is not a defect in this code: it is NuGet
+         reporting that it could not reach the feed to download the
+         vulnerability database, which is a dropped network connection and
+         nothing else. Left as an error it stops this project emitting its
+         reference assembly, and Persistence, Adapters, Reporting, Sync
+         and Desktop then all fail with "Metadata file ... could not be
+         found" - six projects blamed for an offline machine. The
+         findings that matter, NU1901 to NU1904, stay errors: a package with
+         a known vulnerability still fails the build. -->
+    <WarningsNotAsErrors>NU1900</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

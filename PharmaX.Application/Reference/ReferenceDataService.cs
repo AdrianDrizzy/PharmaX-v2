@@ -93,7 +93,7 @@ public sealed class ReferenceDataService : IReferenceDataService
         ArgumentNullException.ThrowIfNull(edit);
 
         // Maintaining a list is a supervisor's job, not a cashier's.
-        _permissions.Demand(PermissionCode.PriceChange);
+        _permissions.Demand(PermissionCode.ReferenceMaintain);
 
         var clash = await _repository.FindByCodeAsync(kind, edit.Code, ct);
 
@@ -117,7 +117,7 @@ public sealed class ReferenceDataService : IReferenceDataService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.PriceChange);
+        _permissions.Demand(PermissionCode.ReferenceMaintain);
 
         var entry = await _repository.GetAsync(kind, id, ct);
         if (entry is null) return Result.Fail("REF-000", NotFound(kind));
@@ -135,7 +135,7 @@ public sealed class ReferenceDataService : IReferenceDataService
     public async Task<Result> SetActiveAsync(ReferenceKind kind, Guid id,
         bool active, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.PriceChange);
+        _permissions.Demand(PermissionCode.ReferenceMaintain);
 
         var entry = await _repository.GetAsync(kind, id, ct);
         if (entry is null) return Result.Fail("REF-000", NotFound(kind));
@@ -157,6 +157,8 @@ public sealed class ReferenceDataService : IReferenceDataService
     {
         ReferenceKind.Department =>
             Department.Create(e.Code, e.Name, e.Detail),
+        ReferenceKind.Category =>
+            Category.Create(e.Code, e.Name, e.Detail),
         ReferenceKind.Manufacturer =>
             Manufacturer.Create(e.Code, e.Name, e.Detail),
         ReferenceKind.Branch =>

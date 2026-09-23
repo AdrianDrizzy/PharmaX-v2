@@ -38,6 +38,13 @@ public sealed class DepartmentConfiguration
         ReferenceMapping.Configure(builder, "Department");
 }
 
+public sealed class CategoryConfiguration
+    : IEntityTypeConfiguration<Category>
+{
+    public void Configure(EntityTypeBuilder<Category> builder) =>
+        ReferenceMapping.Configure(builder, "Category");
+}
+
 public sealed class ManufacturerConfiguration
     : IEntityTypeConfiguration<Manufacturer>
 {

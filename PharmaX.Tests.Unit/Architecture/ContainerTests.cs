@@ -47,7 +47,18 @@ public class ContainerTests
         typeof(Desktop.Features.Suppliers.frmGoodsReceipt),
         typeof(Desktop.Features.Suppliers.frmPurchaseOrderList),
         typeof(Desktop.Features.Inventory.frmStocktakeList),
-        typeof(Desktop.Features.Inventory.frmStocktakeCapture)
+        typeof(Desktop.Features.Inventory.frmStocktakeCapture),
+
+        // The accounts and ledger screens. Added when they grew a
+        // workbook writer and a current user in their constructors:
+        // a screen the container cannot build fails at the moment
+        // somebody opens it, which for these is the month end.
+        typeof(Desktop.Features.Finance.frmTrialBalance),
+        typeof(Desktop.Features.Finance.frmJournal),
+        typeof(Desktop.Features.Finance.frmChartOfAccounts),
+        typeof(Desktop.Features.Finance.frmClaims),
+        typeof(Desktop.Features.Finance.frmDayEnd),
+        typeof(Desktop.Features.Patients.frmAccounts)
     };
 
     [Theory]

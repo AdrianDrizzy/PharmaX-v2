@@ -39,11 +39,17 @@ partial class frmPatientList
         txtSearch = new TextBox();
         grdPatients = new PhxGrid();
         btnAdd = new Button();
+        btnAdd.Name = "btnAdd";
         btnEdit = new Button();
+        btnEdit.Name = "btnEdit";
         btnDeactivate = new Button();
+        btnDeactivate.Name = "btnDeactivate";
         btnDocuments = new Button();
+        btnDocuments.Name = "btnDocuments";
         btnChoose = new Button();
+        btnChoose.Name = "btnChoose";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblSearch.AutoSize = true;

@@ -31,8 +31,11 @@ partial class frmLabels
         btnChoosePatient = new Button();
         grdDispensings = new PhxGrid();
         btnPreview = new Button();
+        btnPreview.Name = "btnPreview";
         btnReprint = new Button();
+        btnReprint.Name = "btnReprint";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblPatient.AutoSize = true;

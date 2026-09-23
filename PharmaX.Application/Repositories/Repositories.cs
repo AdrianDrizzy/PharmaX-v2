@@ -106,6 +106,18 @@ public interface IBatchRepository
     Task<IReadOnlyList<Batch>> ForProductAsync(Guid productId,
                                                CancellationToken ct = default);
 
+    /// <summary>
+    /// Every batch of every one of these products, in one round trip.
+    /// </summary>
+    /// <remarks>
+    /// A list screen showing two hundred products would otherwise ask
+    /// two hundred times, which is the shape of query that is quick on a
+    /// developer's machine and unusable over a branch's network.
+    /// </remarks>
+    Task<IReadOnlyList<Batch>> ForProductsAsync(
+        IReadOnlyCollection<Guid> productIds,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<Batch>> ExpiringBeforeAsync(DateOnly expiringBefore,
                                                    CancellationToken ct = default);
 

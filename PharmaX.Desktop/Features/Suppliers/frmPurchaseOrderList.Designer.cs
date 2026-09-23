@@ -37,10 +37,15 @@ partial class frmPurchaseOrderList
         grdOrders = new PhxGrid();
         grdLines = new PhxGrid();
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnSuggest = new Button();
+        btnSuggest.Name = "btnSuggest";
         btnCancelOrder = new Button();
+        btnCancelOrder.Name = "btnCancelOrder";
         btnChoose = new Button();
+        btnChoose.Name = "btnChoose";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
         splMain.Panel1.SuspendLayout();
         splMain.Panel2.SuspendLayout();
@@ -98,9 +103,12 @@ partial class frmPurchaseOrderList
         splMain.Dock = DockStyle.Fill;
         splMain.Name = "splMain";
         splMain.Orientation = Orientation.Horizontal;
-        splMain.FixedPanel = FixedPanel.Panel1;
-
-        // Applied for real in OnLoad: see SeatSplitter.
+        splMain.FixedPanel = FixedPanel.Panel1;
+
+
+
+        // Applied for real in OnLoad: see SeatSplitter.
+
         splMain.SplitterDistance = 220;
 
         var x = 12;

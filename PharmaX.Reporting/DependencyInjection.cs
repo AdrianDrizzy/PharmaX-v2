@@ -20,10 +20,14 @@ public static class DependencyInjection
         // One registration per definition. Adding a report the client
         // asks for is usually a preset rather than a class, so this list
         // grows far more slowly than the report menu does.
+        services.AddScoped<IReportLookups, Engine.ReportLookups>();
+        services.AddScoped<IWorkbookWriter, Exporters.ExcelExporter>();
+
         services.AddScoped<IReportDefinition, TransactionsReport>();
         services.AddScoped<IReportDefinition, SalesAnalysisReport>();
         services.AddScoped<IReportDefinition, VatReport>();
         services.AddScoped<IReportDefinition, StockOnHandReport>();
+        services.AddScoped<IReportDefinition, StockByBatchReport>();
         services.AddScoped<IReportDefinition, CashUpReport>();
         services.AddScoped<IReportDefinition, ReversedScriptsReport>();
         services.AddScoped<IReportDefinition, StockMovementsReport>();

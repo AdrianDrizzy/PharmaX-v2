@@ -38,8 +38,11 @@ partial class frmCollect
         txtFind = new TextBox();
         grdWaiting = new PhxGrid();
         btnCollect = new Button();
+        btnCollect.Name = "btnCollect";
         btnRefresh = new Button();
+        btnRefresh.Name = "btnRefresh";
         btnClose = new Button();
+        btnClose.Name = "btnClose";
         SuspendLayout();
 
         lblFind.AutoSize = true;

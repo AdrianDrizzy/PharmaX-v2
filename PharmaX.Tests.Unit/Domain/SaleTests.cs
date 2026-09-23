@@ -159,13 +159,32 @@ public class SaleTests
         sale.Change.Amount.Should().Be(0m);
     }
 
-    [Fact]
-    public void A_card_payment_requires_an_authorisation_reference()
+    /// <remarks>
+    /// There is no payment gateway. The card machine and the medical aid
+    /// platform are worked beside the till, so by the time the cashier
+    /// records the tender the money has already moved - and refusing the
+    /// sale for want of a copied-out code stopped the till over a
+    /// transaction that had gone through.
+    /// </remarks>
+    [Theory]
+    [InlineData(TenderType.Card)]
+    [InlineData(TenderType.Eft)]
+    [InlineData(TenderType.MedicalAid)]
+    public void A_tender_settled_elsewhere_needs_no_reference(
+        TenderType tender)
     {
-        var act = () => SalePayment.Create(TenderType.Card, Money.Of(24m));
+        var payment = SalePayment.Create(tender, Money.Of(24m));
 
-        act.Should().Throw<DomainException>()
-           .WithMessage("*authorisation reference*");
+        payment.Tender.Should().Be(tender);
+        payment.Amount.Amount.Should().Be(24m);
+        payment.Reference.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_reference_is_kept_where_the_cashier_records_one()
+    {
+        SalePayment.Create(TenderType.Card, Money.Of(24m), "AUTH 004417")
+            .Reference.Should().Be("AUTH 004417");
     }
 
     [Fact]
