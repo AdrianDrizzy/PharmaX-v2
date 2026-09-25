@@ -77,10 +77,24 @@ public sealed class ClinicalProfile : AuditableEntity
         IsBreastfeeding = isBreastfeeding;
     }
 
+    /// <summary>
+    /// The recorded allergies this medicine runs into, by drug class as
+    /// well as by name. See AllergyScreen.
+    /// </summary>
+    public IReadOnlyList<AllergyMatch> AllergiesAgainst(string description,
+                                                        string? genericName = null) =>
+        AllergyScreen.Check(_allergies, description, genericName);
+
+    /// <summary>
+    /// True where a recorded allergy stops this medicine outright.
+    /// </summary>
+    /// <remarks>
+    /// Was a two-way substring comparison of the allergy text with the
+    /// product description, which missed every class allergy - a
+    /// penicillin-allergic patient was handed amoxicillin with no warning.
+    /// </remarks>
     public bool IsAllergicTo(string substance) =>
-        _allergies.Exists(a =>
-            a.Substance.Contains(substance, StringComparison.OrdinalIgnoreCase)
-            || substance.Contains(a.Substance, StringComparison.OrdinalIgnoreCase));
+        AllergiesAgainst(substance).Any(m => m.IsHardStop);
 }
 
 public sealed class Allergy : Entity

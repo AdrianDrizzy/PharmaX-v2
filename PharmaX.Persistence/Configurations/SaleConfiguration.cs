@@ -29,7 +29,18 @@ public sealed class SaleConfiguration : IEntityTypeConfiguration<Sale>
         b.Ignore(x => x.DiscountTotal);
         b.Ignore(x => x.Total);
         b.Ignore(x => x.Tendered);
+        b.Ignore(x => x.AmountPaid);
         b.Ignore(x => x.Change);
+
+        // The one money figure on a sale that is not derived from its
+        // lines or payments: see Sale.ChangeGiven.
+        b.ComplexProperty(x => x.ChangeGiven, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("ChangeGiven")
+                                     .HasPrecision(18, 2);
+            m.Property(p => p.Currency).HasColumnName("ChangeCurrency")
+                                       .HasMaxLength(3);
+        });
         b.Ignore(x => x.IsRated);
         b.Ignore(x => x.IsCollection);
 
@@ -63,6 +74,10 @@ public sealed class SaleConfiguration : IEntityTypeConfiguration<Sale>
         // so the over-the-counter sales that carry no dispensing are
         // unaffected.
         b.HasIndex(x => x.DispensingId).IsUnique();
+
+        // Held baskets are listed by status at the till.
+        b.HasIndex(x => new { x.Status, x.OccurredAtUtc });
+        b.HasIndex(x => x.QuotationId);
     }
 }
 

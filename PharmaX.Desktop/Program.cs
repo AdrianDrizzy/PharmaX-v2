@@ -45,6 +45,7 @@ internal static class Program
         if (!PrepareLocalDatabase(host)) return;
 
         LoadBranding(host);
+        LoadPharmacyDetails(host);
 
         // No scope of its own: ViewFactory gives each screen one.
         var views = host.Services.GetRequiredService<ViewFactory>();
@@ -217,6 +218,30 @@ internal static class Program
             .GetAwaiter().GetResult();
 
         host.Services.GetRequiredService<Branding>().Load(path);
+    }
+
+    /// <summary>
+    /// Puts the trading name, VAT number and address saved at the System
+    /// Console into use before the first window opens.
+    /// </summary>
+    /// <remarks>
+    /// Before the sign-in window because its title and heading are the
+    /// first place the pharmacy's name can appear, and after the
+    /// database is prepared because that is where the details live. The
+    /// profile is filled before the titles subscribe to it, so start-up
+    /// does not try to re-title windows that do not exist yet.
+    /// </remarks>
+    private static void LoadPharmacyDetails(IHost host)
+    {
+        using var scope = host.Services.CreateScope();
+
+        var details = scope.ServiceProvider
+            .GetRequiredService<PharmaX.Application.Pharmacy.IPharmacyDetailsService>()
+            .LoadAsync().GetAwaiter().GetResult();
+
+        var profile = host.Services.GetRequiredService<PharmacyProfile>();
+        profile.Use(details);
+        WindowTitles.Use(profile);
     }
 
     /// <summary>

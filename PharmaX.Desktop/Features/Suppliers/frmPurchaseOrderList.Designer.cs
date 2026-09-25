@@ -17,6 +17,7 @@ partial class frmPurchaseOrderList
     private Button btnSuggest = null!;
     private Button btnCancelOrder = null!;
     private Button btnChoose = null!;
+    private Button btnRaise = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -44,6 +45,8 @@ partial class frmPurchaseOrderList
         btnCancelOrder.Name = "btnCancelOrder";
         btnChoose = new Button();
         btnChoose.Name = "btnChoose";
+        btnRaise = new Button();
+        btnRaise.Name = "btnRaise";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
@@ -114,8 +117,8 @@ partial class frmPurchaseOrderList
         var x = 12;
         foreach (var (button, text) in new[]
         {
-            (btnRefresh, "&Refresh"), (btnSuggest, "&What to order"),
-            (btnCancelOrder, "Cance&l order")
+            (btnRefresh, "&Refresh"), (btnRaise, "Raise &order"),
+            (btnSuggest, "&What to order"), (btnCancelOrder, "Cance&l order")
         })
         {
             button.Location = new Point(x, 8);

@@ -22,6 +22,9 @@ partial class frmQuotation
     private Label lblValid = null!;
     private Button btnRemove = null!;
     private Button btnIssue = null!;
+    private Button btnPrint = null!;
+    private Button btnExport = null!;
+    private Button btnOpen = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -49,6 +52,12 @@ partial class frmQuotation
         lblValid = new Label();
         btnRemove = new Button();
         btnIssue = new Button();
+        btnPrint = new Button();
+        btnPrint.Name = "btnPrint";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
+        btnOpen = new Button();
+        btnOpen.Name = "btnOpen";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -148,6 +157,24 @@ partial class frmQuotation
         btnIssue.Text = "Iss&ue quotation";
         btnIssue.UseVisualStyleBackColor = true;
 
+        // The paper the customer takes away, and the same list as a
+        // workbook for a customer who asked for it by email.
+        btnPrint.Location = new Point(306, 76);
+        btnPrint.Size = new Size(100, 30);
+        btnPrint.Text = "&Print";
+        btnPrint.UseVisualStyleBackColor = true;
+
+        btnExport.Location = new Point(412, 76);
+        btnExport.Size = new Size(100, 30);
+        btnExport.Text = "E&xport";
+        btnExport.UseVisualStyleBackColor = true;
+
+        // A quotation the customer has brought back, to print again.
+        btnOpen.Location = new Point(518, 76);
+        btnOpen.Size = new Size(130, 30);
+        btnOpen.Text = "&Open existing";
+        btnOpen.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(870, 76);
         btnClose.Size = new Size(90, 30);
@@ -157,7 +184,7 @@ partial class frmQuotation
         pnlFooter.BackColor = PhxTheme.Band;
         pnlFooter.Controls.AddRange(new Control[]
         {
-            btnClose, btnIssue, btnRemove, lblValid, lblTotalValue,
+            btnClose, btnOpen, btnExport, btnPrint, btnIssue, btnRemove, lblValid, lblTotalValue,
             lblTotalCaption
         });
         pnlFooter.Dock = DockStyle.Bottom;

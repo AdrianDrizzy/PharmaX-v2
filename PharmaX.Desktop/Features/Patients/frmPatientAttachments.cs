@@ -31,7 +31,7 @@ public sealed class frmPatientAttachments : PhxFormBase
     private IReadOnlyList<AttachmentDto> _rows = Array.Empty<AttachmentDto>();
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.PatientMaintain;
 
     public frmPatientAttachments(IAttachmentService attachments)
     {

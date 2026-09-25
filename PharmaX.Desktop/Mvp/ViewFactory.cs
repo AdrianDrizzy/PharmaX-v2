@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Offline;
+using PharmaX.Application.Security;
 
 namespace PharmaX.Desktop.Mvp;
 
@@ -30,6 +31,27 @@ public sealed class ViewFactory
         try
         {
             var form = scope.ServiceProvider.GetRequiredService<TForm>();
+
+            // The screen's own permission, checked before it is shown, so
+            // a shortcut, a home tile or a direct call cannot open what the
+            // menu hides - and the refusal is recorded (DEF-0026, DEF-0027).
+            if (form is PhxFormBase gated
+                && !gated.MayOpenWith(scope.ServiceProvider
+                    .GetRequiredService<IPermissionService>()))
+            {
+                var user = scope.ServiceProvider
+                    .GetRequiredService<ICurrentUser>();
+
+                scope.ServiceProvider.GetRequiredService<IAuditWriter>()
+                    .Refused(gated.PermissionToOpen ?? "screen.open",
+                             typeof(TForm).Name, user.Id,
+                             "Screen refused before it opened.");
+
+                form.Dispose();
+
+                throw new PermissionDeniedException(
+                    "You do not have permission for this action.");
+            }
 
             if (form is PhxFormBase phx)
                 phx.UseConnectivity(

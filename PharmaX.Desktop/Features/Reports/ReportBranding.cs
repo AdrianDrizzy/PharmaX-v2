@@ -1,4 +1,4 @@
-using PharmaX.Application.Abstractions;
+﻿using PharmaX.Application.Abstractions;
 using PharmaX.Application.Reporting;
 using PharmaX.Desktop.Mvp;
 
@@ -15,15 +15,15 @@ namespace PharmaX.Desktop.Features.Reports;
 public sealed class ReportBranding : IReportBranding
 {
     private readonly Branding _branding;
-    private readonly PharmaXOptions _options;
+    private readonly PharmacyProfile _pharmacy;
 
-    public ReportBranding(Branding branding, PharmaXOptions options)
+    public ReportBranding(Branding branding, PharmacyProfile pharmacy)
     {
         _branding = branding;
-        _options = options;
+        _pharmacy = pharmacy;
     }
 
     public string? LogoPath => _branding.LogoPath;
 
-    public string TradingName => _options.Pharmacy.TradingName;
+    public string TradingName => _pharmacy.TradingName;
 }

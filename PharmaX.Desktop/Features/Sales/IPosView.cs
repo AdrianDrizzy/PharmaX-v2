@@ -7,6 +7,10 @@ public interface IPosView : Mvp.IView
     void ShowLines(IReadOnlyList<SaleLineDto> lines);
     void ShowTotals(SaleTotalsDto totals);
     void ShowCustomer(string name, string accountInfo, bool ratedPricing);
+
+    /// Whether the basket is priced at a medical aid tariff, which is
+    /// what the cashier tells the customer the price rests on.
+    void ShowRatedPricing(bool rated);
     void ShowDocumentNumber(string documentNumber);
     void ClearSale();
     void FocusScan();
@@ -43,6 +47,18 @@ public interface IPosView : Mvp.IView
     /// </summary>
     Application.Patients.AccountDto? PromptAccount();
 
+    /// Which held basket to recall, or null if cancelled.
+    Guid? PromptHeldSale(IReadOnlyList<HeldSaleDto> held);
+
+    /// The number on the quotation the customer brought back, or null.
+    string? PromptQuotationNumber();
+
+    /// <summary>
+    /// The change to hand back from the last sale, shown where the cashier
+    /// is looking until the next one starts.
+    /// </summary>
+    void ShowChange(decimal change);
+
     event EventHandler<string>? CodeScanned;
     event EventHandler? ProductSearchRequested; // F2
     event EventHandler? CustomerRequested;      // F3
@@ -51,5 +67,8 @@ public interface IPosView : Mvp.IView
     event EventHandler? VoidLineRequested;      // Esc
     event EventHandler? PaymentRequested;       // Enter on totals
     event EventHandler? HoldRequested;          // F8
+    event EventHandler? RecallRequested;        // F9
+    event EventHandler? QuotationRequested;     // F10
+    event EventHandler? ReprintRequested;       // F12
     event EventHandler? CloseRequested;         // F7
 }

@@ -33,6 +33,8 @@ partial class frmGoodsReceipt
         base.Dispose(disposing);
     }
 
+    private Label lblProblem = null!;
+
     private void InitializeComponent()
     {
         components = new System.ComponentModel.Container();
@@ -139,7 +141,22 @@ partial class frmGoodsReceipt
         grdCapture.RowTemplate.Height = 24;
         grdCapture.SelectionMode = DataGridViewSelectionMode.CellSelect;
 
-        Column(grdCapture, "Code", "Product code", 100);
+        Column(grdCapture, "Code", "Product code", 80);
+
+        // What the code resolves to, filled in by the preview - or, for a
+        // line from an order, by the order itself. Never typed: the
+        // description is not an identity, which is what went wrong when
+        // it was put in the code column (DEF-0013).
+        var product = new DataGridViewTextBoxColumn
+        {
+            Name = "Product", HeaderText = "Product", FillWeight = 150,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.NotSortable
+        };
+
+        product.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+        grdCapture.Columns.Add(product);
+
         Column(grdCapture, "Qty", "Qty", 60, "0.###", true);
         Column(grdCapture, "Cost", "Unit cost", 75, "N2", true);
         Column(grdCapture, "Batch", "Batch no.", 90);
@@ -155,6 +172,15 @@ partial class frmGoodsReceipt
         };
 
         grdCapture.Columns.Add(orderLine);
+
+        // The product an order line names, carried so the receipt posts
+        // against that product and not against whatever a code resolves to.
+        grdCapture.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "ProductId", HeaderText = "Product id", ReadOnly = true,
+            Visible = false,
+            SortMode = DataGridViewColumnSortMode.NotSortable
+        });
 
         splMain.Panel1.Controls.Add(grdCapture);
         splMain.Panel1.Controls.Add(lblCaptureCaption);
@@ -225,10 +251,22 @@ partial class frmGoodsReceipt
         btnRemoveLine.Text = "Re&move line";
         btnRemoveLine.UseVisualStyleBackColor = true;
 
+        // Why the preview could not resolve the lines, where the operator
+        // is looking: the post button stayed greyed with no word of why
+        // (DEF-0013).
+        lblProblem = new Label
+        {
+            AutoSize = false,
+            ForeColor = PharmaX.Desktop.Mvp.PhxTheme.ProblemText,
+            Location = new Point(12, 44),
+            Name = "lblProblem",
+            Size = new Size(450, 30)
+        };
+
         pnlTotals.Controls.AddRange(new Control[]
         {
             btnAddLine, btnRemoveLine, lblCapturedValue, txtInvoiceTotal,
-            lblVarianceValue
+            lblVarianceValue, lblProblem
         });
         pnlTotals.Dock = DockStyle.Bottom;
         pnlTotals.Height = 76;

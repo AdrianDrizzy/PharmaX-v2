@@ -1,3 +1,5 @@
+using PharmaX.Desktop.Mvp;
+
 namespace PharmaX.Desktop.Features.Login;
 
 partial class frmLogin
@@ -5,6 +7,7 @@ partial class frmLogin
     private System.ComponentModel.IContainer components = null!;
     private TableLayoutPanel layRoot = null!;
     private Label lblTitle = null!;
+    private Label lblParticulars = null!;
     private Panel pnlLogo = null!;
     private Label lblUsername = null!;
     private Label lblPassword = null!;
@@ -40,6 +43,7 @@ partial class frmLogin
         components = new System.ComponentModel.Container();
         layRoot = new TableLayoutPanel();
         lblTitle = new Label();
+        lblParticulars = new Label();
         pnlLogo = new Panel();
         lblUsername = new Label();
         lblPassword = new Label();
@@ -50,22 +54,37 @@ partial class frmLogin
         btnCancel = new Button();
         SuspendLayout();
 
-        // lblTitle - the product name, left of the pharmacy's own mark.
-        lblTitle.Anchor = AnchorStyles.Left;
+        // pnlLogo - the pharmacy's own mark, across the top and centred.
+        // Sized in logical units and painted to fit, so the image keeps
+        // its proportions whatever the panel comes out as. Hidden by the
+        // form when there is no logo, so there is no gap where one
+        // would have been.
+        pnlLogo.Anchor = AnchorStyles.None;
+        pnlLogo.Margin = new Padding(0, 0, 0, 10);
+        pnlLogo.Name = "pnlLogo";
+        pnlLogo.Size = new Size(320, 110);
+        pnlLogo.Paint += (_, e) => PaintLogo(e);
+
+        // lblTitle - the pharmacy's trading name under its logo. Wraps
+        // rather than widening the window for a long name.
+        lblTitle.Anchor = AnchorStyles.None;
         lblTitle.AutoSize = true;
         lblTitle.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
-        lblTitle.Margin = new Padding(0, 0, 24, 16);
+        lblTitle.Margin = new Padding(0, 0, 0, 2);
+        lblTitle.MaximumSize = new Size(360, 0);
         lblTitle.Name = "lblTitle";
-        lblTitle.Text = "PharmaX";
-        lblTitle.TextAlign = ContentAlignment.MiddleLeft;
+        lblTitle.Text = "Sign in";
+        lblTitle.TextAlign = ContentAlignment.MiddleCenter;
 
-        // pnlLogo - sized in logical units and painted to fit, so the
-        // image keeps its proportions whatever the panel comes out as.
-        pnlLogo.Anchor = AnchorStyles.Right;
-        pnlLogo.Margin = new Padding(0, 0, 0, 16);
-        pnlLogo.Name = "pnlLogo";
-        pnlLogo.Size = new Size(170, 52);
-        pnlLogo.Paint += (_, e) => PaintLogo(e);
+        // lblParticulars - the address and VAT number, quietly, so the
+        // operator can see which pharmacy's till this is.
+        lblParticulars.Anchor = AnchorStyles.None;
+        lblParticulars.AutoSize = true;
+        lblParticulars.ForeColor = PhxTheme.Muted;
+        lblParticulars.Margin = new Padding(0, 0, 0, 16);
+        lblParticulars.MaximumSize = new Size(360, 0);
+        lblParticulars.Name = "lblParticulars";
+        lblParticulars.TextAlign = ContentAlignment.MiddleCenter;
 
         // lblUsername
         lblUsername.Anchor = AnchorStyles.Left;
@@ -125,17 +144,21 @@ partial class frmLogin
         layRoot.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layRoot.Name = "layRoot";
         layRoot.Padding = new Padding(24, 20, 24, 20);
-        layRoot.RowCount = 4;
-        for (var row = 0; row < 4; row++)
+        layRoot.RowCount = 6;
+        for (var row = 0; row < 6; row++)
             layRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        layRoot.Controls.Add(lblTitle, 0, 0);
-        layRoot.Controls.Add(pnlLogo, 1, 0);
-        layRoot.Controls.Add(lblUsername, 0, 1);
-        layRoot.Controls.Add(txtUsername, 1, 1);
-        layRoot.Controls.Add(lblPassword, 0, 2);
-        layRoot.Controls.Add(txtPassword, 1, 2);
-        layRoot.Controls.Add(pnlButtons, 0, 3);
+        layRoot.Controls.Add(pnlLogo, 0, 0);
+        layRoot.SetColumnSpan(pnlLogo, 2);
+        layRoot.Controls.Add(lblTitle, 0, 1);
+        layRoot.SetColumnSpan(lblTitle, 2);
+        layRoot.Controls.Add(lblParticulars, 0, 2);
+        layRoot.SetColumnSpan(lblParticulars, 2);
+        layRoot.Controls.Add(lblUsername, 0, 3);
+        layRoot.Controls.Add(txtUsername, 1, 3);
+        layRoot.Controls.Add(lblPassword, 0, 4);
+        layRoot.Controls.Add(txtPassword, 1, 4);
+        layRoot.Controls.Add(pnlButtons, 0, 5);
         layRoot.SetColumnSpan(pnlButtons, 2);
 
         // frmLogin

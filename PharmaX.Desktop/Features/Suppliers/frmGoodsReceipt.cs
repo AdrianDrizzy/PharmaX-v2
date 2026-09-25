@@ -85,6 +85,16 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
             var batch = row.Cells["Batch"].Value?.ToString()?.Trim();
             var expiryText = row.Cells["Expiry"].Value?.ToString()?.Trim();
 
+            // The order's own product, as long as the operator has not
+            // typed a different code over it; then the service checks the
+            // new code against the order line instead.
+            var orderedCode = row.Tag as string;
+            var productId = row.Cells["ProductId"].Value is Guid id
+                            && string.Equals(orderedCode, code,
+                                             StringComparison.OrdinalIgnoreCase)
+                ? id
+                : (Guid?)null;
+
             lines.Add(new GoodsReceiptLineEditDto(
                 ProductCode: code,
                 Quantity: ToDecimal(row.Cells["Qty"].Value),
@@ -94,7 +104,8 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
                 PurchaseOrderLineNo:
                     row.Cells["OrderLine"].Value is int lineNo
                         ? lineNo
-                        : null));
+                        : null,
+                ProductId: productId));
         }
 
         return lines;
@@ -129,14 +140,76 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
         // how quantities get mistyped.
         grdCapture.Rows.Clear();
 
+        // The product's own code in the code column and its description
+        // beside it. The description used to go in the code column, which
+        // no code ever matched, so nothing from an order could be posted
+        // until every line was re-keyed (DEF-0013).
         foreach (var line in order.Lines.Where(l => l.Outstanding > 0m))
-            grdCapture.Rows.Add(line.Description, line.Outstanding,
-                line.UnitCost, "", "", line.LineNo);
+        {
+            var index = grdCapture.Rows.Add(line.ProductCode,
+                line.Description, line.Outstanding, line.UnitCost, "", "",
+                line.LineNo, line.ProductId);
+
+            grdCapture.Rows[index].Tag = line.ProductCode;
+        }
 
         if (grdCapture.Rows.Count == 0) AddCaptureRow();
 
         LinesChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    public void ShowProblem(string? problem) =>
+        lblProblem.Text = problem ?? "";
+
+    public void ShowProducts(IReadOnlyList<GoodsReceiptProductDto?> products)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+
+        // The capture rows learn what their codes name, in order: the
+        // service answers a line per captured line, as Collect sent them.
+        var captured = grdCapture.Rows.Cast<DataGridViewRow>()
+            .Where(r => !r.IsNewRow
+                        && !string.IsNullOrWhiteSpace(
+                            r.Cells["Code"].Value?.ToString()))
+            .ToList();
+
+        for (var i = 0; i < captured.Count && i < products.Count; i++)
+        {
+            var row = captured[i];
+            var product = products[i];
+
+            // Blank for a code that names nothing, never the product the
+            // line used to name.
+            row.Cells["Product"].Value = product?.Description ?? "";
+
+            // A code typed on a line of its own brings the product's cost
+            // price, once, as it does on a purchase order, and a different
+            // code brings its own in place of it. A line from an order keeps
+            // the cost it was ordered at, and a cost the operator typed - to
+            // nothing, for bonus stock - stays.
+            var cost = row.Cells["Cost"];
+
+            if (product is null || row.Tag is not null
+                || cost.Tag is BroughtCost same
+                   && string.Equals(same.Code, product.Code,
+                                    StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var current = ToDecimal(cost.Value);
+            var untouched = current == 0m
+                            || cost.Tag is BroughtCost { Cost: decimal was }
+                               && was == current;
+
+            cost.Tag = new BroughtCost(product.Code,
+                untouched ? product.CostPrice : null);
+
+            if (untouched) cost.Value = product.CostPrice;
+        }
+    }
+
+    /// The cost a line's product brought with it, to tell it from one the
+    /// operator typed; null where the cost on the line is the operator's.
+    private sealed record BroughtCost(string Code, decimal? Cost);
 
     public void ShowLines(IReadOnlyList<GoodsReceiptLineDto> lines)
     {
@@ -205,7 +278,7 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
     }
 
     private void AddCaptureRow() =>
-        grdCapture.Rows.Add("", 1m, 0m, "", "", null);
+        grdCapture.Rows.Add("", "", 1m, 0m, "", "", null, null);
 
     private void RemoveCaptureRow()
     {

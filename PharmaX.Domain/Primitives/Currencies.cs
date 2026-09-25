@@ -114,6 +114,25 @@ public static class Currencies
             new("25t", 0.25m, false), new("10t", 0.10m, false)
         });
 
+    /// <summary>
+    /// Zimbabwe Gold, Zimbabwe's currency since 8 April 2024. ISO 4217
+    /// ZWG (924), written ZiG, divided into cents.
+    /// </summary>
+    /// <remarks>
+    /// The drawer holds what is actually in circulation: the ZiG20 and
+    /// ZiG10 notes and the ZiG5, ZiG2 and ZiG1 coins. The 50, 100 and 200
+    /// notes were announced and never released, and no cent coins have
+    /// been issued, so cash is counted to the whole ZiG - as it is for the
+    /// naira and the shilling below.
+    /// </remarks>
+    public static CurrencyOption Zwg { get; } = new("ZWG",
+        "Zimbabwe Gold", "ZiG", "en-ZW", new CurrencyDenomination[]
+        {
+            new("ZiG20", 20m, true), new("ZiG10", 10m, true),
+            new("ZiG5", 5m, false), new("ZiG2", 2m, false),
+            new("ZiG1", 1m, false)
+        });
+
     public static CurrencyOption Ngn { get; } = new("NGN",
         "Nigerian naira", "₦", "en-NG", new CurrencyDenomination[]
         {
@@ -134,7 +153,7 @@ public static class Currencies
         });
 
     public static IReadOnlyList<CurrencyOption> All { get; } =
-        new[] { Usd, Zar, Gbp, Eur, Aud, Cad, Bwp, Ngn, Kes };
+        new[] { Usd, Zar, Gbp, Eur, Aud, Cad, Bwp, Zwg, Ngn, Kes };
 
     /// <summary>
     /// The currency with this code, or the default.

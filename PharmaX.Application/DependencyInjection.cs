@@ -15,6 +15,12 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(s);
 
+        // One set of pharmacy particulars for the whole process, so an
+        // edit at the System Console reaches every receipt and window.
+        s.AddSingleton<Abstractions.PharmacyProfile>();
+        s.AddScoped<Pharmacy.IPharmacyDetailsService,
+                    Pharmacy.PharmacyDetailsService>();
+
         s.AddScoped<IAuthenticationService, AuthenticationService>();
         s.AddScoped<IPermissionService, PermissionService>();
         s.AddScoped<IUserService, UserService>();

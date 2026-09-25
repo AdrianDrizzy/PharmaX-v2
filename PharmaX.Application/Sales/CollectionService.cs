@@ -181,7 +181,15 @@ public sealed class CollectionService : ICollectionService
                 // medicines are not rated like a tube of hand cream.
                 vatRatePercent: await VatRateOf(line.ProductId, ct),
                 taxCode: "A",
-                priceSource: PriceSource.MedicalAidTariff));
+
+                // Rated only where a society's tariff priced the item,
+                // which is where it contributes. Every collected script was
+                // marked rated, so a private patient's shelf-priced script
+                // showed RATED PRICING at the till and was counted in the
+                // rated-transactions report.
+                priceSource: line.SchemeContribution.IsZero
+                    ? PriceSource.StandardRetail
+                    : PriceSource.MedicalAidTariff));
 
             // Deliberately no batch on the line. The dispensing already
             // records which batch the patient was given, and that is the

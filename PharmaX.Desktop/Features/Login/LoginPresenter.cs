@@ -11,7 +11,7 @@ public sealed class LoginPresenter : PresenterBase<ILoginView>
 
     protected override void Subscribe()
     {
-        View.LoginRequested += (_, _) => _ = OnLoginAsync();
+        View.LoginRequested += (_, _) => Enqueue(OnLoginAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

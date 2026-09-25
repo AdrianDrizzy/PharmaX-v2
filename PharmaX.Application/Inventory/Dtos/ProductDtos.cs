@@ -24,7 +24,8 @@ public sealed record ProductDto(
     string TaxCode, int Schedule, bool IsBatchTracked, bool IsActive,
     decimal ReorderLevel, decimal QuantityOnHand, string? PackSize,
     IReadOnlyList<string> Barcodes,
-    Guid? DepartmentId, Guid? CategoryId, Guid? ManufacturerId)
+    Guid? DepartmentId, Guid? CategoryId, Guid? ManufacturerId,
+    decimal? UnitsPerPack = null)
 {
     public static ProductDto From(Product p)
     {
@@ -35,7 +36,7 @@ public sealed record ProductDto(
             p.RetailPrice.Amount, p.CostPrice.Amount, p.VatRatePercent,
             p.TaxCode, p.Schedule, p.IsBatchTracked, p.IsActive,
             p.ReorderLevel, p.QuantityOnHand, p.PackSize, p.Barcodes,
-            p.DepartmentId, p.CategoryId, p.ManufacturerId);
+            p.DepartmentId, p.CategoryId, p.ManufacturerId, p.UnitsPerPack);
     }
 }
 
@@ -85,4 +86,9 @@ public sealed record ProductEditDto(
     // product editor sets all three, because a filing nothing can write
     // is a filter nothing can use.
     Guid? DepartmentId = null, Guid? CategoryId = null,
-    Guid? ManufacturerId = null);
+    Guid? ManufacturerId = null,
+
+    // How many dispensing units the priced pack holds, so a script for
+    // fewer is priced pro rata (DEF-0021). Blank for a product only ever
+    // handed over as the pack.
+    decimal? UnitsPerPack = null);

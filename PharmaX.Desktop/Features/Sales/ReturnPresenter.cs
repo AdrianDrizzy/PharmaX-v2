@@ -1,4 +1,6 @@
 using PharmaX.Application.Sales;
+using PharmaX.Domain.Security;
+using PharmaX.Application.Security;
 using PharmaX.Application.Sales.Dtos;
 using PharmaX.Desktop.Mvp;
 
@@ -35,24 +37,27 @@ public interface IReturnView : IView
 public sealed class ReturnPresenter : PresenterBase<IReturnView>
 {
     private readonly IReturnService _returns;
-    private readonly IReceiptPrinter _receipts;
+    private readonly IDocumentPrinter _printer;
     private readonly ReceiptHeaderFactory _headers;
+    private readonly IPermissionService _permissions;
 
     private ReturnableSaleDto? _sale;
 
     public ReturnPresenter(IReturnService returns,
-        IReceiptPrinter receipts, ReceiptHeaderFactory headers)
+        IDocumentPrinter printer, ReceiptHeaderFactory headers,
+        IPermissionService permissions)
     {
         _returns = returns;
-        _receipts = receipts;
+        _printer = printer;
         _headers = headers;
+        _permissions = permissions;
     }
 
     protected override void Subscribe()
     {
-        View.FindRequested += (_, _) => _ = FindAsync();
+        View.FindRequested += (_, _) => Enqueue(FindAsync);
         View.LinesChanged += (_, _) => Retotal();
-        View.PostRequested += (_, _) => _ = PostAsync();
+        View.PostRequested += (_, _) => Enqueue(PostAsync);
         View.CloseRequested += (_, _) => View.CloseView(true);
     }
 
@@ -129,14 +134,23 @@ public sealed class ReturnPresenter : PresenterBase<IReturnView>
             return;
         }
 
-        var authoriser = View.PromptSupervisor(
-            $"Authorise a refund of {credit:N2} against "
-            + $"{_sale.DocumentNumber}?");
+        // A supervisor's credentials only where the operator does not
+        // hold the authority themselves; a manager refunding at the till
+        // is not asked to authorise their own work.
+        Guid? authoriser = null;
 
-        if (authoriser is null)
+        if (_permissions.Check(PermissionCode.ReturnAuthorise)
+            != PermissionOutcome.Granted)
         {
-            View.ShowError("Not refunded: no supervisor authorisation.");
-            return;
+            authoriser = View.PromptSupervisor(
+                $"Authorise a refund of {credit:N2} against "
+                + $"{_sale.DocumentNumber}?");
+
+            if (authoriser is null)
+            {
+                View.ShowError("Not refunded: no supervisor authorisation.");
+                return;
+            }
         }
 
         // The tenders the customer originally paid with are offered
@@ -150,7 +164,7 @@ public sealed class ReturnPresenter : PresenterBase<IReturnView>
             SaleId: _sale.SaleId,
             Kind: View.Kind,
             Reason: reason,
-            AuthorisedBy: authoriser.Value,
+            AuthorisedBy: authoriser ?? Guid.Empty,
             Lines: lines,
             Refunds: refunds));
 
@@ -162,14 +176,60 @@ public sealed class ReturnPresenter : PresenterBase<IReturnView>
 
         var written = result.Value.WriteOffValue;
 
+        // The customer's copy of the credit note, printed and reported
+        // honestly: a refund that happened with a slip that did not is
+        // still a refund.
+        var printed = await _printer.PrintAsync(
+            CreditNote(result.Value, refunds), _headers.Build());
+
         View.ShowInfo(
             $"Credit note {result.Value.DocumentNumber} for "
             + $"{result.Value.Total:N2}. "
             + $"{result.Value.RestockedLines} line(s) back on the shelf"
-            + (written > 0m ? $", {written:N2} written off." : "."));
+            + (written > 0m ? $", {written:N2} written off." : ".")
+            + Environment.NewLine + Environment.NewLine
+            + printed.Describe("The credit note"));
 
         View.ClearSale();
         _sale = null;
         Retotal();
     });
+
+    /// <summary>
+    /// The credit note as it prints: what came back, against which sale,
+    /// and how the money went back to the customer.
+    /// </summary>
+    private static PrintableDocument CreditNote(ReturnDto credit,
+        IReadOnlyList<PaymentDto> refunds)
+    {
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var lines = new List<string>
+        {
+            $"Credit note {credit.DocumentNumber}",
+            $"Against sale {credit.OriginalDocumentNumber}",
+            new string('-', 42)
+        };
+
+        foreach (var line in credit.Lines)
+            lines.Add(string.Format(culture, "{0,5:0.##} {1,-24}{2,11:N2}",
+                line.Quantity,
+                line.Description.Length <= 24
+                    ? line.Description
+                    : line.Description[..24],
+                line.LineTotal));
+
+        lines.Add(new string('-', 42));
+        lines.Add(string.Format(culture, "{0,-30}{1,12:N2}", "Refunded",
+            credit.Total));
+
+        foreach (var refund in refunds)
+            lines.Add(string.Format(culture, "  {0,-28}{1,12:N2}",
+                refund.TenderType, refund.Amount));
+
+        lines.Add("");
+        lines.Add($"Reason: {credit.Reason}");
+
+        return new PrintableDocument($"Credit note {credit.DocumentNumber}",
+                                     lines);
+    }
 }

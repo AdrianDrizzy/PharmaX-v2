@@ -79,6 +79,14 @@ public static class Format
     public static string Amount(decimal? amount) =>
         amount is decimal value ? Amount(value) : "";
 
+    /// An amount as a currency other than the current one writes it, for
+    /// saying what a figure will look like once that currency is chosen.
+    public static string Amount(decimal amount, CurrencyOption currency)
+    {
+        ArgumentNullException.ThrowIfNull(currency);
+        return amount.ToString("N2", Build(currency));
+    }
+
     /// <summary>
     /// A quantity as a person reads it: three, not 3.000. Pharmacy
     /// quantities are whole far more often than not, and a column of

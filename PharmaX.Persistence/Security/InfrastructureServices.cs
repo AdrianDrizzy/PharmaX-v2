@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using PharmaX.Application.Abstractions;
 using PharmaX.Domain.Security;
@@ -75,20 +76,31 @@ public sealed class UserSession : ICurrentUser, ISessionContext
 
 /// <summary>
 /// Writes audit rows into the current unit of work. Like the outbox it
-/// never saves: the entry commits with the change it describes, in the
-/// same transaction (SEC-031).
+/// never saves an applied entry: that commits with the change it
+/// describes, in the same transaction (SEC-031).
 /// </summary>
+/// <remarks>
+/// A refusal is the exception. It describes something that did not
+/// happen, so there is no change for it to commit with: it was added to
+/// the unit of work that the refusal itself then abandoned, and so it was
+/// never saved - a cashier's refused refund and a stock controller's
+/// refused product save left no trace at all (DEF-0026). Refusals are
+/// written through a context of their own and committed at once.
+/// </remarks>
 public sealed class AuditWriter : IAuditWriter
 {
     private readonly PharmaXDbContext _db;
+    private readonly IDbContextFactory<PharmaXDbContext> _contexts;
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
     private readonly PharmaXOptions _options;
-    
-    public AuditWriter(PharmaXDbContext db, ICurrentUser user, IClock clock,
-                       PharmaXOptions options)
+
+    public AuditWriter(PharmaXDbContext db,
+                       IDbContextFactory<PharmaXDbContext> contexts,
+                       ICurrentUser user, IClock clock, PharmaXOptions options)
     {
         _db = db;
+        _contexts = contexts;
         _user = user;
         _clock = clock;
         _options = options;
@@ -96,15 +108,34 @@ public sealed class AuditWriter : IAuditWriter
 
     public void Applied(string action, string entityType, Guid entityId,
                         string? reason = null) =>
-        Write(action, entityType, entityId, "Applied", reason);
+        _db.AuditEntries.Add(Entry(action, entityType, entityId, "Applied",
+                                   reason));
 
     public void Refused(string action, string entityType, Guid entityId,
-                        string? reason = null) =>
-        Write(action, entityType, entityId, "Refused", reason);
+                        string? reason = null)
+    {
+        var entry = Entry(action, entityType, entityId, "Refused", reason);
 
-    private void Write(string action, string entityType, Guid entityId,
-                       string outcome, string? reason) =>
-        _db.AuditEntries.Add(AuditEntry.Create(
+        try
+        {
+            using var own = _contexts.CreateDbContext();
+            own.AuditEntries.Add(entry);
+            own.SaveChanges();
+        }
+        catch (DbUpdateException)
+        {
+            // The refusal still stands; losing its audit row to a database
+            // fault must not turn a "no" into a crash.
+        }
+        catch (InvalidOperationException)
+        {
+            // As above: the database cannot be reached.
+        }
+    }
+
+    private AuditEntry Entry(string action, string entityType, Guid entityId,
+                             string outcome, string? reason) =>
+        AuditEntry.Create(
             occurredAtUtc: _clock.UtcNow,
             userId: _user.Id,
             workstation: _options.Workstation.TillNumber,
@@ -112,7 +143,7 @@ public sealed class AuditWriter : IAuditWriter
             entityType: entityType,
             entityId: entityId,
             outcome: outcome,
-            reason: reason));
+            reason: reason);
 }
 
 /// <summary>

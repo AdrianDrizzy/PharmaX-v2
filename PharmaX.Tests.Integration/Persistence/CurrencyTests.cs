@@ -27,25 +27,30 @@ public sealed class CurrencyTests : IDisposable
         _fixture.Dispose();
     }
 
-    [Fact]
-    public async Task Changing_currency_gives_the_till_the_right_drawer()
+    [Theory]
+    [InlineData("GBP")]
+    [InlineData("ZWG")]
+    public async Task Changing_currency_gives_the_till_the_right_drawer(
+        string code)
     {
         using var scope = _fixture.NewScope();
         var changer = PharmaXFixture.Resolve<ICurrencyChanger>(scope);
         var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
 
-        await changer.ApplyAsync(Currencies.Gbp);
+        var currency = Currencies.ByCode(code);
+        currency.Code.Should().Be(code, "the currency is in the catalogue");
+
+        await changer.ApplyAsync(currency);
 
         var drawer = await db.Denominations.AsNoTracking()
-            .Where(d => d.Currency == "GBP")
+            .Where(d => d.Currency == code)
             .OrderBy(d => d.SortOrder)
             .Select(d => d.Key)
             .ToListAsync();
 
-        drawer.Should().Equal(Currencies.Gbp.Denominations
-            .Select(d => d.Key));
+        drawer.Should().Equal(currency.Denominations.Select(d => d.Key));
 
-        Money.DefaultCurrency.Should().Be("GBP");
+        Money.DefaultCurrency.Should().Be(code);
     }
 
     /// <remarks>

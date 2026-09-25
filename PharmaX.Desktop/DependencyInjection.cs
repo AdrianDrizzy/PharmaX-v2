@@ -114,6 +114,7 @@ public static class DependencyInjection
         s.AddTransient<frmGoodsReceipt>();
         s.AddTransient<GoodsReceiptPresenter>();
         s.AddTransient<frmPurchaseOrderList>();
+        s.AddTransient<frmPurchaseOrderEdit>();
         s.AddTransient<PurchaseOrderListPresenter>();
 
         // Administration

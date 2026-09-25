@@ -23,7 +23,7 @@ public sealed record QuotationDto(Guid Id, string QuotationNumber,
 
         return new QuotationDto(q.Id, q.QuotationNumber, q.CustomerName,
             q.QuotedOn, q.ValidUntil, q.Status.ToString(), q.Notes,
-            q.Lines.Select(l => new QuotationLineDto(l.LineNo, l.ProductId,
+            q.Lines.OrderBy(l => l.LineNo).Select(l => new QuotationLineDto(l.LineNo, l.ProductId,
                 l.Description, l.Quantity, l.UnitPrice.Amount, l.TaxCode,
                 l.LineTotal.Amount)).ToList(),
             q.Total.Amount);
@@ -36,6 +36,10 @@ public interface IQuotationRepository
 
     Task<IReadOnlyList<Quotation>> RecentAsync(int take = 100,
         CancellationToken ct = default);
+
+    /// The number printed on the quotation the customer brings back.
+    Task<Quotation?> ByNumberAsync(string quotationNumber,
+                                   CancellationToken ct = default);
 
     Task AddAsync(Quotation quotation, CancellationToken ct = default);
 }
@@ -59,6 +63,62 @@ public interface IQuotationService
 
     Task<Result<QuotationDto>> IssueAsync(Guid quotationId, string? notes,
         CancellationToken ct = default);
+
+    /// The quotation the customer has brought back, by the number on it.
+    Task<Result<QuotationDto>> FindAsync(string quotationNumber,
+        CancellationToken ct = default);
+}
+
+/// <summary>
+/// A quotation as it is printed: what was quoted, for how much, and until
+/// when.
+/// </summary>
+public static class QuotationDocument
+{
+    public static PrintableDocument For(QuotationDto quotation)
+    {
+        ArgumentNullException.ThrowIfNull(quotation);
+
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var lines = new List<string>
+        {
+            $"Quotation {quotation.QuotationNumber}",
+            $"For {quotation.CustomerName}",
+            string.Format(culture, "Quoted {0:dd/MM/yyyy}  valid to {1:dd/MM/yyyy}",
+                quotation.QuotedOn, quotation.ValidUntil),
+            new string('-', 42)
+        };
+
+        foreach (var line in quotation.Lines)
+        {
+            lines.Add(string.Format(culture, "{0,5:0.##} {1}", line.Quantity,
+                line.Description.Length <= 36
+                    ? line.Description
+                    : line.Description[..36]));
+
+            lines.Add(string.Format(culture, "{0,26:N2} {1,15:N2}",
+                line.UnitPrice, line.LineTotal));
+        }
+
+        lines.Add(new string('-', 42));
+        lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "TOTAL (VAT incl.)",
+            quotation.Total));
+        lines.Add("");
+
+        if (!string.IsNullOrWhiteSpace(quotation.Notes))
+        {
+            lines.Add(quotation.Notes);
+            lines.Add("");
+        }
+
+        // Within the 42 characters of the roll.
+        lines.Add("A quotation, not a tax invoice. Prices");
+        lines.Add("are held until the date above; stock is");
+        lines.Add("not reserved.");
+
+        return new PrintableDocument($"Quotation {quotation.QuotationNumber}",
+                                     lines);
+    }
 }
 
 /// <summary>
@@ -115,6 +175,19 @@ public sealed class QuotationService : IQuotationService
         return Result<QuotationDto>.Ok(QuotationDto.From(quotation));
     }
 
+    public async Task<Result<QuotationDto>> FindAsync(string quotationNumber,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.SaleCreate);
+
+        var quotation = await _quotations.ByNumberAsync(quotationNumber, ct);
+
+        return quotation is null
+            ? Result<QuotationDto>.Fail("QUO-022",
+                $"No quotation {quotationNumber}.")
+            : Result<QuotationDto>.Ok(QuotationDto.From(quotation));
+    }
+
     public async Task<Result<QuotationDto>> GetAsync(Guid id,
         CancellationToken ct = default)
     {
@@ -159,7 +232,8 @@ public sealed class QuotationService : IQuotationService
         if (quotation is null)
             return Result<QuotationDto>.Fail("QUO-000", "Quotation not found.");
 
-        var product = await _products.FindByCodeOrBarcodeAsync(code, ct);
+        var product = await _products.FindByCodeOrBarcodeAsync(code,
+            _permissions.ProductScope(), ct);
         if (product is null)
             return Result<QuotationDto>.Fail("POS-001",
                 $"No product for code {code}.");

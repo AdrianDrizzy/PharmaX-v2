@@ -52,7 +52,7 @@ public sealed class PatientService : IPatientService
     {
         // A patient list is clinical information, so reading it needs the
         // dispensing permission rather than the product one.
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         var patients = await _patients.SearchAsync(term, ct: ct);
 
@@ -70,7 +70,7 @@ public sealed class PatientService : IPatientService
     public async Task<Result<PatientDto>> GetAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         var patient = await _patients.GetAsync(id, ct);
         if (patient is null)
@@ -87,7 +87,7 @@ public sealed class PatientService : IPatientService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         if (Validate(edit, _clock.Today) is Error problem)
             return Result<Guid>.Fail(problem.Code, problem.Message);
@@ -129,7 +129,7 @@ public sealed class PatientService : IPatientService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         if (Validate(edit, _clock.Today) is Error problem)
             return Result.Fail(problem.Code, problem.Message);
@@ -170,7 +170,7 @@ public sealed class PatientService : IPatientService
     public async Task<Result> DeactivateAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         var patient = await _patients.GetAsync(id, ct);
         if (patient is null) return Result.Fail("PAT-000", "Patient not found.");

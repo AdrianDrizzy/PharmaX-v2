@@ -15,7 +15,14 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     private readonly ScriptListPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.ScriptCapture;
+
+    /// Read by those who capture scripts and those who dispense them.
+    protected override bool MayOpen(
+        Application.Security.IPermissionService permissions) =>
+        Application.Security.PermissionServiceExtensions.HasAny(permissions,
+            Domain.Security.PermissionCode.ScriptCapture,
+            Domain.Security.PermissionCode.ScriptDispense);
 
     /// Designer only. Never called at runtime.
     public frmScriptList()
@@ -39,10 +46,32 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     }
 
     /// Runtime. Resolved by the container.
-    public frmScriptList(ScriptListPresenter presenter) : this()
+    public frmScriptList(ScriptListPresenter presenter,
+        Application.Security.IPermissionService permissions) : this()
     {
+        _permissions = permissions;
         _presenter = presenter;
         _presenter.Attach(this);
+    }
+
+    private readonly Application.Security.IPermissionService? _permissions;
+
+    /// <summary>
+    /// Capturing a script and cancelling one are separate authorities from
+    /// reading them; each button is there for those who hold it. Read when
+    /// the window opens, not when it is built.
+    /// </summary>
+    private void ApplyPermissions()
+    {
+        if (_permissions is null) return;
+
+        if (!Application.Security.PermissionServiceExtensions.Has(
+                _permissions, Domain.Security.PermissionCode.ScriptCapture))
+            btnCapture.Visible = false;
+
+        if (!Application.Security.PermissionServiceExtensions.Has(
+                _permissions, Domain.Security.PermissionCode.ScriptReverse))
+            btnCancelScript.Visible = false;
     }
 
     public Guid? PatientId { get; private set; }
@@ -67,6 +96,7 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        ApplyPermissions();
         if (_presenter is not null) await _presenter.InitialiseAsync();
     }
 

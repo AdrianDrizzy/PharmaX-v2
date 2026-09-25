@@ -204,4 +204,14 @@ public sealed class QuotationRepository : Application.Sales.IQuotationRepository
     public async Task AddAsync(Domain.Sales.Quotation quotation,
         CancellationToken ct = default) =>
         await _db.Quotations.AddAsync(quotation, ct);
+
+    public async Task<Domain.Sales.Quotation?> ByNumberAsync(
+        string quotationNumber, CancellationToken ct = default)
+    {
+        var number = quotationNumber?.Trim().ToUpperInvariant() ?? "";
+
+        return await _db.Quotations
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.QuotationNumber == number, ct);
+    }
 }

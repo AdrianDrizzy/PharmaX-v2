@@ -20,11 +20,11 @@ public sealed class TariffListPresenter : PresenterBase<ITariffListView>
 
     protected override void Subscribe()
     {
-        View.SearchChanged += (_, _) => _ = LoadAsync();
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
-        View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
-        View.ToggleActiveRequested += (_, _) => _ = ToggleAsync();
+        View.SearchChanged += (_, _) => Enqueue(LoadAsync);
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
+        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
+        View.ToggleActiveRequested += (_, _) => Enqueue(ToggleAsync);
     }
 
     public override Task InitialiseAsync() => GuardAsync(async () =>
@@ -97,8 +97,8 @@ public sealed class TariffEditPresenter : PresenterBase<ITariffEditView>
 
     protected override void Subscribe()
     {
-        View.ChooseProductRequested += (_, _) => _ = ChooseProductAsync();
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.ChooseProductRequested += (_, _) => Enqueue(ChooseProductAsync);
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

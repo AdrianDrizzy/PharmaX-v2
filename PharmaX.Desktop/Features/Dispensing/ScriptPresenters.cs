@@ -51,9 +51,9 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.CaptureRequested += (_, _) => _ = CaptureAsync();
-        View.CancelScriptRequested += (_, _) => _ = CancelAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.CaptureRequested += (_, _) => Enqueue(CaptureAsync);
+        View.CancelScriptRequested += (_, _) => Enqueue(CancelAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -128,7 +128,7 @@ public sealed class ScriptEditPresenter : PresenterBase<IScriptEditView>
 
     protected override void Subscribe()
     {
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

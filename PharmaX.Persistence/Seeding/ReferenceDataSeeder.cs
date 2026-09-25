@@ -96,88 +96,10 @@ public sealed class ReferenceDataSeeder
             // that have been running longest would be the ones missing
             // it. Grant is idempotent, and nothing is revoked here: a
             // site that has narrowed a role keeps its decision.
-            foreach (var code in PermissionsFor(name))
+            foreach (var code in StandardRoleGrants.For(name))
                 role.Grant(code);
         }
     }
-
-    /// <summary>
-    /// The starting grant for each standard role. Deliberately narrow:
-    /// widening a role on request is a five-minute conversation, and
-    /// narrowing one after staff have used it for a month is not.
-    /// </summary>
-    private static IEnumerable<string> PermissionsFor(string role) =>
-        role switch
-        {
-            Role.Standard.Administrator => PermissionCode.All,
-
-            Role.Standard.Manager => new[]
-            {
-                PermissionCode.SaleCreate,
-                PermissionCode.SaleDiscountAboveLimit,
-                PermissionCode.ReturnAuthorise,
-                PermissionCode.SessionCloseOtherUser,
-                PermissionCode.ProductRead,
-                PermissionCode.PriceChange,
-                PermissionCode.StockTakePost,
-                PermissionCode.SupplierMaintain,
-                PermissionCode.ReferenceMaintain,
-                PermissionCode.PurchaseOrderRaise,
-                PermissionCode.GoodsReceive,
-                PermissionCode.ReportOperational,
-                PermissionCode.ReportManagement,
-                PermissionCode.ReportFinancial,
-
-                // The books are a manager's job. A cashier posting a
-                // journal is how a till shortage quietly becomes a
-                // rounding adjustment.
-                PermissionCode.LedgerRead,
-                PermissionCode.LedgerPost
-            },
-
-            Role.Standard.Pharmacist => new[]
-            {
-                PermissionCode.SaleCreate,
-                PermissionCode.ScriptAuthorise,
-                PermissionCode.ScriptReverse,
-                PermissionCode.ProductRead,
-                PermissionCode.ReportOperational,
-                PermissionCode.ReportClinical
-            },
-
-            Role.Standard.PharmacistAssistant => new[]
-            {
-                PermissionCode.SaleCreate,
-                PermissionCode.ProductRead,
-                PermissionCode.ReportOperational
-            },
-
-            Role.Standard.Cashier => new[]
-            {
-                PermissionCode.SaleCreate,
-                PermissionCode.ProductRead
-            },
-
-            Role.Standard.StockController => new[]
-            {
-                PermissionCode.ProductRead,
-                PermissionCode.StockTakePost,
-                PermissionCode.SupplierMaintain,
-
-                // The lists stock is filed against. A stock controller
-                // files stock all day and could not add the department
-                // or category to file it in, because maintaining those
-                // demanded the price-change permission - which is the
-                // one thing a stock controller is deliberately not given.
-                PermissionCode.ReferenceMaintain,
-
-                PermissionCode.PurchaseOrderRaise,
-                PermissionCode.GoodsReceive,
-                PermissionCode.ReportOperational
-            },
-
-            _ => Array.Empty<string>()
-        };
 
     private async Task SeedAdministratorAsync(CancellationToken ct)
     {

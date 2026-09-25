@@ -53,12 +53,12 @@ public sealed class UserListPresenter : PresenterBase<IUserListView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
-        View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
-        View.ResetPasswordRequested += (_, _) => _ = ResetAsync();
-        View.UnlockRequested += (_, _) => _ = UnlockAsync();
-        View.ToggleActiveRequested += (_, _) => _ = ToggleActiveAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
+        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
+        View.ResetPasswordRequested += (_, _) => Enqueue(ResetAsync);
+        View.UnlockRequested += (_, _) => Enqueue(UnlockAsync);
+        View.ToggleActiveRequested += (_, _) => Enqueue(ToggleActiveAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();
@@ -160,7 +160,7 @@ public sealed class UserEditPresenter : PresenterBase<IUserEditView>
 
     protected override void Subscribe()
     {
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

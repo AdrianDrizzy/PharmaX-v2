@@ -97,9 +97,8 @@ public partial class frmMain : PhxFormBase, IMainView
     /// <remarks>
     /// Headings are wired up as commands by everything except the check
     /// below, and they must not be. A heading's Tag names a permission
-    /// group so that EnableMenu can grey out the whole of Dispensary or
-    /// Administration at once; it is not something the presenter can be
-    /// asked to open. Treating it as one meant that clicking Dispensary,
+    /// group, and ApplyAccess enables it while anything under it is; it is
+    /// not something the presenter can be asked to open. Treating it as one meant that clicking Dispensary,
     /// Inventory, Stocktake or Administration - just to read the menu -
     /// raised a command the presenter had no case for and answered with
     /// "That part of PharmaX is not built yet", and that clicking Point
@@ -231,8 +230,12 @@ public partial class frmMain : PhxFormBase, IMainView
         ShowContext();
     }
 
-    public void SetPharmacy(string tradingName) =>
-        lblHomeTitle.Text = tradingName;
+    public void SetPharmacy(string name, string particulars)
+    {
+        lblHomeTitle.Text = name;
+        lblHomeParticulars.Text = particulars;
+        lblHomeParticulars.Visible = !string.IsNullOrWhiteSpace(particulars);
+    }
 
     /// The same three facts as the status bar, said once in a size a
     /// person reads from a metre away rather than from the keyboard.
@@ -251,21 +254,30 @@ public partial class frmMain : PhxFormBase, IMainView
         BeginInvoke(() => lblConnectivity.Text = state);
     }
 
-    public void EnableMenu(string menuKey, bool enabled)
+    public void ApplyAccess(Func<string, bool> canOpen)
     {
+        ArgumentNullException.ThrowIfNull(canOpen);
+
+        // The entries first, one by one: disabling an item is what turns
+        // its shortcut key off too, which disabling only its heading never
+        // did - F4 opened Patients under a greyed-out Dispensary.
         foreach (var item in AllMenuItems(mnuMain.Items))
         {
-            if (item.Tag is string key
-                && string.Equals(key, menuKey, StringComparison.Ordinal))
-                item.Enabled = enabled;
+            if (item.Tag is not string key) continue;
+            if (item is ToolStripMenuItem { HasDropDownItems: true }) continue;
+
+            item.Enabled = canOpen(key);
         }
 
+        // Then each heading, open while anything under it is.
+        foreach (var heading in mnuMain.Items.OfType<ToolStripMenuItem>()
+                     .Where(m => m.HasDropDownItems))
+            heading.Enabled = heading.DropDownItems
+                .OfType<ToolStripMenuItem>()
+                .Any(child => child.Enabled);
+
         foreach (var tile in flpTiles.Controls.OfType<HomeTile>())
-        {
-            if (string.Equals(tile.PermissionGroup, menuKey,
-                              StringComparison.Ordinal))
-                tile.Enabled = enabled;
-        }
+            tile.Enabled = canOpen(tile.MenuKey);
     }
 
     /// <summary>

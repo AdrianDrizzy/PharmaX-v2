@@ -47,17 +47,51 @@ public class JournalPosterTests
     }
 
     /// <summary>
-    /// The drawer is debited what the sale was worth, and no more.
+    /// The drawer is debited what the sale was worth, and no more - even
+    /// when the customer hands over more and is given change.
     /// </summary>
     /// <remarks>
-    /// There is no change line in the journal because there cannot be
-    /// one: BR-POS-01 refuses to finalise a sale whose tender does not
-    /// equal its total, so the change has already been settled at the
-    /// payment screen. This test is what will notice if that rule ever
-    /// moves.
+    /// This test used to prove that over-tender was refused outright
+    /// (BR-POS-01), which is what left the till unable to give change
+    /// (DEF-0019). The rule it was really guarding is kept: the change
+    /// goes back out of the drawer, so the journal debits cash with the
+    /// sale's worth, the books balance, and the change is recorded on the
+    /// sale rather than lost.
     /// </remarks>
     [Fact]
-    public async Task A_sale_cannot_be_tendered_more_than_it_is_worth()
+    public async Task Cash_over_the_total_gives_change_and_debits_only_the_sale()
+    {
+        var builder = new SaleServiceBuilder();
+        var sut = builder.Build();
+
+        var opened = await sut.OpenAsync();
+        await sut.AddLineAsync(opened.Value.Id, "PAR0500", 1m);
+
+        var finalised = await sut.FinaliseAsync(opened.Value.Id, new[]
+        {
+            new PaymentDto("Cash", 50.00m, null)
+        });
+
+        finalised.IsSuccess.Should().BeTrue(finalised.Error.Message);
+        finalised.Value.Total.Should().Be(24.00m);
+        finalised.Value.Change.Should().Be(26.00m);
+
+        builder.Ledger.AllBalance.Should().BeTrue();
+        builder.Ledger.NetOf(LedgerCode.CashOnHand).Should().Be(24.00m,
+            "the change went back out of the drawer");
+
+        var sale = await sut.GetAsync(opened.Value.Id);
+        sale.Value.Totals.Tendered.Should().Be(50.00m);
+        sale.Value.Totals.Change.Should().Be(26.00m);
+        sale.Value.Payments!.Sum(p => p.Amount).Should().Be(24.00m);
+    }
+
+    /// <summary>
+    /// Only cash gives change: a card or an account tendered for more than
+    /// the sale is a keying error, and nothing is posted.
+    /// </summary>
+    [Fact]
+    public async Task A_sale_cannot_be_tendered_more_than_it_is_worth_on_card()
     {
         var builder = new SaleServiceBuilder();
         var sut = builder.Build();
@@ -67,12 +101,12 @@ public class JournalPosterTests
 
         var act = () => sut.FinaliseAsync(opened.Value.Id, new[]
         {
-            new PaymentDto("Cash", 50.00m, null)
+            new PaymentDto("Card", 50.00m, null)
         });
 
         await act.Should()
             .ThrowAsync<PharmaX.Domain.Exceptions.DomainException>()
-            .WithMessage("*BR-POS-01*");
+            .WithMessage("*only cash can give change*");
 
         builder.Ledger.Posted.Should().BeEmpty();
     }

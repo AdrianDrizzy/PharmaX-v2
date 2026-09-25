@@ -94,6 +94,12 @@ public partial class frmPOS : PhxFormBase, IPosView
                 PaymentRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.Hold:
                 HoldRequested?.Invoke(this, EventArgs.Empty); break;
+            case PosKeyMap.Recall:
+                RecallRequested?.Invoke(this, EventArgs.Empty); break;
+            case PosKeyMap.Quotation:
+                QuotationRequested?.Invoke(this, EventArgs.Empty); break;
+            case PosKeyMap.Reprint:
+                ReprintRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.Close:
                 CloseRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.VoidLine:
@@ -192,8 +198,34 @@ public partial class frmPOS : PhxFormBase, IPosView
         lblRated.Visible = ratedPricing;
     }
 
+    public void ShowRatedPricing(bool rated) => lblRated.Visible = rated;
+
     public void ShowDocumentNumber(string documentNumber) =>
         lblLastDocument.Text = $"Last: {documentNumber}";
+
+    public void ShowChange(decimal change)
+    {
+        if (change <= 0m) return;
+
+        // Beside the last document number, in the place the cashier looks
+        // while counting the change out, and left there until the next
+        // sale is paid for.
+        lblLastDocument.Text += $"   -   Change {Format.Money(change)}";
+    }
+
+    public Guid? PromptHeldSale(IReadOnlyList<HeldSaleDto> held)
+    {
+        ArgumentNullException.ThrowIfNull(held);
+
+        using var picker = new frmHeldSales(held);
+        return picker.ShowDialog(this) == DialogResult.OK
+            ? picker.Chosen
+            : null;
+    }
+
+    public string? PromptQuotationNumber() =>
+        frmTextPrompt.Ask(this, "Quotation",
+            "Quotation number (on the customer's copy)");
 
     public void ClearSale()
     {
@@ -252,8 +284,10 @@ public partial class frmPOS : PhxFormBase, IPosView
             button.Enabled = key is PosKeyMap.Payment or PosKeyMap.Close;
         }
 
+        // Whether the co-payment rests on a tariff is the lines' to say,
+        // once they arrive. It used to say RATED PRICING for every script
+        // collected, a private patient's at the shelf price included.
         lblCustomer.Text = patientName;
-        lblRated.Visible = true;
     }
 
     public void FocusPayment()
@@ -338,5 +372,8 @@ public partial class frmPOS : PhxFormBase, IPosView
     public event EventHandler? VoidLineRequested;
     public event EventHandler? PaymentRequested;
     public event EventHandler? HoldRequested;
+    public event EventHandler? RecallRequested;
+    public event EventHandler? QuotationRequested;
+    public event EventHandler? ReprintRequested;
     public event EventHandler? CloseRequested;
 }

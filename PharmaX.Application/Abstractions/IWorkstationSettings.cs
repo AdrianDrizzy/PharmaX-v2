@@ -45,3 +45,29 @@ public static class WorkstationSettingKey
     /// copy of, so that moving the original does not blank the shell.
     public const string LogoPath = "pharmacy.logo";
 }
+
+/// <summary>
+/// Settings that belong to the pharmacy rather than to any one till:
+/// the name it trades under, its registered name, its VAT number and
+/// its address.
+/// </summary>
+/// <remarks>
+/// The same shape as IWorkstationSettings but a different scope. A
+/// receipt printed at the dispensary and one printed at the front till
+/// must carry the same VAT number, so on a shared database every till
+/// reads the one value rather than each keeping its own.
+/// </remarks>
+public interface IPharmacySettings
+{
+    Task<string?> GetAsync(string key, CancellationToken ct = default);
+
+    Task SetAsync(string key, string? value, CancellationToken ct = default);
+}
+
+public static class PharmacySettingKey
+{
+    public const string TradingName = "pharmacy.trading-name";
+    public const string RegisteredName = "pharmacy.registered-name";
+    public const string VatNumber = "pharmacy.vat-number";
+    public const string Address = "pharmacy.address";
+}

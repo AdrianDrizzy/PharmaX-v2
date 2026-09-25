@@ -12,6 +12,7 @@ partial class frmMain
     private Panel pnlHomeText = null!;
     private Panel pnlHomeLogo = null!;
     private Label lblHomeTitle = null!;
+    private Label lblHomeParticulars = null!;
     private Label lblHomeContext = null!;
     private Label lblHomeCaption = null!;
     private FlowLayoutPanel flpTiles = null!;
@@ -79,14 +80,18 @@ partial class frmMain
                 Item("Labels", "labels"),
                 Item("Tariffs", "tariffs"),
                 Item("Merge Patient Files", "merge-patients"),
-                Item("Quotation", "quotation"),
                 Item("Medical Aid Societies", "schemes"),
                 Item("Drug Returns", "drug-returns")),
 
             Menu("&Point of Sale", "pos",
                 Item("Sell", "pos", Keys.F3),
                 Item("Scripts to Collect", "collect", Keys.F11),
-                Item("Returns and Credit Notes", "returns", Keys.F5)),
+                Item("Returns and Credit Notes", "returns", Keys.F5),
+
+                // A priced list for a customer at the counter is till
+                // work, and under Dispensary it opened that whole heading
+                // to a cashier for the sake of one entry.
+                Item("Quotation", "quotation")),
 
             Menu("&Inventory", "inventory",
                 Item("Stock Alerts", "alerts", Keys.F12),
@@ -107,12 +112,17 @@ partial class frmMain
             // corner of Administration: a manager doing the month end is
             // not administering the system, and the three screens here
             // are used together.
+            // Day-End Posting lives here rather than under Administration:
+            // turning the day's takings into a journal is the manager's
+            // bookkeeping, and under Administration it was out of reach
+            // of the manager who does it (DEF-0015).
             Menu("&Accounts", "accounts",
                 Item("Trial Balance", "trial-balance"),
                 Item("Journal Entry", "journal"),
                 Item("Patient Accounts", "accounts-receivable"),
                 Item("Medical Aid Claims", "claims"),
-                Item("Chart of Accounts", "chart-of-accounts")),
+                Item("Chart of Accounts", "chart-of-accounts"),
+                Item("Day-End Posting", "day-end")),
 
             Menu("&Reports", "reports",
                 Item("Reports", "reports", Keys.F9)),
@@ -123,12 +133,15 @@ partial class frmMain
                 Item("Variance", "stocktake-variance"),
                 Item("Post", "stocktake-post")),
 
+            // Named for what they open. "VAT Codes" and "Transaction
+            // Types" read as maintenance screens and opened reports
+            // (DEF-0029): the VAT rate is set on each product, and the
+            // movement types are fixed.
             Menu("&Administration", "admin",
-                Item("VAT Codes", "vat-codes"),
+                Item("VAT Summary", "vat-codes"),
                 Item("Users", "users"),
                 Item("Branches", "branches"),
-                Item("Transaction Types", "transaction-types"),
-                Item("Day-End Posting", "day-end"),
+                Item("Stock Transactions", "transaction-types"),
                 Item("System Setup", "system-setup"),
                 Item("System Console", "system-console"),
                 Item("Control Variables", "control-variables")),
@@ -229,13 +242,29 @@ partial class frmMain
     /// </summary>
     private void BuildHome()
     {
+        // The pharmacy's trading name, set by the presenter. Never the
+        // product's: this is the pharmacy's till, not PharmaX's.
         lblHomeTitle = new Label
         {
+            AutoEllipsis = true,
             AutoSize = false,
             Dock = DockStyle.Top,
             Font = PhxTheme.Display,
             Height = 42,
-            Text = "PharmaX"
+            Name = "lblHomeTitle",
+            Text = ""
+        };
+
+        // Its address and VAT number, as the receipts print them.
+        lblHomeParticulars = new Label
+        {
+            AutoEllipsis = true,
+            AutoSize = false,
+            Dock = DockStyle.Top,
+            Height = 24,
+            Name = "lblHomeParticulars",
+            Text = "",
+            Visible = false
         };
 
         lblHomeContext = new Label
@@ -261,11 +290,12 @@ partial class frmMain
 
         pnlHomeText = new Panel { Dock = DockStyle.Fill };
         pnlHomeText.Controls.Add(lblHomeContext);
+        pnlHomeText.Controls.Add(lblHomeParticulars);
         pnlHomeText.Controls.Add(lblHomeTitle);
 
         // The logo is added last so it claims the left edge before the
         // text panel fills what is left.
-        pnlHomeHeader = new Panel { Dock = DockStyle.Top, Height = 72 };
+        pnlHomeHeader = new Panel { Dock = DockStyle.Top, Height = 96 };
         pnlHomeHeader.Controls.Add(pnlHomeText);
         pnlHomeHeader.Controls.Add(pnlHomeLogo);
 

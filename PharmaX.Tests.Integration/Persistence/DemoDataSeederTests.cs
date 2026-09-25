@@ -368,6 +368,61 @@ public class DemoDataSeederTests : IClassFixture<DemoSeedFixture>
     }
 
     /// <remarks>
+    /// The shelf levels the demonstration sets are set once. They used to
+    /// be set again at every start whenever the shelf held more, so a
+    /// delivery received into a demonstration database was adjusted away
+    /// at the next launch.
+    /// </remarks>
+    [Fact]
+    public async Task Stock_received_after_seeding_survives_the_next_start()
+    {
+        async Task SetAsync(string code, decimal level)
+        {
+            using var scope = _fixture.NewScope();
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var product = await db.Products.SingleAsync(p => p.Code == code);
+
+            var delta = level - product.QuantityOnHand;
+            product.SetQuantityOnHand(level);
+            db.StockMovements.Add(StockMovement.Record(product.Id, null,
+                MovementType.Receipt, delta, level, DateTime.UtcNow,
+                reasonCode: "TEST"));
+
+            await db.SaveChangesAsync();
+        }
+
+        async Task<decimal> OnHandAsync(string code)
+        {
+            using var scope = _fixture.NewScope();
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            return (await db.Products.AsNoTracking()
+                .SingleAsync(p => p.Code == code)).QuantityOnHand;
+        }
+
+        var low = await OnHandAsync("DIS200");
+        var none = await OnHandAsync("SURGM1");
+
+        try
+        {
+            await SetAsync("DIS200", low + 113m);
+            await SetAsync("SURGM1", none + 30m);
+
+            using (var scope = _fixture.NewScope())
+                await PharmaXFixture.Resolve<DemoDataSeeder>(scope).SeedAsync();
+
+            (await OnHandAsync("DIS200")).Should().Be(low + 113m);
+            (await OnHandAsync("SURGM1")).Should().Be(none + 30m);
+        }
+        finally
+        {
+            // Back to the levels the other tests in this class look at.
+            await SetAsync("DIS200", low);
+            await SetAsync("SURGM1", none);
+        }
+    }
+
+    /// <remarks>
     /// The flag is the only thing standing between a pharmacy's live
     /// database and a day of invented takings.
     /// </remarks>

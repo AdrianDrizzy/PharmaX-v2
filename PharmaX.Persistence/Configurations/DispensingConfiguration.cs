@@ -132,8 +132,37 @@ public sealed class DispensingLineConfiguration
         });
 
         b.Ignore(x => x.CoPayment);
+        b.Ignore(x => x.BatchSummary);
+
+        // Every batch the line draws on. Owned by the line and saved with
+        // it: an allocation has no life of its own.
+        b.HasMany(x => x.Batches)
+         .WithOne()
+         .HasForeignKey(a => a.DispensingLineId)
+         .OnDelete(DeleteBehavior.Cascade);
+
+        b.Navigation(x => x.Batches).HasField("_batches")
+         .UsePropertyAccessMode(PropertyAccessMode.Field);
 
         b.HasIndex(x => new { x.DispensingId, x.LineNo }).IsUnique();
+    }
+}
+
+public sealed class DispensingLineBatchConfiguration
+    : IEntityTypeConfiguration<DispensingLineBatch>
+{
+    public void Configure(EntityTypeBuilder<DispensingLineBatch> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("DispensingLineBatch");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.BatchNumber).HasMaxLength(50).IsRequired();
+        b.Property(x => x.Quantity).HasPrecision(18, 3);
+
+        b.HasIndex(x => x.DispensingLineId);
+        b.HasIndex(x => x.BatchId);
     }
 }
 

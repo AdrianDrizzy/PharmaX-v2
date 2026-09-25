@@ -39,28 +39,51 @@ public sealed class SalesAnalysisReport : IReportDefinition
             .ToListAsync(ct)
             .ConfigureAwait(false);
 
+        // Cost comes from the product rather than the line, because a
+        // sale line records what was charged and not what it cost.
+        var products = await _db.Products
+            .AsNoTracking()
+            .Select(p => new
+            {
+                p.Id,
+                Cost = p.CostPrice.Amount,
+                p.DepartmentId,
+                p.CategoryId
+            })
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var costs = products.ToDictionary(p => p.Id, p => p.Cost);
+
+        // The presets have offered a department and a category since they
+        // were written, and this report never read either: a manager who
+        // asked for one department's daily takings was shown the whole
+        // shop's, labelled as filtered.
+        var department = r.Guid("department");
+        var category = r.Guid("category");
+
+        var filtered = department is not null || category is not null;
+
+        var inScope = products
+            .Where(p => (department is null || p.DepartmentId == department)
+                        && (category is null || p.CategoryId == category))
+            .Select(p => p.Id)
+            .ToHashSet();
+
         var lines = sales
             .SelectMany(s => s.Lines
                 .Where(l => !l.IsVoided)
+                .Where(l => !filtered || inScope.Contains(l.ProductId))
                 .Select(l => new
                 {
                     s.OperatorId,
+                    Day = DateOnly.FromDateTime(s.OccurredAtUtc.ToLocalTime()),
                     l.ProductId,
                     l.Description,
                     l.Quantity,
                     Gross = l.LineTotal.Amount
                 }))
             .ToList();
-
-        // Cost comes from the product rather than the line, because a
-        // sale line records what was charged and not what it cost.
-        var products = await _db.Products
-            .AsNoTracking()
-            .Select(p => new { p.Id, Cost = p.CostPrice.Amount })
-            .ToListAsync(ct)
-            .ConfigureAwait(false);
-
-        var costs = products.ToDictionary(p => p.Id, p => p.Cost);
 
         var groupBy = r.String("groupBy") ?? "operator";
 
@@ -72,6 +95,26 @@ public sealed class SalesAnalysisReport : IReportDefinition
                     g.Sum(x => x.Gross),
                     g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
                 .OrderBy(row => (string)row["Group"]!)
+                .ToList(),
+
+            // Turnover by trading day and by month, in the till's own
+            // time, which is the day the pharmacy thinks it traded on.
+            "day" => lines
+                .GroupBy(l => l.Day)
+                .OrderBy(g => g.Key)
+                .Select(g => Row(g.Key.ToString("yyyy-MM-dd",
+                        CultureInfo.InvariantCulture),
+                    g.Sum(x => x.Quantity), g.Sum(x => x.Gross),
+                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
+                .ToList(),
+
+            "month" => lines
+                .GroupBy(l => new DateOnly(l.Day.Year, l.Day.Month, 1))
+                .OrderBy(g => g.Key)
+                .Select(g => Row(g.Key.ToString("yyyy-MM",
+                        CultureInfo.InvariantCulture),
+                    g.Sum(x => x.Quantity), g.Sum(x => x.Gross),
+                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
                 .ToList(),
 
             "product" => lines
@@ -91,9 +134,13 @@ public sealed class SalesAnalysisReport : IReportDefinition
                 .ToList()
         };
 
-        var title = groupBy == "markupBand"
-            ? "Sales Summary (By Markup %)"
-            : "Sales Analysis";
+        var title = groupBy switch
+        {
+            "markupBand" => "Sales Summary (By Markup %)",
+            "day" => "Daily Sales",
+            "month" => "Monthly Sales",
+            _ => "Sales Analysis"
+        };
 
         return ReportBuilder
             .For(title)
@@ -157,6 +204,8 @@ public sealed class SalesAnalysisReport : IReportDefinition
     {
         "markupBand" => "Markup band",
         "product" => "Product",
+        "day" => "Day",
+        "month" => "Month",
         _ => "Operator"
     };
 }

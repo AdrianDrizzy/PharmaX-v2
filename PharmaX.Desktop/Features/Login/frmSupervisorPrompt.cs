@@ -1,3 +1,4 @@
+﻿using PharmaX.Desktop.Mvp;
 using PharmaX.Application.Security;
 
 namespace PharmaX.Desktop.Features.Login;
@@ -18,6 +19,9 @@ public partial class frmSupervisorPrompt : Form
                                string requiredRole = "Manager")
     {
         InitializeComponent();
+
+        // A plain Form rather than PhxFormBase, so branded here.
+        Text = WindowTitles.Brand(Text);
         _auth = auth;
         _requiredRole = requiredRole;
         lblReason.Text = reason;

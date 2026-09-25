@@ -44,6 +44,21 @@ public sealed class PresetCatalogue : IPresetCatalogue
             new[] { "department", "category", "mode" },
             PermissionCode.ReportOperational),
 
+        // Turnover by day and by month: management figures, and so held
+        // to the management permission - a cashier must not see the
+        // branch's takings (the role matrix, section 4).
+        new("pos.sales.daily", "Daily Sales",
+            "SalesAnalysis",
+            new Dictionary<string, string?> { ["groupBy"] = "day" },
+            new[] { "department", "category" },
+            PermissionCode.ReportManagement),
+
+        new("pos.sales.monthly", "Monthly Sales",
+            "SalesAnalysis",
+            new Dictionary<string, string?> { ["groupBy"] = "month" },
+            new[] { "department", "category" },
+            PermissionCode.ReportManagement),
+
         new("pos.sales.summary.by-markup", "Sales Summary (By Markup %)",
             "SalesAnalysis",
             new Dictionary<string, string?>
@@ -185,8 +200,15 @@ public sealed class PresetCatalogue : IPresetCatalogue
             ["reason"] = new("reason", "Reason", "text",
                 Array.Empty<SlicerOptionDto>()),
 
+            // Where the VAT came from: the till's sales, refunds given back,
+            // or the medical aid schemes' share of what was dispensed.
             ["transactionType"] = new("transactionType", "Transaction type",
-                "lookup", Array.Empty<SlicerOptionDto>()),
+                "lookup", new[]
+                {
+                    new SlicerOptionDto("Sale", "Sales"),
+                    new SlicerOptionDto("Refund", "Refunds"),
+                    new SlicerOptionDto("Scheme", "Medical aid share")
+                }),
 
             ["belowReorderOnly"] = new("belowReorderOnly",
                 "Below reorder level only", "flag",

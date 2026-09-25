@@ -24,6 +24,7 @@ partial class frmDispense
     private Button btnFindScript = null!;
     private Button btnIssue = null!;
     private Button btnReprint = null!;
+    private Button btnRemove = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -53,6 +54,8 @@ partial class frmDispense
         btnIssue.Name = "btnIssue";
         btnReprint = new Button();
         btnReprint.Name = "btnReprint";
+        btnRemove = new Button();
+        btnRemove.Name = "btnRemove";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
@@ -166,6 +169,14 @@ partial class frmDispense
         btnReprint.Text = "&Reprint labels";
         btnReprint.UseVisualStyleBackColor = true;
 
+        // Takes an item back off before the issue: a repeat where the
+        // patient wants only part of the script, or an item scanned by
+        // mistake.
+        btnRemove.Location = new Point(450, 8);
+        btnRemove.Size = new Size(140, 32);
+        btnRemove.Text = "Re&move item";
+        btnRemove.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(910, 8);
         btnClose.Size = new Size(100, 32);
@@ -173,7 +184,7 @@ partial class frmDispense
         btnClose.UseVisualStyleBackColor = true;
 
         pnlButtons.Controls.AddRange(new Control[]
-            { btnClose, btnReprint, btnIssue, btnFindScript });
+            { btnClose, btnRemove, btnReprint, btnIssue, btnFindScript });
         pnlButtons.Dock = DockStyle.Bottom;
         pnlButtons.Height = 50;
         pnlButtons.Name = "pnlButtons";

@@ -299,6 +299,39 @@ public static class PhxTheme
         // grid does not stack handlers.
         grid.CellFormatting -= ReadableCell;
         grid.CellFormatting += ReadableCell;
+
+        grid.DataError -= QuietDataError;
+        grid.DataError += QuietDataError;
+    }
+
+    /// <summary>
+    /// A value a cell cannot show or take is marked on the cell and
+    /// logged, rather than raised as the framework's own modal dialog.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in the application handled DataError, so any value a grid
+    /// could not format put up "DataGridView Default Error Dialog" - 47 of
+    /// them in one test run across Returns, Claims and Capture Script -
+    /// each one stopping the screen until it was dismissed (DEF-0017).
+    /// The cause of those was ReadableCell below, and is fixed there; this
+    /// is so that the next one is a red mark on a cell and a line in the
+    /// log, not a wall of dialogs.
+    /// </remarks>
+    private static void QuietDataError(object? sender,
+        DataGridViewDataErrorEventArgs e)
+    {
+        if (e is null) return;
+
+        e.ThrowException = false;
+        e.Cancel = e.Context.HasFlag(DataGridViewDataErrorContexts.Commit);
+
+        if (e.Exception is not null) ErrorHandler.Log(e.Exception);
+
+        if (sender is DataGridView grid && e.RowIndex >= 0
+            && e.RowIndex < grid.Rows.Count && e.ColumnIndex >= 0)
+            grid.Rows[e.RowIndex].Cells[e.ColumnIndex].ErrorText =
+                "This value could not be shown or saved: "
+                + (e.Exception?.Message ?? "unknown problem");
     }
 
     /// <summary>
@@ -328,10 +361,41 @@ public static class PhxTheme
     /// A column bound to a bool renders True and False by default,
     /// which is programmer output on a pharmacist's screen.
     /// </summary>
+    /// <remarks>
+    /// Only where the cell shows text. A tick box's formatted value has to
+    /// stay a bool, and turning it into "Yes" was what raised the
+    /// FormatException dialogs - and why Capture Script's "Generic ok" box
+    /// showed unticked while its value was yes (DEF-0017).
+    /// </remarks>
     private static void ReadableCell(object? sender,
         DataGridViewCellFormattingEventArgs e)
     {
-        if (e?.Value is not bool flag) return;
+        if (e is null) return;
+
+        // A time stored in UTC is shown in the till's own time. The
+        // stocktake list and the users list bound their UTC columns
+        // straight to the grid, so a count opened at 05:59 was listed at
+        // 03:59 (DEF-0028). Every stored time carries the suffix, so the
+        // rule follows the name rather than being repeated per screen.
+        if (e.Value is DateTime stamp && sender is DataGridView grid
+            && e.ColumnIndex >= 0
+            && grid.Columns[e.ColumnIndex].DataPropertyName
+                   .EndsWith("Utc", StringComparison.Ordinal))
+        {
+            var local = DateTime.SpecifyKind(stamp, DateTimeKind.Utc)
+                                .ToLocalTime();
+
+            e.Value = local.ToString(
+                string.IsNullOrEmpty(e.CellStyle?.Format)
+                    ? "dd/MM/yyyy HH:mm"
+                    : e.CellStyle.Format,
+                System.Globalization.CultureInfo.CurrentCulture);
+            e.FormattingApplied = true;
+            return;
+        }
+
+        if (e.Value is not bool flag) return;
+        if (e.DesiredType != typeof(string)) return;
 
         e.Value = flag ? "Yes" : "No";
         e.FormattingApplied = true;

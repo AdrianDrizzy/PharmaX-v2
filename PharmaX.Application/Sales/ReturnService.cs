@@ -86,7 +86,8 @@ public sealed class ReturnService : IReturnService
         // what is genuinely left rather than the original quantities.
         var returned = await _returns.ReturnedQuantitiesAsync(sale.Id, ct);
 
-        var lines = sale.Lines.Select(l =>
+        // In line order, as the receipt the customer is holding reads.
+        var lines = sale.Lines.OrderBy(l => l.LineNo).Select(l =>
         {
             var already = returned.GetValueOrDefault(l.LineNo, 0m);
 
@@ -151,8 +152,20 @@ public sealed class ReturnService : IReturnService
         ArgumentNullException.ThrowIfNull(edit);
 
         // A refund is money leaving the drawer, so it is its own
-        // permission and a supervisor-escalatable one.
-        _permissions.Demand(PermissionCode.ReturnAuthorise);
+        // permission and a supervisor-escalatable one. The authority is
+        // the operator's own, or that of the supervisor who authorised
+        // it - whose grant is what is checked. Demanding it of a cashier
+        // who had just had a manager authorise the refund refused every
+        // cashier refund there has ever been (DEF-0007).
+        var authoriser = edit.AuthorisedBy == Guid.Empty
+            ? (Guid?)null
+            : edit.AuthorisedBy;
+
+        _permissions.DemandOrAuthorised(PermissionCode.ReturnAuthorise,
+            authoriser == _user.Id ? null : authoriser);
+
+        // A supervisor authorising their own refund is recorded as such.
+        var authorisedBy = authoriser ?? _user.Id;
 
         if (_user.TillSessionId is null)
             return Result<ReturnDto>.Fail("POS-013",
@@ -176,7 +189,7 @@ public sealed class ReturnService : IReturnService
         var returned = await _returns.ReturnedQuantitiesAsync(sale.Id, ct);
 
         var saleReturn = SaleReturn.Against(sale, kind,
-            _user.TillSessionId.Value, _user.Id, edit.AuthorisedBy,
+            _user.TillSessionId.Value, _user.Id, authorisedBy,
             edit.Reason, _clock.UtcNow);
 
         foreach (var line in edit.Lines)
@@ -220,7 +233,7 @@ public sealed class ReturnService : IReturnService
         // manager needs to be able to see (SEC-035).
         _audit.Applied("pos.return.authorise", "SaleReturn", saleReturn.Id,
             $"{saleReturn.Total} against {sale.DocumentNumber}, "
-            + $"authorised by {edit.AuthorisedBy}. {edit.Reason}");
+            + $"authorised by {authorisedBy}. {edit.Reason}");
 
         await _uow.SaveChangesAsync(ct);
         await tx.DisposeAsync();

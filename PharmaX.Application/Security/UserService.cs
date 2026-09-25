@@ -93,6 +93,9 @@ public sealed class UserService : IUserService
         if (Validate(edit, initialPassword) is Error problem)
             return Result<Guid>.Fail(problem.Code, problem.Message);
 
+        if (BeyondOwnAuthority(edit.Roles) is Error wider)
+            return Result<Guid>.Fail(wider.Code, wider.Message);
+
         if (await _users.ByUsernameAsync(edit.Username, ct) is not null)
             return Result<Guid>.Fail("SEC-021",
                 $"Username {edit.Username} is already in use.");
@@ -132,6 +135,12 @@ public sealed class UserService : IUserService
 
         var user = await _users.GetAsync(id, ct);
         if (user is null) return Result.Fail("SEC-020", "User not found.");
+
+        // The roles the user has now count as well as the ones asked for:
+        // changing an administrator's record is as much an administrator's
+        // job as creating one.
+        if (BeyondOwnAuthority(edit.Roles.Concat(user.Roles)) is Error wider)
+            return Result.Fail(wider.Code, wider.Message);
 
         // Losing your own administrator role locks you out of the screen
         // you are standing on, and possibly out of the system.
@@ -221,6 +230,36 @@ public sealed class UserService : IUserService
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// A role the signed-in user could not have handed out, because it
+    /// carries a permission they do not hold themselves - or null.
+    /// </summary>
+    /// <remarks>
+    /// A branch manager maintains the staff list, and without this could
+    /// make themselves, or a friend, an administrator or a pharmacist.
+    /// Measured against permissions rather than role names, so it holds
+    /// for a site that has renamed or widened a role.
+    /// </remarks>
+    private Error? BeyondOwnAuthority(IEnumerable<string> roles)
+    {
+        foreach (var role in roles.Distinct(StringComparer.Ordinal))
+        {
+            var missing = StandardRoleGrants.For(role)
+                .FirstOrDefault(code => !_permissions.Has(code));
+
+            if (missing is null) continue;
+
+            _audit.Refused("adm.user.role.assign", "Role", _currentUser.Id,
+                $"{role} carries {missing}, which the assigner does not hold.");
+
+            return new Error("SEC-030",
+                $"Only someone who holds everything the {role} role can do "
+                + "may give or take away that role. Ask an administrator.");
+        }
+
+        return null;
     }
 
     /// <summary>

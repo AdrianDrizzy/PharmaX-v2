@@ -94,9 +94,32 @@ public sealed class Dispensing : AuditableEntity
         ArgumentNullException.ThrowIfNull(line);
 
         EnsureInProgress();
-        line.AssignTo(Id, _lines.Count + 1);
+
+        // After the highest number in use rather than the count, so an
+        // item removed from the middle does not hand its successor's
+        // number to the next one added.
+        line.AssignTo(Id, _lines.Count == 0 ? 1 : _lines.Max(l => l.LineNo) + 1);
         _lines.Add(line);
         return line;
+    }
+
+    /// <summary>
+    /// Takes an item back off before the issue, with whatever it raised.
+    /// </summary>
+    /// <remarks>
+    /// The others keep their numbers. Renumbering rows under a unique
+    /// index is a swap the database may refuse half-way through, and a
+    /// gap in the item numbers of an unissued dispensing harms nobody.
+    /// </remarks>
+    public void RemoveLine(int lineNo)
+    {
+        EnsureInProgress();
+
+        var line = _lines.SingleOrDefault(l => l.LineNo == lineNo)
+                   ?? throw new DomainException($"Item {lineNo} not found.");
+
+        _lines.Remove(line);
+        _warnings.RemoveAll(w => w.DispensingLineId == line.Id);
     }
 
     public ClinicalWarning RaiseWarning(ClinicalWarning warning)
@@ -109,12 +132,15 @@ public sealed class Dispensing : AuditableEntity
         return warning;
     }
 
-    public void AcknowledgeWarning(Guid warningId, Guid userId, string? reason)
+    public void AcknowledgeWarning(Guid warningId, Guid userId, string? reason,
+                                   Guid? authorisedBy = null)
     {
+        EnsureInProgress();
+
         var warning = _warnings.SingleOrDefault(w => w.Id == warningId)
                       ?? throw new DomainException("Warning not found.");
 
-        warning.Acknowledge(userId, reason);
+        warning.Acknowledge(userId, reason, authorisedBy);
     }
 
     /// <summary>
@@ -122,6 +148,10 @@ public sealed class Dispensing : AuditableEntity
     /// than in the presenter, so that a screen cannot issue by skipping a
     /// step it did not know about.
     /// </summary>
+    /// <param name="pharmacistId">
+    /// Who is responsible for the issue: the operator, where they may
+    /// issue on their own authority, or the pharmacist who authorised it.
+    /// </param>
     public void Issue(Guid pharmacistId, string documentNumber,
                       DateTime nowUtc)
     {
@@ -132,7 +162,7 @@ public sealed class Dispensing : AuditableEntity
 
         if (pharmacistId == Guid.Empty)
             throw new DomainException(
-                "A pharmacist must authorise the issue (DSP-006).");
+                "Somebody must be responsible for the issue (DSP-006).");
 
         var unacknowledged = _warnings.Where(w => !w.IsAcknowledged).ToList();
 

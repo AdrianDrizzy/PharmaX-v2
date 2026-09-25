@@ -15,6 +15,13 @@ public sealed record DispensedItemDto(Guid DispensingId, string ScriptNumber,
     string DocumentNumber, string PatientName, DateOnly DispensedOn,
     int Labels);
 
+/// <summary>
+/// How a run of labels went: how many printed, where, and any note about
+/// the printer used.
+/// </summary>
+public sealed record LabelRunDto(int Printed, string? PrinterName,
+                                 string? Note);
+
 public interface ILabelReprintService
 {
     /// <summary>
@@ -36,7 +43,7 @@ public interface ILabelReprintService
     /// Prints them, and says plainly when there is no label printer
     /// rather than reporting success to a machine that printed nothing.
     /// </summary>
-    Task<Result<int>> ReprintAsync(Guid dispensingId,
+    Task<Result<LabelRunDto>> ReprintAsync(Guid dispensingId,
         CancellationToken ct = default);
 }
 
@@ -69,7 +76,7 @@ public sealed class LabelReprintService : ILabelReprintService
     public async Task<Result<IReadOnlyList<DispensedItemDto>>>
         ForPatientAsync(Guid patientId, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.ScriptDispense);
 
         var patient = await _patients.GetAsync(patientId, ct);
         if (patient is null)
@@ -102,7 +109,7 @@ public sealed class LabelReprintService : ILabelReprintService
     public async Task<Result<IReadOnlyList<LabelDto>>> BuildAsync(
         Guid dispensingId, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.ScriptDispense);
 
         var dispensing = await _dispensings.GetAsync(dispensingId, ct);
         if (dispensing is null)
@@ -130,7 +137,7 @@ public sealed class LabelReprintService : ILabelReprintService
                 ProductDescription: l.Description,
                 Quantity: l.Quantity,
                 Directions: l.Directions,
-                BatchNumber: l.BatchNumber,
+                BatchNumber: l.BatchSummary,
                 Expiry: l.BatchExpiry,
                 PharmacistName: pharmacist?.DisplayName ?? "",
                 ScriptNumber: script?.ScriptNumber ?? "",
@@ -141,28 +148,39 @@ public sealed class LabelReprintService : ILabelReprintService
         return Result<IReadOnlyList<LabelDto>>.Ok(labels);
     }
 
-    public async Task<Result<int>> ReprintAsync(Guid dispensingId,
+    public async Task<Result<LabelRunDto>> ReprintAsync(Guid dispensingId,
         CancellationToken ct = default)
     {
         var built = await BuildAsync(dispensingId, ct);
-        if (built.IsFailure) return Result<int>.Fail(built.Error.Code,
-                                                     built.Error.Message);
+        if (built.IsFailure) return Result<LabelRunDto>.Fail(built.Error.Code,
+                                                             built.Error.Message);
 
-        if (!_printer.IsAvailable)
-            return Result<int>.Fail("DSP-007",
-                "No label printer is set for this workstation. Set one in "
-                + "Printer Setup.");
+        var printed = 0;
+        Sales.PrintResult? last = null;
 
         foreach (var label in built.Value)
-            await _printer.PrintAsync(label, ct).ConfigureAwait(false);
+        {
+            last = await _printer.PrintAsync(label, ct).ConfigureAwait(false);
+
+            // The first label that fails stops the run: the rest would go
+            // to the same dead printer, and the operator is told which
+            // printer and why rather than "reprinted".
+            if (!last.Printed)
+                return Result<LabelRunDto>.Fail("DSP-007",
+                    (printed == 0 ? "" : $"{printed} label(s) printed, then ")
+                    + last.Describe("The label"));
+
+            printed++;
+        }
 
         // A reprinted label is a second instruction to a patient with
         // the same script number on it, so the trail says it happened.
         _audit.Applied("dsp.label.reprint", "Dispensing", dispensingId,
-            $"{built.Value.Count} label(s) reprinted.");
+            $"{printed} label(s) reprinted on {last?.PrinterName}.");
 
         await _uow.SaveChangesAsync(ct);
 
-        return Result<int>.Ok(built.Value.Count);
+        return Result<LabelRunDto>.Ok(new LabelRunDto(printed,
+            last?.PrinterName, last?.Problem));
     }
 }

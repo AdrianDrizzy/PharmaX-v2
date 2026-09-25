@@ -1,3 +1,4 @@
+﻿using PharmaX.Application.Abstractions;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Admin;
@@ -12,7 +13,7 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
     private readonly SystemInfoPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.UserRoleAssign;
+        Domain.Security.PermissionCode.SettingsChange;
 
     /// Designer only. Never called at runtime.
     public frmSystemInfo()
@@ -22,6 +23,8 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        btnSavePharmacy.Click += (_, _) =>
+            SavePharmacyRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// Runtime. Resolved by the container.
@@ -45,6 +48,10 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
             ? "PharmaX - Control variables"
             : "PharmaX - System console";
 
+        // The pharmacy's particulars are changed here, on the console;
+        // Control Variables only lists them.
+        pnlPharmacy.Visible = Mode == SystemInfoMode.SystemConsole;
+
         if (_presenter is not null) await _presenter.InitialiseAsync();
     }
 
@@ -67,6 +74,25 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
         }
     }
 
+    public void ShowPharmacyDetails(PharmacyDetails details)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+
+        txtTradingName.Text = details.TradingName;
+        txtRegisteredName.Text = details.RegisteredName;
+        txtVatNumber.Text = details.VatNumber;
+
+        // Stored with Environment.NewLine; a multi-line box wants CRLF.
+        txtAddress.Text = details.Address.ReplaceLineEndings("\r\n");
+    }
+
+    public PharmacyDetails EnteredPharmacyDetails => new(
+        TradingName: txtTradingName.Text,
+        RegisteredName: txtRegisteredName.Text,
+        VatNumber: txtVatNumber.Text,
+        Address: txtAddress.Text);
+
     public event EventHandler? RefreshRequested;
     public event EventHandler? CloseRequested;
+    public event EventHandler? SavePharmacyRequested;
 }

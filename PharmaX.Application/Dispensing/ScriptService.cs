@@ -79,7 +79,9 @@ public sealed class ScriptService : IScriptService
     public async Task<Result<IReadOnlyList<ScriptDto>>> ForPatientAsync(
         Guid patientId, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        // Reading a patient's scripts is part of capturing one and of
+        // dispensing against one, so either grant will do.
+        DemandScriptAccess();
 
         var scripts = await _scripts.ForPatientAsync(patientId, ct);
 
@@ -92,7 +94,7 @@ public sealed class ScriptService : IScriptService
     public async Task<Result<ScriptDetailDto>> GetAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        DemandScriptAccess();
 
         var script = await _scripts.GetAsync(id, ct);
 
@@ -108,7 +110,11 @@ public sealed class ScriptService : IScriptService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        // Capture is its own permission. It demanded the pharmacist's
+        // clinical authority, so an assistant could not type in the
+        // script the patient had just handed over and every capture
+        // became a supervisor prompt.
+        _permissions.Demand(PermissionCode.ScriptCapture);
 
         if (await _patients.GetAsync(edit.PatientId, ct) is null)
             return Result<Guid>.Fail("DSP-020", "Patient not found.");
@@ -129,7 +135,8 @@ public sealed class ScriptService : IScriptService
         foreach (var item in edit.Items)
         {
             var product = await _products
-                .FindByCodeOrBarcodeAsync(item.ProductCode, ct);
+                .FindByCodeOrBarcodeAsync(item.ProductCode,
+                    _permissions.ProductScope(), ct);
 
             if (product is null)
                 return Result<Guid>.Fail("DSP-023",
@@ -166,6 +173,15 @@ public sealed class ScriptService : IScriptService
 
         await _uow.SaveChangesAsync(ct);
         return Result<Guid>.Ok(script.Id);
+    }
+
+    private void DemandScriptAccess()
+    {
+        if (_permissions.HasAny(PermissionCode.ScriptCapture,
+                                PermissionCode.ScriptDispense))
+            return;
+
+        _permissions.Demand(PermissionCode.ScriptCapture);
     }
 
     public async Task<Result> CancelAsync(Guid id, string reason,

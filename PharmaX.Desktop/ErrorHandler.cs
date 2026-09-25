@@ -25,19 +25,40 @@ public sealed class ErrorHandler
     {
         if (exception is null) return;
 
+        Log(exception);
+
+        MessageBox.Show(Describe(exception), Mvp.WindowTitles.Caption,
+            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    /// Writes the failure, stack and all, where support can read it.
+    public static void Log(Exception exception) =>
         _instance?._log.LogError(exception, "Unhandled exception.");
 
-        // A broken rule or a refusal that reached this far is still the
-        // user's business, and its own message is the useful one.
-        var message = exception switch
-        {
-            DomainException or PermissionDeniedException => exception.Message,
-            _ => "Something went wrong and PharmaX could not complete that "
-                 + "action.\n\nThe details have been written to the log. "
-                 + "If it keeps happening, quote the time to support."
-        };
+    /// <summary>
+    /// What the operator is told: the failure's own words where they are
+    /// meant for them, otherwise a plain sentence and where to look.
+    /// </summary>
+    public static string Describe(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
 
-        MessageBox.Show(message, "PharmaX", MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
+        return exception switch
+        {
+            // A broken rule or a refusal that reached this far is still
+            // the user's business, and its own message is the useful one.
+            DomainException or PermissionDeniedException => exception.Message,
+
+            // Saved by someone else at another till since this screen
+            // read it: saying so is more use than a generic failure.
+            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException =>
+                "Someone else changed this record while you had it open. "
+                + "Close the screen and open it again to see their change.",
+
+            _ => "Something went wrong and PharmaX could not complete that "
+                 + $"action ({exception.GetType().Name}: {exception.Message})."
+                 + "\n\nThe details have been written to the log. If it "
+                 + "keeps happening, quote the time to support."
+        };
     }
 }

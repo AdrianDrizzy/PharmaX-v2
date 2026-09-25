@@ -6,6 +6,7 @@ using PharmaX.Application.Patients.Dtos;
 using PharmaX.Application.Reference;
 using PharmaX.Application.Security;
 using PharmaX.Domain.Batches;
+using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Security;
 
@@ -164,9 +165,14 @@ public sealed class DemoDataSeeder
                     .ConfigureAwait(false)
                 + await Section("product filing", SeedFilingAsync, ct)
                     .ConfigureAwait(false)
-                + await Section("shelf state", SeedShelfStateAsync, ct)
-                    .ConfigureAwait(false)
                 + await Section("trading history", _trading.SeedAsync, ct)
+                    .ConfigureAwait(false)
+
+                // After the trading, whose delivery would otherwise put the
+                // low and the out-of-stock lines back on the shelf. They
+                // were only ever low at the second start, when this used to
+                // run again and adjust that delivery away.
+                + await Section("shelf state", SeedShelfStateAsync, ct)
                     .ConfigureAwait(false);
 
             if (added == 0) return;
@@ -502,22 +508,30 @@ public sealed class DemoDataSeeder
         var today = _clock.Today;
         var added = 0;
 
+        // Once per product, ever. Start-up runs this on every launch, and it
+        // used to set these levels whenever the shelf held more than them -
+        // so stock genuinely received was adjusted away again at the next
+        // start: a delivery of 113 Disprin read 8 on hand after a restart,
+        // and 30 masks read none.
+
         // Low, but still sellable: the reorder report has a line and the
         // till still serves the customer.
         if (products.TryGetValue("DIS200", out var low)
-            && low.QuantityOnHand > 10m)
+            && low.QuantityOnHand > 10m
+            && !await ShelvedBeforeAsync(low, ct).ConfigureAwait(false))
         {
             low.SetReorderLevel(60m);
-            low.SetQuantityOnHand(8m);
+            Adjust(low, 8m);
             added++;
         }
 
         // Out of stock, which is the alert a buyer actually acts on.
         if (products.TryGetValue("SURGM1", out var out_)
-            && out_.QuantityOnHand > 0m)
+            && out_.QuantityOnHand > 0m
+            && !await ShelvedBeforeAsync(out_, ct).ConfigureAwait(false))
         {
             out_.SetReorderLevel(25m);
-            out_.SetQuantityOnHand(0m);
+            Adjust(out_, 0m);
             added++;
         }
 
@@ -525,19 +539,19 @@ public sealed class DemoDataSeeder
         // product that is batch tracked so the batch grid has rows.
         if (products.TryGetValue("COUGH1", out var batched))
         {
-            added += await AddBatchAsync(batched.Id, "COUGH1-EXPIRED",
-                today.AddDays(-12), 6m, batched.CostPrice, ct)
+            added += await AddBatchAsync(batched, "COUGH1-EXPIRED",
+                today.AddDays(-12), 6m, ct)
                 .ConfigureAwait(false);
 
-            added += await AddBatchAsync(batched.Id, "COUGH1-CRITICAL",
-                today.AddDays(18), 10m, batched.CostPrice, ct)
+            added += await AddBatchAsync(batched, "COUGH1-CRITICAL",
+                today.AddDays(18), 10m, ct)
                 .ConfigureAwait(false);
         }
 
         if (products.TryGetValue("AMOX50", out var soon))
         {
-            added += await AddBatchAsync(soon.Id, "AMOX50-WARNING",
-                today.AddDays(62), 12m, soon.CostPrice, ct)
+            added += await AddBatchAsync(soon, "AMOX50-WARNING",
+                today.AddDays(62), 12m, ct)
                 .ConfigureAwait(false);
         }
 
@@ -547,20 +561,69 @@ public sealed class DemoDataSeeder
         return added;
     }
 
-    private async Task<int> AddBatchAsync(Guid productId, string number,
-        DateOnly expiry, decimal quantity, Money cost, CancellationToken ct)
+    /// <summary>
+    /// Puts a batch on the shelf the way a delivery would: the batch, the
+    /// product's own on-hand raised to match, and the receipt movement
+    /// that explains it.
+    /// </summary>
+    /// <remarks>
+    /// It used to add the batch alone. The product's quantity never moved,
+    /// so every demonstration database started with the product and its
+    /// batches disagreeing - Amoxicillin read 36 on hand against 48 in
+    /// batches - and no stocktake could say which was right.
+    /// </remarks>
+    private async Task<int> AddBatchAsync(Product product, string number,
+        DateOnly expiry, decimal quantity, CancellationToken ct)
     {
         var exists = await _db.Batches
-            .AnyAsync(b => b.ProductId == productId && b.BatchNumber == number,
-                ct)
+            .AnyAsync(b => b.ProductId == product.Id
+                           && b.BatchNumber == number, ct)
             .ConfigureAwait(false);
 
         if (exists) return 0;
 
-        _db.Batches.Add(Batch.Receive(productId, number, expiry, quantity,
-            cost, _clock.UtcNow));
+        var batch = Batch.Receive(product.Id, number, expiry, quantity,
+            product.CostPrice, _clock.UtcNow);
+
+        _db.Batches.Add(batch);
+
+        var balance = product.QuantityOnHand + quantity;
+        product.SetQuantityOnHand(balance);
+
+        _db.StockMovements.Add(StockMovement.Record(product.Id, batch.Id,
+            MovementType.Receipt, quantity, balance, _clock.UtcNow,
+            reasonCode: "DEMO", sourceDocumentType: "Demo"));
 
         return 1;
+    }
+
+    /// <summary>
+    /// Whether the product has already been set to its demonstration level:
+    /// the adjustment that did it is on its stock ledger.
+    /// </summary>
+    private Task<bool> ShelvedBeforeAsync(Product product,
+                                          CancellationToken ct) =>
+        _db.StockMovements.AnyAsync(m => m.ProductId == product.Id
+                                         && m.MovementType
+                                            == MovementType.Adjustment
+                                         && m.ReasonCode == DemoReason, ct);
+
+    private const string DemoReason = "DEMO";
+
+    /// <summary>
+    /// Sets a product that is not batch tracked to a demonstration level,
+    /// with an adjustment movement carrying the difference.
+    /// </summary>
+    private void Adjust(Product product, decimal level)
+    {
+        var delta = level - product.QuantityOnHand;
+        product.SetQuantityOnHand(level);
+
+        if (delta == 0m) return;
+
+        _db.StockMovements.Add(StockMovement.Record(product.Id, null,
+            MovementType.Adjustment, delta, level, _clock.UtcNow,
+            reasonCode: DemoReason, sourceDocumentType: "Demo"));
     }
 }
 

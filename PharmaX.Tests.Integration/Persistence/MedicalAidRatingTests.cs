@@ -255,6 +255,11 @@ public class MedicalAidRatingTests : IClassFixture<PharmaXFixture>
         var product = Product.Create(code, description, Money.Of(retail),
             schedule: 4, isBatchTracked: false);
 
+        // The priced pack is the 20 units each of these tests dispenses,
+        // so the line is exactly one pack at the tariff or shelf price.
+        // Said explicitly since dispensing is priced by quantity (DEF-0021):
+        // without a pack size each unit dispensed is a pack of its own.
+        product.SetUnitsPerPack(20m);
         product.SetQuantityOnHand(200m);
 
         db.Products.Add(product);

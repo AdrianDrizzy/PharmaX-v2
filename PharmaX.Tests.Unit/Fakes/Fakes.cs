@@ -209,6 +209,22 @@ public sealed class InMemorySaleRepository : ISaleRepository
         Task.FromResult(_sales.Values.FirstOrDefault(s =>
             string.Equals(s.DocumentNumber, documentNumber,
                           StringComparison.Ordinal)));
+
+    public Task<IReadOnlyList<Sale>> HeldAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<Sale> held = _sales.Values
+            .Where(s => s.Status == SaleStatus.Held)
+            .OrderBy(s => s.OccurredAtUtc)
+            .ToList();
+
+        return Task.FromResult(held);
+    }
+
+    public Task<Sale?> OpenForQuotationAsync(Guid quotationId,
+        CancellationToken ct = default) =>
+        Task.FromResult(_sales.Values.FirstOrDefault(s =>
+            s.QuotationId == quotationId
+            && s.Status is SaleStatus.Open or SaleStatus.Held));
 }
 
 public sealed class InMemoryProductRepository : IProductRepository
@@ -242,14 +258,23 @@ public sealed class InMemoryProductRepository : IProductRepository
         return Task.FromResult(low);
     }
 
+    /// The same scope rule as the real repository: over the counter is
+    /// Schedule 0 to 2.
+    private static bool InScope(Product p, ProductScope scope) =>
+        scope == ProductScope.All || p.Schedule < 3;
+
     public Task<Product?> FindByCodeOrBarcodeAsync(string code,
+        ProductScope scope = ProductScope.All,
         CancellationToken ct = default) =>
-        Task.FromResult(_products.Find(p => p.MatchesCode(code)));
+        Task.FromResult(_products.Find(p => p.MatchesCode(code)
+                                            && InScope(p, scope)));
 
     public Task<IReadOnlyList<Product>> SearchAsync(string term,
-        int take = 200, CancellationToken ct = default)
+        int take = 200, ProductScope scope = ProductScope.All,
+        CancellationToken ct = default)
     {
         IReadOnlyList<Product> found = _products
+            .Where(p => InScope(p, scope))
             .Where(p => string.IsNullOrWhiteSpace(term)
                 || p.Description.Contains(term,
                     StringComparison.OrdinalIgnoreCase)
@@ -260,8 +285,10 @@ public sealed class InMemoryProductRepository : IProductRepository
         return Task.FromResult(found);
     }
 
-    public Task<int> CountAsync(string term, CancellationToken ct = default) =>
-        Task.FromResult(_products.Count);
+    public Task<int> CountAsync(string term,
+        ProductScope scope = ProductScope.All,
+        CancellationToken ct = default) =>
+        Task.FromResult(_products.Count(p => InScope(p, scope)));
 
     public Task AddAsync(Product product, CancellationToken ct = default)
     {
@@ -348,6 +375,16 @@ public sealed class RecordingStockService : IStockService
     public Task ApplyIssueAsync(Sale sale, CancellationToken ct = default)
     {
         Issues.Add((sale.Id, sale.Lines.Count(l => !l.IsVoided)));
+        return Task.CompletedTask;
+    }
+
+    public List<Guid> Dispensings { get; } = new();
+
+    public Task ApplyDispensingAsync(
+        PharmaX.Domain.Dispensing.Dispensing dispensing,
+        CancellationToken ct = default)
+    {
+        Dispensings.Add(dispensing.Id);
         return Task.CompletedTask;
     }
 
@@ -758,4 +795,34 @@ public sealed class InMemoryAccountRepository : IAccountRepository
         Task.FromResult(_movements
             .Where(t => t.AccountId == accountId)
             .Sum(t => t.Effect.Amount));
+}
+
+public sealed class InMemoryQuotationRepository
+    : PharmaX.Application.Sales.IQuotationRepository
+{
+    private readonly List<Quotation> _quotations = new();
+
+    public Quotation Add(Quotation quotation)
+    {
+        _quotations.Add(quotation);
+        return quotation;
+    }
+
+    public Task<Quotation?> GetAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_quotations.Find(q => q.Id == id));
+
+    public Task<IReadOnlyList<Quotation>> RecentAsync(int take = 100,
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Quotation>>(_quotations.Take(take).ToList());
+
+    public Task<Quotation?> ByNumberAsync(string quotationNumber,
+        CancellationToken ct = default) =>
+        Task.FromResult(_quotations.Find(q => string.Equals(q.QuotationNumber,
+            quotationNumber?.Trim(), StringComparison.OrdinalIgnoreCase)));
+
+    public Task AddAsync(Quotation quotation, CancellationToken ct = default)
+    {
+        _quotations.Add(quotation);
+        return Task.CompletedTask;
+    }
 }

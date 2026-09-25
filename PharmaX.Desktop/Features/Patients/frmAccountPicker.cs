@@ -44,7 +44,7 @@ public sealed class frmAccountPicker : PhxFormBase
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
-            _ = LoadAsync();
+            Operations.Enqueue(LoadAsync);
         };
 
         _choose.Click += (_, _) => Accept();

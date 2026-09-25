@@ -106,6 +106,21 @@ public sealed class SaleLine : Entity
         Quantity = quantity;
     }
 
+    /// <summary>
+    /// Moves the line onto another batch, when a change of quantity means
+    /// FEFO now starts it from a different one.
+    /// </summary>
+    public void ChangeBatch(Guid batchId, string batchNumber,
+                            DateOnly batchExpiry)
+    {
+        if (IsVoided)
+            throw new DomainException("A voided line cannot be changed.");
+
+        BatchId = batchId;
+        BatchNumber = batchNumber;
+        BatchExpiry = batchExpiry;
+    }
+
     public void Void(string reason, Guid operatorId)
     {
         IsVoided = true;

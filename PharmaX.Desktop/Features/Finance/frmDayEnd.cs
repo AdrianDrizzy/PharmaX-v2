@@ -27,7 +27,7 @@ public partial class frmDayEnd : PhxFormBase
     private IReadOnlyList<DayEndJournalBatchDto> _batches = Array.Empty<DayEndJournalBatchDto>();
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ReportFinancial;
+        Domain.Security.PermissionCode.LedgerPost;
 
     /// Designer only. Never called at runtime.
     public frmDayEnd()
@@ -36,9 +36,9 @@ public partial class frmDayEnd : PhxFormBase
 
         dtpDay.Value = DateTime.Today.AddDays(-1);   // yesterday: the usual day to post
 
-        btnSummarise.Click += (_, _) => _ = SummariseAsync();
-        btnPrepare.Click += (_, _) => _ = PrepareAsync();
-        btnPost.Click += (_, _) => _ = PostAsync();
+        btnSummarise.Click += (_, _) => Operations.Enqueue(SummariseAsync);
+        btnPrepare.Click += (_, _) => Operations.Enqueue(PrepareAsync);
+        btnPost.Click += (_, _) => Operations.Enqueue(PostAsync);
         btnExport.Click += (_, _) => Export();
         btnExportExcel.Click += (_, _) => ExportToExcel();
         btnClose.Click += (_, _) => CloseView(true);

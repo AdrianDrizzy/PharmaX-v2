@@ -19,6 +19,7 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(x => x.GenericName).HasMaxLength(200);
         b.Property(x => x.TaxCode).HasMaxLength(5).IsRequired();
         b.Property(x => x.PackSize).HasMaxLength(50);
+        b.Property(x => x.UnitsPerPack).HasPrecision(18, 3);
         b.Property(x => x.VatRatePercent).HasPrecision(9, 4);
         b.Property(x => x.ReorderLevel).HasPrecision(18, 3);
         b.Property(x => x.QuantityOnHand).HasPrecision(18, 3);

@@ -26,7 +26,17 @@ public sealed class VatReport : IReportDefinition
     {
         ArgumentNullException.ThrowIfNull(r);
 
-        var lines = await _db.Sales
+        // Output VAT from everywhere the ledger takes it: the till's
+        // sales, less what refunds gave back, plus the medical aid
+        // schemes' share of what was dispensed. The report used to read
+        // sales alone, so it never agreed with the VAT Control account on
+        // any day with a refund or a medical aid script (DEF-0025). Each
+        // line's VAT is extracted exactly as the journal extracts it - per
+        // line, through the same calculator - so the two agree to the cent.
+        var items = new List<(string Source, string TaxCode, decimal Rate,
+                              Money Gross)>();
+
+        var sales = await _db.Sales
             .AsNoTracking()
             .Where(s => s.OccurredAtUtc >= r.FromUtc
                         && s.OccurredAtUtc < r.ToExclusiveUtc)
@@ -43,24 +53,88 @@ public sealed class VatReport : IReportDefinition
             .ToListAsync(ct)
             .ConfigureAwait(false);
 
-        // The extraction runs through the same VatCalculator the till
-        // used, so the report and the receipt cannot disagree.
-        var byCode = lines
-            .GroupBy(l => new { l.TaxCode, l.VatRatePercent })
-            .Select(g =>
-            {
-                var gross = Money.Of(g.Sum(x => x.Gross));
-                var split = VatCalculator.FromInclusive(gross, g.Key.VatRatePercent);
+        items.AddRange(sales.Select(l =>
+            ("Sale", l.TaxCode, l.VatRatePercent, Money.Of(l.Gross))));
 
-                return new
+        var refunds = await _db.SaleReturns
+            .AsNoTracking()
+            .Where(x => x.OccurredAtUtc >= r.FromUtc
+                        && x.OccurredAtUtc < r.ToExclusiveUtc)
+            .Where(x => x.Status == ReturnStatus.Finalised)
+            .SelectMany(x => x.Lines)
+            .Select(l => new
+            {
+                l.TaxCode,
+                l.VatRatePercent,
+                Gross = l.UnitPrice.Amount * l.Quantity
+            })
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        items.AddRange(refunds.Select(l =>
+            ("Refund", l.TaxCode, l.VatRatePercent, Money.Of(-l.Gross))));
+
+        var from = DateOnly.FromDateTime(r.FromUtc.ToLocalTime());
+        var to = DateOnly.FromDateTime(r.ToExclusiveUtc.ToLocalTime());
+
+        var claimed = await _db.MedicalAidClaims
+            .AsNoTracking()
+            .Where(c => c.ClaimedOn >= from && c.ClaimedOn < to)
+            .Select(c => c.DispensingId)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        if (claimed.Count > 0)
+        {
+            var schemeLines = await _db.Dispensings
+                .AsNoTracking()
+                .Where(d => claimed.Contains(d.Id))
+                .SelectMany(d => d.Lines)
+                .Select(l => new
                 {
-                    g.Key.TaxCode,
-                    g.Key.VatRatePercent,
-                    Net = split.NetAmount.Amount,
-                    Vat = split.VatAmount.Amount,
-                    Gross = split.GrossAmount.Amount,
-                    Count = g.Count()
-                };
+                    l.ProductId,
+                    Share = l.SchemeContribution.Amount
+                })
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
+
+            var productIds = schemeLines.Select(l => l.ProductId).Distinct()
+                                        .ToList();
+
+            var products = await _db.Products
+                .AsNoTracking()
+                .Where(p => productIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.TaxCode, p.VatRatePercent })
+                .ToDictionaryAsync(p => p.Id, ct)
+                .ConfigureAwait(false);
+
+            items.AddRange(schemeLines
+                .Where(l => l.Share != 0m)
+                .Select(l =>
+                {
+                    var product = products.GetValueOrDefault(l.ProductId);
+                    return ("Scheme", product?.TaxCode ?? "A",
+                            product?.VatRatePercent ?? 0m, Money.Of(l.Share));
+                }));
+        }
+
+        var only = r.String("transactionType");
+
+        var byCode = items
+            .Where(i => string.IsNullOrWhiteSpace(only)
+                        || string.Equals(i.Source, only,
+                                         StringComparison.Ordinal))
+            .Select(i => (i.TaxCode, i.Rate,
+                          Split: VatCalculator.FromInclusive(i.Gross, i.Rate)))
+            .GroupBy(i => new { i.TaxCode, i.Rate })
+            .Select(g => new
+            {
+                g.Key.TaxCode,
+                VatRatePercent = g.Key.Rate,
+                Net = g.Sum(x => x.Split.NetAmount.Amount),
+                Vat = g.Sum(x => x.Split.VatAmount.Amount),
+                Gross = g.Sum(x => x.Split.GrossAmount.Amount),
+                Count = g.Count()
             })
             .Where(x => !r.Bool("aboveZeroOnly") || x.Vat > 0m)
             .OrderBy(x => x.TaxCode)

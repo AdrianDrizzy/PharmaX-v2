@@ -219,6 +219,9 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<Guid?>("AcknowledgedBy")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("AuthorisedBy")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("DispensingId")
                         .HasColumnType("TEXT");
 
@@ -402,6 +405,38 @@ namespace PharmaX.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("DispensingLine", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Dispensing.DispensingLineBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BatchNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DispensingLineId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("ExpiryDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("DispensingLineId");
+
+                    b.ToTable("DispensingLineBatch", (string)null);
                 });
 
             modelBuilder.Entity("PharmaX.Domain.Dispensing.Repeat", b =>
@@ -753,6 +788,10 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<string>("TaxCode")
                         .IsRequired()
                         .HasMaxLength(5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("UnitsPerPack")
+                        .HasPrecision(18, 3)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -1766,6 +1805,9 @@ namespace PharmaX.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("BLOB");
 
+                    b.Property<Guid?>("SaleId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1872,6 +1914,9 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<Guid?>("PatientId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("QuotationId")
+                        .HasColumnType("TEXT");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1894,12 +1939,30 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<Guid>("WorkstationId")
                         .HasColumnType("TEXT");
 
+                    b.ComplexProperty<Dictionary<string, object>>("ChangeGiven", "PharmaX.Domain.Sales.Sale.ChangeGiven#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("ChangeGiven");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("ChangeCurrency");
+                        });
+
                     b.HasKey("Id");
 
                     b.HasIndex("DispensingId")
                         .IsUnique();
 
+                    b.HasIndex("QuotationId");
+
                     b.HasIndex("BranchId", "OccurredAtUtc");
+
+                    b.HasIndex("Status", "OccurredAtUtc");
 
                     b.HasIndex("WorkstationId", "DocumentNumber")
                         .IsUnique();
@@ -2952,6 +3015,15 @@ namespace PharmaX.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Dispensing.DispensingLineBatch", b =>
+                {
+                    b.HasOne("PharmaX.Domain.Dispensing.DispensingLine", null)
+                        .WithMany("Batches")
+                        .HasForeignKey("DispensingLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Dispensing.ScriptItem", b =>
                 {
                     b.HasOne("PharmaX.Domain.Dispensing.Script", null)
@@ -3132,6 +3204,11 @@ namespace PharmaX.Persistence.Migrations
                     b.Navigation("Lines");
 
                     b.Navigation("Warnings");
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Dispensing.DispensingLine", b =>
+                {
+                    b.Navigation("Batches");
                 });
 
             modelBuilder.Entity("PharmaX.Domain.Dispensing.Script", b =>

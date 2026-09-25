@@ -1,4 +1,4 @@
-using PharmaX.Application.Inventory.Dtos;
+﻿using PharmaX.Application.Inventory.Dtos;
 using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
@@ -9,7 +9,7 @@ public partial class frmStocktakeList : PhxFormBase, IStocktakeListView
     private readonly StocktakeListPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ProductRead;
+        Domain.Security.PermissionCode.StockTakeCapture;
 
     /// Designer only. Never called at runtime.
     public frmStocktakeList()
@@ -168,7 +168,7 @@ public sealed class frmStocktakeScope : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = "PharmaX - Open stocktake";
+        Text = WindowTitles.Brand("PharmaX - Open stocktake");
 
         // A blank description would put an unlabelled variance in front
         // of whoever reads the report.

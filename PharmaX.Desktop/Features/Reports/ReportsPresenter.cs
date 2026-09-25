@@ -8,20 +8,23 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
     private readonly IReportRunner _runner;
     private readonly IPresetCatalogue _presets;
     private readonly IReportLookups _lookups;
+    private readonly Application.Security.IPermissionService _permissions;
 
     public ReportsPresenter(IReportRunner runner, IPresetCatalogue presets,
-                            IReportLookups lookups)
+                            IReportLookups lookups,
+                            Application.Security.IPermissionService permissions)
     {
         _runner = runner;
         _presets = presets;
         _lookups = lookups;
+        _permissions = permissions;
     }
 
     protected override void Subscribe()
     {
-        View.PresetChanged += (_, _) => _ = ShowSlicersForPresetAsync();
-        View.PreviewRequested += (_, _) => _ = PreviewAsync();
-        View.ExportRequested += (_, _) => _ = ExportAsync();
+        View.PresetChanged += (_, _) => Enqueue(ShowSlicersForPresetAsync);
+        View.PreviewRequested += (_, _) => Enqueue(PreviewAsync);
+        View.ExportRequested += (_, _) => Enqueue(ExportAsync);
         View.CloseRequested += (_, _) => View.CloseView(true);
     }
 
@@ -29,7 +32,14 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
     {
         // Every incumbent report name appears here as a preset, which is
         // how parity is delivered without 47 report classes (RPT-003).
-        View.ShowPresets(_presets.All());
+        // Only the reports this user may run: a report listed and then
+        // refused is a dead end, and a cashier must not even see that
+        // the branch has daily and monthly takings to look at. The runner
+        // demands the permission again whatever the screen shows.
+        View.ShowPresets(_presets.All()
+            .Where(p => Application.Security.PermissionServiceExtensions
+                .Has(_permissions, p.PermissionCode))
+            .ToList());
 
         // Nothing is chosen yet, so there are no slicers to show. Said
         // explicitly because the panel would otherwise open at the

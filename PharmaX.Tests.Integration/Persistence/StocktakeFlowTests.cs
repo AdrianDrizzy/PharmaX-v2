@@ -430,7 +430,7 @@ public class StocktakeFlowTests : IClassFixture<PharmaXFixture>
             new StocktakeScopeDto(description, code));
 
         result.IsSuccess.Should().BeTrue(result.Error.Message);
-        result.Value.StocktakeNumber.Should().MatchRegex(@"^S-001-\d{6}$");
+        result.Value.StocktakeNumber.Should().MatchRegex(@"^ST-001-\d{6}$");
 
         return result.Value.Id;
     }
