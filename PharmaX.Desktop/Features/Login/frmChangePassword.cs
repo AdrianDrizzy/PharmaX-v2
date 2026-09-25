@@ -1,3 +1,4 @@
+﻿using PharmaX.Desktop.Mvp;
 using PharmaX.Application.Security;
 
 namespace PharmaX.Desktop.Features.Login;
@@ -17,6 +18,9 @@ public partial class frmChangePassword : Form
                              string currentPassword)
     {
         InitializeComponent();
+
+        // A plain Form rather than PhxFormBase, so branded here.
+        Text = WindowTitles.Brand(Text);
 
         _auth = auth;
         _username = username;

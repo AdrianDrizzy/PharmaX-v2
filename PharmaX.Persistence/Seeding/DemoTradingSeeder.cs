@@ -340,11 +340,9 @@ public sealed class DemoTradingSeeder
             // Repeats left, so the script list has something to dispense
             // against tomorrow as well as today.
             RepeatsAuthorised: 5,
-            // Small quantities on purpose. Two scripts come off one
-            // seeded shelf, and an issue is taken out of a single batch
-            // rather than split across two, so the near batch has to
-            // cover both on its own. A pack size that reads
-            // realistically is worth less than a script that issues.
+            // Small quantities on purpose: two scripts come off one seeded
+            // shelf, and the demonstration trading should leave stock for
+            // the walkthrough to dispense and sell afterwards.
             Items: new[]
             {
                 new ScriptItemEditDto(DemoCatalogue.Prescription, 4m,
@@ -390,7 +388,7 @@ public sealed class DemoTradingSeeder
         {
             await _dispensing.AcknowledgeWarningAsync(warning.Id,
                 "Prescriber consulted; patient has tolerated this before.",
-                ct).ConfigureAwait(false);
+                ct: ct).ConfigureAwait(false);
         }
 
         var issued = await _dispensing.IssueAsync(dispensingId, pharmacistId,
@@ -490,9 +488,9 @@ public sealed class DemoTradingSeeder
 
         added++;
 
-        // Received against the order, which is what puts the two products
-        // the alert centre is complaining about back on the shelf and
-        // gives the batch grid a fresh batch to show.
+        // Received against the order, so the order list has one that is
+        // closed and the stock ledger has a delivery on it. The shelf is
+        // set to its demonstration levels after this, by the caller.
         var receipt = await _receiving.ReceiveAsync(new GoodsReceiptEditDto(
             SupplierId: first.Id,
             PurchaseOrderId: order.Value.Id,

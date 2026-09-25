@@ -18,6 +18,15 @@ public partial class frmReports : PhxFormBase, IReportsView
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ReportOperational;
 
+    /// Any report permission opens the screen; it lists only those.
+    protected override bool MayOpen(
+        Application.Security.IPermissionService permissions) =>
+        Application.Security.PermissionServiceExtensions.HasAny(permissions,
+            Domain.Security.PermissionCode.ReportOperational,
+            Domain.Security.PermissionCode.ReportManagement,
+            Domain.Security.PermissionCode.ReportFinancial,
+            Domain.Security.PermissionCode.ReportClinical);
+
     /// Designer only. Never called at runtime.
     public frmReports()
     {

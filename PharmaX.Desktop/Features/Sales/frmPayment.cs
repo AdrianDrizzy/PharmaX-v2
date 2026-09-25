@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using PharmaX.Application.Sales.Dtos;
 using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
@@ -69,6 +69,9 @@ public partial class frmPayment : Form
     {
         InitializeComponent();
 
+        // A plain Form rather than PhxFormBase, so branded here.
+        Text = WindowTitles.Brand(Text);
+
         _amountDue = amountDue;
 
         cboTender.Items.AddRange(Tenders);
@@ -111,6 +114,43 @@ public partial class frmPayment : Form
 
     private decimal Outstanding =>
         _amountDue - _payments.Sum(p => p.Amount);
+
+    private decimal CashTendered => _payments
+        .Where(p => string.Equals(p.TenderType, nameof(TenderType.Cash),
+                                  StringComparison.Ordinal))
+        .Sum(p => p.Amount);
+
+    /// Turned round for a refund, where there is no change to give.
+    private bool _isRefund;
+
+    /// <summary>
+    /// Why the tenders as they stand cannot finish the sale, or null if
+    /// they can.
+    /// </summary>
+    /// <remarks>
+    /// More than the amount due is fine when the excess can come back as
+    /// change - which only cash can give. The dialog used to refuse any
+    /// excess at all, so a 60.00 note for a 53.00 sale could not be
+    /// entered and the till never worked out the change (DEF-0019).
+    /// A static rule, so it can be tested without a window.
+    /// </remarks>
+    internal static string? RefuseToFinish(decimal outstanding,
+                                           decimal cashTendered, bool refund)
+    {
+        if (outstanding > 0m)
+            return $"Still {Format.Money(outstanding)} outstanding.";
+
+        if (outstanding == 0m) return null;
+
+        if (refund)
+            return $"That refunds {Format.Money(-outstanding)} more than is "
+                   + "owed. Reduce a line.";
+
+        return -outstanding > cashTendered
+            ? $"Over-tendered by {Format.Money(-outstanding)}, and only cash "
+              + "can give change. Reduce the card, EFT or account amount."
+            : null;
+    }
 
     /// <summary>
     /// Why this tender cannot be added, or null if it can.
@@ -176,12 +216,10 @@ public partial class frmPayment : Form
     {
         // BR-POS-01, checked here so the operator sees it before the
         // service refuses. The service checks it again regardless.
-        if (Outstanding != 0m)
+        if (RefuseToFinish(Outstanding, CashTendered, _isRefund)
+            is string problem)
         {
-            lblError.Text = Outstanding > 0m
-                ? $"Still {Format.Money(Outstanding)} outstanding."
-                : $"Over-tendered by {Format.Money(-Outstanding)}. Reduce "
-                  + "a line, or give change from the cash tender.";
+            lblError.Text = problem;
             return;
         }
 
@@ -199,7 +237,8 @@ public partial class frmPayment : Form
     {
         ArgumentNullException.ThrowIfNull(tendersUsed);
 
-        Text = "PharmaX - Refund";
+        Text = WindowTitles.Brand("PharmaX - Refund");
+        _isRefund = true;
         lblDue.Text = "Amount to refund";
         btnOk.Text = "&Refund";
 
@@ -242,9 +281,19 @@ public partial class frmPayment : Form
         }
 
         lblDueValue.Text = Format.Money(_amountDue);
-        lblOutstandingValue.Text = Format.Money(Outstanding);
 
-        btnOk.Enabled = Outstanding == 0m;
+        // Over the amount due in cash is change to hand back, and the
+        // dialog says so in those words rather than as a negative balance.
+        var change = Outstanding < 0m && !_isRefund;
+        lblOutstanding.Text = change ? "Change" : "Outstanding";
+        lblOutstandingValue.Text = Format.Money(change ? -Outstanding
+                                                       : Outstanding);
+
+        btnOk.Enabled =
+            RefuseToFinish(Outstanding, CashTendered, _isRefund) is null;
+
+        // Once the tenders cover the sale, Enter pays.
+        AcceptButton = btnOk.Enabled ? btnOk : btnAdd;
         txtAmount.Amount = Outstanding > 0m ? Outstanding : null;
     }
 }

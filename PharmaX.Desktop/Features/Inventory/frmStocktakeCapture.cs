@@ -20,7 +20,7 @@ public partial class frmStocktakeCapture : PhxFormBase,
         Array.Empty<StocktakeLineDto>();
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ProductRead;
+        Domain.Security.PermissionCode.StockTakeCapture;
 
     /// Designer only. Never called at runtime.
     public frmStocktakeCapture()

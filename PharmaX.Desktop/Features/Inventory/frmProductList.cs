@@ -68,10 +68,31 @@ public partial class frmProductList : PhxFormBase, IProductListView
     }
 
     /// Runtime. Resolved by the container.
-    public frmProductList(ProductListPresenter presenter) : this()
+    public frmProductList(ProductListPresenter presenter,
+        Application.Security.IPermissionService permissions) : this()
     {
         _presenter = presenter;
+        _permissions = permissions;
         _presenter.Attach(this);
+    }
+
+    private readonly Application.Security.IPermissionService? _permissions;
+
+    /// <summary>
+    /// Offered to the people whose save will be accepted. The Add button
+    /// used to be there for everyone, and a stock controller filled the
+    /// whole form in before Save was refused (DEF-0027).
+    /// </summary>
+    private void ApplyPermissions()
+    {
+        if (_permissions is null || IsPickerMode) return;
+
+        if (Application.Security.PermissionServiceExtensions.Has(
+                _permissions, Domain.Security.PermissionCode.ProductMaintain))
+            return;
+
+        btnAdd.Visible = false;
+        btnEdit.Text = "&View";
     }
 
     public bool IsPickerMode { get; private set; }
@@ -97,12 +118,14 @@ public partial class frmProductList : PhxFormBase, IProductListView
         btnAdd.Visible = false;
         btnEdit.Visible = false;
 
+
         if (!string.IsNullOrWhiteSpace(term)) txtSearch.Text = term.Trim();
     }
 
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        ApplyPermissions();
         if (_presenter is not null) await _presenter.InitialiseAsync();
 
         // Typing continues where the operator left off, and the first

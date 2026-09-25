@@ -29,8 +29,19 @@ public interface ISystemInfoView : IView
     void ShowCaption(string caption);
     void ShowRows(IReadOnlyList<SystemInfoRow> rows);
 
+    /// <summary>
+    /// The pharmacy's trading name, VAT number and address, editable on
+    /// the System Console. The Control Variables list never shows them
+    /// as fields, only as rows.
+    /// </summary>
+    void ShowPharmacyDetails(Application.Abstractions.PharmacyDetails details);
+
+    /// What the operator has typed into the pharmacy details.
+    Application.Abstractions.PharmacyDetails EnteredPharmacyDetails { get; }
+
     event EventHandler? RefreshRequested;
     event EventHandler? CloseRequested;
+    event EventHandler? SavePharmacyRequested;
 }
 
 public enum SystemInfoMode

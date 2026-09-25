@@ -55,10 +55,10 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     protected override void Subscribe()
     {
-        View.SearchChanged += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
-        View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
-        View.DeactivateRequested += (_, _) => _ = DeactivateAsync();
+        View.SearchChanged += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
+        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
+        View.DeactivateRequested += (_, _) => Enqueue(DeactivateAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -129,7 +129,7 @@ public sealed class PatientEditPresenter : PresenterBase<IPatientEditView>
 
     protected override void Subscribe()
     {
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 
@@ -221,12 +221,12 @@ public sealed class AccountsPresenter : PresenterBase<IAccountsView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.OpenRequested += (_, _) => _ = OnOpenAsync();
-        View.PaymentRequested += (_, _) => _ = OnPaymentAsync();
-        View.StatementRequested += (_, _) => _ = OnStatementAsync();
-        View.CreditLimitRequested += (_, _) => _ = OnCreditLimitAsync();
-        View.HoldRequested += (_, _) => _ = OnHoldAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.OpenRequested += (_, _) => Enqueue(OnOpenAsync);
+        View.PaymentRequested += (_, _) => Enqueue(OnPaymentAsync);
+        View.StatementRequested += (_, _) => Enqueue(OnStatementAsync);
+        View.CreditLimitRequested += (_, _) => Enqueue(OnCreditLimitAsync);
+        View.HoldRequested += (_, _) => Enqueue(OnHoldAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();

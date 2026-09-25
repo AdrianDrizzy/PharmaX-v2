@@ -16,6 +16,15 @@ public interface IStockService
     Task ApplyIssueAsync(Sale sale, CancellationToken ct = default);
 
     /// <summary>
+    /// Takes an issued dispensing off the shelf: FEFO across as many
+    /// batches as each line needs, the product's own on-hand brought down
+    /// to match, and a movement for every batch touched. Called inside the
+    /// issue's transaction, so an issue that fails moves no stock.
+    /// </summary>
+    Task ApplyDispensingAsync(Domain.Dispensing.Dispensing dispensing,
+                              CancellationToken ct = default);
+
+    /// <summary>
     /// Puts the restockable lines of a return back on the shelf and
     /// writes the rest off. Called inside the return's transaction.
     /// </summary>
@@ -93,6 +102,88 @@ public sealed class StockService : IStockService
                 occurredAtUtc: _clock.UtcNow,
                 sourceDocumentType: "Sale",
                 sourceDocumentId: sale.Id));
+        }
+    }
+
+    public async Task ApplyDispensingAsync(
+        Domain.Dispensing.Dispensing dispensing, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dispensing);
+
+        foreach (var line in dispensing.Lines)
+        {
+            var product = await _products.GetAsync(line.ProductId, ct)
+                ?? throw new Domain.Exceptions.DomainException(
+                    $"{line.Description} is no longer in the catalogue.");
+
+            if (!product.IsBatchTracked)
+            {
+                var after = product.QuantityOnHand - line.Quantity;
+                product.SetQuantityOnHand(after);
+
+                _movements.Add(StockMovement.Record(
+                    productId: product.Id,
+                    batchId: null,
+                    movementType: MovementType.Issue,
+                    quantity: line.Quantity,
+                    balanceAfter: after,
+                    occurredAtUtc: _clock.UtcNow,
+                    sourceDocumentType: "Dispensing",
+                    sourceDocumentId: dispensing.Id));
+
+                continue;
+            }
+
+            // Allocated again against the stock as it is now, inside the
+            // transaction. The batches are tracked, so a second line of
+            // the same product sees what the first has already taken.
+            var batches = await _batches.ForProductAsync(product.Id, ct);
+
+            IReadOnlyList<Allocation> allocations;
+
+            try
+            {
+                allocations = FefoAllocator.Allocate(batches, line.Quantity,
+                                                     _clock.Today);
+            }
+            catch (Domain.Exceptions.DomainException)
+            {
+                var held = batches.Where(b => b.IsAvailableOn(_clock.Today))
+                                  .Sum(b => b.QuantityOnHand);
+
+                throw new Domain.Exceptions.DomainException(
+                    $"{line.Description}: only {held:0.###} unexpired in "
+                    + $"stock, so {line.Quantity:0.###} cannot be issued.");
+            }
+
+            line.AllocateBatches(allocations.Select(a =>
+            {
+                var batch = batches.Single(b => b.Id == a.BatchId);
+                return new Domain.Dispensing.BatchAllocation(batch.Id,
+                    batch.BatchNumber, batch.ExpiryDate, a.Quantity);
+            }));
+
+            var balance = product.QuantityOnHand;
+
+            foreach (var allocation in allocations)
+            {
+                var batch = batches.Single(b => b.Id == allocation.BatchId);
+                batch.Issue(allocation.Quantity);
+
+                balance -= allocation.Quantity;
+
+                _movements.Add(StockMovement.Record(
+                    productId: product.Id,
+                    batchId: batch.Id,
+                    movementType: MovementType.Issue,
+                    quantity: allocation.Quantity,
+                    balanceAfter: balance,
+                    occurredAtUtc: _clock.UtcNow,
+                    sourceDocumentType: "Dispensing",
+                    sourceDocumentId: dispensing.Id));
+            }
+
+            product.SetQuantityOnHand(balance);
         }
     }
 

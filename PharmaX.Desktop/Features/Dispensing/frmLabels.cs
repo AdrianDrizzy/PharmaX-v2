@@ -24,7 +24,7 @@ public partial class frmLabels : PhxFormBase
     private Guid? _patientId;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.ScriptDispense;
 
     /// Designer only. Never called at runtime.
     public frmLabels()
@@ -32,11 +32,11 @@ public partial class frmLabels : PhxFormBase
         InitializeComponent();
 
         btnChoosePatient.Click += (_, _) => ChoosePatient();
-        btnPreview.Click += (_, _) => _ = PreviewAsync();
-        btnReprint.Click += (_, _) => _ = ReprintAsync();
+        btnPreview.Click += (_, _) => Operations.Enqueue(PreviewAsync);
+        btnReprint.Click += (_, _) => Operations.Enqueue(ReprintAsync);
         btnClose.Click += (_, _) => CloseView(true);
 
-        grdDispensings.DoubleClick += (_, _) => _ = PreviewAsync();
+        grdDispensings.DoubleClick += (_, _) => Operations.Enqueue(PreviewAsync);
     }
 
     /// Runtime. Resolved by the container.
@@ -57,7 +57,7 @@ public partial class frmLabels : PhxFormBase
         if (picker.SelectedId is not Guid id) return;
 
         _patientId = id;
-        _ = LoadAsync();
+        Operations.Enqueue(LoadAsync);
     }
 
     private Task LoadAsync() => GuardAsync(async () =>
@@ -144,7 +144,9 @@ public partial class frmLabels : PhxFormBase
         }
 
         ShowInfo(string.Format(CultureInfo.CurrentCulture,
-            "{0:N0} label(s) sent to the label printer.", result.Value));
+            "{0:N0} label(s) printed on {1}.{2}", result.Value.Printed,
+            result.Value.PrinterName ?? "the label printer",
+            result.Value.Note is null ? "" : "\n" + result.Value.Note));
     });
 
     private Guid? Selected()

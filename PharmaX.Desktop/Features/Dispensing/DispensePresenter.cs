@@ -1,9 +1,23 @@
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
+using PharmaX.Application.Sales;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Dispensing;
 
+/// <summary>
+/// Find the script, check what goes on, issue, label.
+/// </summary>
+/// <remarks>
+/// The flow asks for nobody else's password unless the business rule
+/// needs one. It used to demand a pharmacist's credentials for every
+/// issue, whoever was dispensing, so a pharmacist authorised their own
+/// work and an assistant could do nothing without calling someone over.
+/// A pharmacist, an assistant or the administrator now issues on their
+/// own authority; a pharmacist's credentials are asked for only to
+/// release a hard-stop clinical warning or a controlled medicine when the
+/// person at the screen does not hold that authority themselves.
+/// </remarks>
 public sealed class DispensePresenter : PresenterBase<IDispenseView>
 {
     private readonly IDispensingService _dispensing;
@@ -26,9 +40,11 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
     protected override void Subscribe()
     {
-        View.ScriptRequested += (_, _) => _ = BeginAsync();
-        View.ProductScanned += (_, code) => _ = AddItemAsync(code);
-        View.IssueRequested += (_, _) => _ = IssueAsync();
+        View.ScriptRequested += (_, _) => Enqueue(BeginAsync);
+        View.ProductScanned += (_, code) => Enqueue(() => AddItemAsync(code));
+        View.RemoveItemRequested += (_, _) => Enqueue(RemoveItemAsync);
+        View.IssueRequested += (_, _) => Enqueue(IssueAsync);
+        View.LabelReprintRequested += (_, _) => View.ShowLabelScreen();
         View.CloseRequested += (_, _) => View.CloseView(true);
     }
 
@@ -60,7 +76,23 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         var script = await _scripts.GetAsync(scriptId.Value);
         if (script.IsSuccess) View.ShowScript(script.Value.Script);
 
-        Render(result.Value);
+        // What the prescriber wrote goes straight on, quantity and
+        // directions included: re-keying a script that was captured a
+        // minute ago is how a 21 becomes a 1 (DEF-0020).
+        var added = await _dispensing.AddScriptItemsAsync(_dispensingId);
+
+        if (added.IsFailure)
+        {
+            View.ShowError(added.Error.Message);
+            Render(result.Value);
+            return;
+        }
+
+        Render(added.Value.State);
+
+        if (added.Value.Problems.Count > 0)
+            View.ShowError("Not everything on the script could go on:\n\n"
+                           + string.Join("\n", added.Value.Problems));
     });
 
     private Task AddItemAsync(string code) => GuardAsync(async () =>
@@ -71,11 +103,21 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
             return;
         }
 
-        var directions = View.PromptDirections(Guid.Empty);
+        // The script's own quantity and directions for this product, as
+        // the starting point of the prompts rather than a blank.
+        var proposal = await _dispensing.ProposeItemAsync(_dispensingId, code);
+
+        if (proposal.IsFailure)
+        {
+            View.ShowError(proposal.Error.Message);
+            return;
+        }
+
+        var directions = View.PromptDirections(proposal.Value);
         if (directions is null) return;
 
         var result = await _dispensing.AddItemAsync(
-            _dispensingId, code, directions);
+            _dispensingId, proposal.Value.ProductCode, directions);
 
         if (result.IsFailure)
         {
@@ -85,6 +127,25 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
         // Warnings are computed by the service from the clinical profile
         // and the interaction table; the presenter only routes them.
+        Render(result.Value);
+    });
+
+    private Task RemoveItemAsync() => GuardAsync(async () =>
+    {
+        if (_dispensingId == Guid.Empty || View.SelectedLineNo is not int lineNo)
+        {
+            View.ShowInfo("Choose the item to take off.");
+            return;
+        }
+
+        var result = await _dispensing.RemoveItemAsync(_dispensingId, lineNo);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
         Render(result.Value);
     });
 
@@ -110,41 +171,39 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
     private Task IssueAsync() => GuardAsync(async () =>
     {
-        var pending = await _dispensing.PendingWarningsAsync(_dispensingId);
-
-        foreach (var warning in pending)
+        if (_dispensingId == Guid.Empty)
         {
-            if (warning.IsHardStop)
-            {
-                var reason = View.PromptWarningOverride(warning);
-
-                if (string.IsNullOrWhiteSpace(reason))
-                {
-                    View.ShowError("Item not issued.");
-                    return;
-                }
-
-                await _dispensing.AcknowledgeWarningAsync(warning.Id, reason);
-            }
-            else
-            {
-                await _dispensing.AcknowledgeWarningAsync(warning.Id, null);
-            }
-        }
-
-        // Pharmacist authentication at the moment of issue, not earlier
-        // and not delegated (DSP-006, SEC-006).
-        var pharmacist = View.PromptPharmacistAuthorisation(
-            "Pharmacist authorisation is required to issue this script.");
-
-        if (pharmacist is null)
-        {
-            View.ShowError("Not issued: no pharmacist authorisation.");
+            View.ShowError("Find the patient and the script first.");
             return;
         }
 
-        var result = await _dispensing.IssueAsync(_dispensingId,
-            pharmacistId: pharmacist.Value);
+        if (!await ClearWarningsAsync()) return;
+
+        // A pharmacist's credentials only where something on the
+        // dispensing needs one and the operator cannot give it.
+        var authority = await _dispensing.IssueAuthorityAsync(_dispensingId);
+
+        if (authority.IsFailure)
+        {
+            View.ShowError(authority.Error.Message);
+            return;
+        }
+
+        Guid? authorisedBy = null;
+
+        if (!authority.Value.OperatorMayIssue)
+        {
+            authorisedBy = View.PromptPharmacistAuthorisation(
+                authority.Value.Reason ?? "A pharmacist must authorise this.");
+
+            if (authorisedBy is null)
+            {
+                View.ShowError("Not issued: no pharmacist authorisation.");
+                return;
+            }
+        }
+
+        var result = await _dispensing.IssueAsync(_dispensingId, authorisedBy);
 
         if (result.IsFailure)
         {
@@ -152,13 +211,106 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
             return;
         }
 
-        foreach (var label in result.Value.Labels)
-            await _labels.PrintAsync(label);
+        var printed = new List<PrintResult>();
 
-        View.ShowInfo($"Issued. Script {result.Value.ScriptNumber}. " +
-                      $"Co-payment {result.Value.CoPayment:N2} " +
-                      "has been added to the sale.");
+        foreach (var label in result.Value.Labels)
+            printed.Add(await _labels.PrintAsync(label));
+
+        View.ShowInfo($"Issued. Script {result.Value.ScriptNumber}. "
+                      + $"Co-payment {result.Value.CoPayment:N2} "
+                      + "has been added to the collection queue.\n\n"
+                      + DescribeLabels(printed));
 
         View.CloseView(true);
     });
+
+    /// <summary>
+    /// Deals with every warning still standing. False if the pharmacist
+    /// backed out of one.
+    /// </summary>
+    private async Task<bool> ClearWarningsAsync()
+    {
+        var pending = await _dispensing.PendingWarningsAsync(_dispensingId);
+
+        foreach (var warning in pending)
+        {
+            if (!warning.IsHardStop)
+            {
+                var soft = await _dispensing.AcknowledgeWarningAsync(
+                    warning.Id, null);
+
+                if (soft.IsFailure)
+                {
+                    View.ShowError(soft.Error.Message);
+                    return false;
+                }
+
+                continue;
+            }
+
+            // A hard stop is passed only with a written reason, kept on the
+            // clinical record (DSP-007).
+            var reason = View.PromptWarningOverride(warning);
+
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                View.ShowError("Not issued: the warning was not overridden.");
+                return false;
+            }
+
+            Guid? pharmacist = null;
+
+            if (await _dispensing.OverrideNeedsPharmacistAsync(warning.Id))
+            {
+                pharmacist = View.PromptPharmacistAuthorisation(
+                    "A pharmacist must authorise overriding this warning:\n"
+                    + warning.Message);
+
+                if (pharmacist is null)
+                {
+                    View.ShowError("Not issued: no pharmacist authorised the "
+                                   + "override.");
+                    return false;
+                }
+            }
+
+            var acknowledged = await _dispensing.AcknowledgeWarningAsync(
+                warning.Id, reason, pharmacist);
+
+            if (acknowledged.IsFailure)
+            {
+                View.ShowError(acknowledged.Error.Message);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// What happened to the labels, honestly: printed where, or why not
+    /// and where to reprint them.
+    /// </summary>
+    private static string DescribeLabels(IReadOnlyList<PrintResult> results)
+    {
+        if (results.Count == 0) return "";
+
+        var failed = results.Where(r => !r.Printed).ToList();
+
+        if (failed.Count == 0)
+        {
+            var printer = results[0].PrinterName;
+            var note = results.Select(r => r.Problem)
+                              .FirstOrDefault(n => n is not null);
+
+            return $"{results.Count} label(s) printed"
+                   + (printer is null ? "." : $" on {printer}.")
+                   + (note is null ? "" : "\n" + note);
+        }
+
+        return $"{failed.Count} of {results.Count} label(s) did not print: "
+               + failed[0].Problem
+               + "\nReprint them from Dispensary > Labels once the printer "
+               + "is ready.";
+    }
 }

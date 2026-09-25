@@ -17,10 +17,10 @@ public sealed class ChartPresenter : PresenterBase<IChartView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OnAddAsync();
-        View.RenameRequested += (_, _) => _ = OnRenameAsync();
-        View.DeactivateRequested += (_, _) => _ = OnDeactivateAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(OnAddAsync);
+        View.RenameRequested += (_, _) => Enqueue(OnRenameAsync);
+        View.DeactivateRequested += (_, _) => Enqueue(OnDeactivateAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();
@@ -112,7 +112,7 @@ public sealed class JournalPresenter : PresenterBase<IJournalView>
     protected override void Subscribe()
     {
         View.LinesChanged += (_, _) => ShowTotals();
-        View.PostRequested += (_, _) => _ = OnPostAsync();
+        View.PostRequested += (_, _) => Enqueue(OnPostAsync);
     }
 
     public override Task InitialiseAsync() => GuardAsync(async () =>
@@ -179,8 +179,8 @@ public sealed class TrialBalancePresenter : PresenterBase<ITrialBalanceView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.DrillDownRequested += (_, _) => _ = OnDrillDownAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.DrillDownRequested += (_, _) => Enqueue(OnDrillDownAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();
@@ -246,11 +246,11 @@ public sealed class ClaimsPresenter : PresenterBase<IClaimsView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.SchemeChanged += (_, _) => _ = LoadAsync();
-        View.SettleRequested += (_, _) => _ = OnSettleAsync();
-        View.RejectRequested += (_, _) => _ = OnRejectAsync();
-        View.AgeAnalysisRequested += (_, _) => _ = OnAgeAnalysisAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.SchemeChanged += (_, _) => Enqueue(LoadAsync);
+        View.SettleRequested += (_, _) => Enqueue(OnSettleAsync);
+        View.RejectRequested += (_, _) => Enqueue(OnRejectAsync);
+        View.AgeAnalysisRequested += (_, _) => Enqueue(OnAgeAnalysisAsync);
     }
 
     public override Task InitialiseAsync() => GuardAsync(async () =>

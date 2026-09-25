@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using NSubstitute;
 using PharmaX.Application.Results;
 using PharmaX.Application.Sales;
@@ -28,6 +28,8 @@ public class PosPresenterTests
 
     private readonly ReceiptHeaderFactory _headers =
         new(new PharmaX.Application.Abstractions.PharmaXOptions(),
+            new PharmaX.Application.Abstractions.PharmacyProfile(
+                new PharmaX.Application.Abstractions.PharmaXOptions()),
             new Fakes.FakeCurrentUser(), new Fakes.FakeClock(),
             new PharmaX.Desktop.Mvp.Branding());
 
@@ -409,6 +411,34 @@ public class PosPresenterTests
 
         await _sales.DidNotReceive().VoidLineAsync(
             Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// A collected script says RATED PRICING only when its co-payment rests
+    /// on a medical aid tariff. It said so for every collection, a private
+    /// patient's at the shelf price included.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_collection_is_badged_rated_only_when_its_lines_are(
+        bool rated)
+    {
+        var dispensingId = Guid.NewGuid();
+        var line = new SaleLineDto(1, Guid.NewGuid(),
+            "Metformin 850mg tablets 60s x 30", 1m, 77.38m, 0m, "A", 77.38m,
+            null, null, rated, false);
+        var sale = new SaleDto(Guid.NewGuid(), "", new[] { line },
+            new SaleTotalsDto(77.38m, 0m, 10.09m, 77.38m, 0m, 0m));
+
+        _collections.StartAsync(dispensingId).Returns(Result<SaleDto>.Ok(sale));
+
+        var sut = CreateSut();
+        sut.Collect(dispensingId);
+        await sut.InitialiseAsync();
+
+        _view.Received().ShowRatedPricing(rated);
+        _view.DidNotReceive().ShowRatedPricing(!rated);
     }
 
     private static SaleDto EmptySale() => new(

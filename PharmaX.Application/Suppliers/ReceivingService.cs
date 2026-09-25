@@ -8,6 +8,7 @@ using PharmaX.Application.Suppliers.Dtos;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Security;
 using PharmaX.Domain.Suppliers;
+using PurchaseOrder = PharmaX.Domain.Suppliers.PurchaseOrder;
 
 namespace PharmaX.Application.Suppliers;
 
@@ -32,6 +33,15 @@ public interface IReceivingService
     /// show every problem at once rather than one per attempt.
     /// </summary>
     Task<Result<IReadOnlyList<GoodsReceiptLineDto>>> PreviewAsync(
+        GoodsReceiptEditDto edit, CancellationToken ct = default);
+
+    /// <summary>
+    /// The product each captured line names, line for line, or null where
+    /// a code names nothing - whether or not the lines would post. The
+    /// screen shows it beside the code while another line still has a
+    /// problem to put right.
+    /// </summary>
+    Task<Result<IReadOnlyList<GoodsReceiptProductDto?>>> IdentifyAsync(
         GoodsReceiptEditDto edit, CancellationToken ct = default);
 }
 
@@ -76,7 +86,7 @@ public sealed class ReceivingService : IReceivingService
     public async Task<Result<IReadOnlyList<GoodsReceiptListItemDto>>>
         RecentAsync(CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        DemandReceivingAccess();
 
         var receipts = await _receipts.RecentAsync(ct: ct);
         var suppliers = await _suppliers.ListAsync(includeInactive: true, ct);
@@ -97,7 +107,7 @@ public sealed class ReceivingService : IReceivingService
     public async Task<Result<GoodsReceiptDto>> GetAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        DemandReceivingAccess();
 
         var receipt = await _receipts.GetAsync(id, ct);
         if (receipt is null)
@@ -115,7 +125,9 @@ public sealed class ReceivingService : IReceivingService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.ProductRead);
+        // Previewing is the first half of receiving, and a user who may
+        // not receive has no business rehearsing it.
+        _permissions.Demand(PermissionCode.GoodsReceive);
 
         var resolved = await ResolveAsync(edit, ct);
 
@@ -127,10 +139,43 @@ public sealed class ReceivingService : IReceivingService
             .Select((r, i) => new GoodsReceiptLineDto(
                 i + 1, r.Product.Id, r.Product.Description, r.Line.Quantity,
                 r.Line.UnitCost, r.Line.Quantity * r.Line.UnitCost,
-                r.Line.BatchNumber, r.Line.ExpiryDate))
+                r.Product.IsBatchTracked ? r.Line.BatchNumber : null,
+                r.Product.IsBatchTracked ? r.Line.ExpiryDate : null,
+                r.Product.Code))
             .ToList();
 
         return Result<IReadOnlyList<GoodsReceiptLineDto>>.Ok(preview);
+    }
+
+    public async Task<Result<IReadOnlyList<GoodsReceiptProductDto?>>>
+        IdentifyAsync(GoodsReceiptEditDto edit, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+
+        _permissions.Demand(PermissionCode.GoodsReceive);
+
+        var order = edit.PurchaseOrderId is Guid orderId
+            ? await _orders.GetAsync(orderId, ct)
+            : null;
+
+        var identified = new List<GoodsReceiptProductDto?>();
+
+        foreach (var line in edit.Lines)
+        {
+            var orderLine = line.PurchaseOrderLineNo is int lineNo
+                ? order?.Lines.FirstOrDefault(l => l.LineNo == lineNo)
+                : null;
+
+            var product = await FindProductAsync(line, orderLine, ct);
+
+            identified.Add(product is null
+                ? null
+                : new GoodsReceiptProductDto(product.Id, product.Code,
+                    product.Description, product.CostPrice.Amount,
+                    product.IsBatchTracked));
+        }
+
+        return Result<IReadOnlyList<GoodsReceiptProductDto?>>.Ok(identified);
     }
 
     public async Task<Result<GoodsReceiptDto>> ReceiveAsync(
@@ -198,6 +243,19 @@ public sealed class ReceivingService : IReceivingService
     }
 
     /// <summary>
+    /// Who may look at receipts: the people who book deliveries in, and
+    /// the buyers who raised the orders they answer.
+    /// </summary>
+    private void DemandReceivingAccess()
+    {
+        if (_permissions.HasAny(PermissionCode.GoodsReceive,
+                                PermissionCode.PurchaseOrderRaise))
+            return;
+
+        _permissions.Demand(PermissionCode.GoodsReceive);
+    }
+
+    /// <summary>
     /// Records the delivery against the order it came from, so a short
     /// delivery leaves the order open rather than looking complete.
     /// </summary>
@@ -216,10 +274,19 @@ public sealed class ReceivingService : IReceivingService
     }
 
     /// <summary>
-    /// Turns codes into products and refuses the whole receipt on the
-    /// first problem it finds. Nothing is written until every line
-    /// resolves, so a mistyped code cannot leave half a delivery posted.
+    /// Turns the captured lines into products and refuses the whole
+    /// receipt on the first problem it finds. Nothing is written until
+    /// every line resolves, so a mistyped code cannot leave half a
+    /// delivery posted.
     /// </summary>
+    /// <remarks>
+    /// A line brought across from a purchase order is resolved by the
+    /// product the order names - its identity - and checked against that
+    /// order line. The screen used to put the order line's description in
+    /// the code column, which no product code ever matched, so every line
+    /// of every ordered delivery had to be re-keyed before it would post
+    /// (DEF-0013).
+    /// </remarks>
     private async Task<(List<(Domain.Inventory.Product Product,
         GoodsReceiptLineEditDto Line)> Lines, Error? Problem)> ResolveAsync(
         GoodsReceiptEditDto edit, CancellationToken ct)
@@ -235,14 +302,59 @@ public sealed class ReceivingService : IReceivingService
             return (resolved, new Error("GRN-003",
                 "Stock cannot be received in the future."));
 
+        PurchaseOrder? order = null;
+
+        if (edit.PurchaseOrderId is Guid orderId)
+        {
+            order = await _orders.GetAsync(orderId, ct);
+
+            if (order is null)
+                return (resolved, new Error("GRN-010",
+                    "That purchase order no longer exists."));
+
+            if (edit.SupplierId != Guid.Empty
+                && order.SupplierId != edit.SupplierId)
+                return (resolved, new Error("GRN-011",
+                    $"Order {order.OrderNumber} is from a different "
+                    + "supplier."));
+
+            if (order.Status is PurchaseOrderStatus.Cancelled
+                or PurchaseOrderStatus.Received)
+                return (resolved, new Error("GRN-012",
+                    $"Order {order.OrderNumber} is "
+                    + $"{order.Status.ToString().ToLowerInvariant()} and "
+                    + "cannot be received against."));
+        }
+
         foreach (var line in edit.Lines)
         {
-            var product = await _products
-                .FindByCodeOrBarcodeAsync(line.ProductCode, ct);
+            Domain.Inventory.Product? product;
+            PurchaseOrderLine? orderLine = null;
+
+            if (line.PurchaseOrderLineNo is int lineNo)
+            {
+                if (order is null)
+                    return (resolved, new Error("GRN-013",
+                        "A line refers to an order line but no order is "
+                        + "chosen."));
+
+                orderLine = order.Lines.FirstOrDefault(l => l.LineNo == lineNo);
+
+                if (orderLine is null)
+                    return (resolved, new Error("GRN-014",
+                        $"Order {order.OrderNumber} has no line {lineNo}."));
+            }
+
+            product = await FindProductAsync(line, orderLine, ct);
 
             if (product is null)
                 return (resolved, new Error("GRN-004",
                     $"No product for code {line.ProductCode}."));
+
+            if (orderLine is not null && orderLine.ProductId != product.Id)
+                return (resolved, new Error("GRN-015",
+                    $"{product.Code} is not what order line "
+                    + $"{orderLine.LineNo} ordered ({orderLine.Description})."));
 
             if (line.Quantity <= 0m)
                 return (resolved, new Error("GRN-005",
@@ -280,5 +392,23 @@ public sealed class ReceivingService : IReceivingService
         }
 
         return (resolved, null);
+    }
+
+    /// <summary>
+    /// The product a line names: the order's own product while the line
+    /// still carries it, otherwise whatever the typed code or barcode is.
+    /// </summary>
+    private async Task<Domain.Inventory.Product?> FindProductAsync(
+        GoodsReceiptLineEditDto line, PurchaseOrderLine? orderLine,
+        CancellationToken ct)
+    {
+        if (line.ProductId is Guid productId)
+            return await _products.GetAsync(productId, ct);
+
+        if (orderLine is not null && string.IsNullOrWhiteSpace(line.ProductCode))
+            return await _products.GetAsync(orderLine.ProductId, ct);
+
+        return await _products.FindByCodeOrBarcodeAsync(line.ProductCode,
+                                                        ct: ct);
     }
 }

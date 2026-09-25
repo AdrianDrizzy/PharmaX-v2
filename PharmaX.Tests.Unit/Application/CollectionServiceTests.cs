@@ -75,6 +75,25 @@ public class CollectionServiceTests
               .Which.Description.Should().Contain("21");
     }
 
+    /// <summary>
+    /// Rated where a society's tariff priced it, and only there: a private
+    /// patient's script at the shelf price is not a rated transaction.
+    /// </summary>
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(0, false)]
+    public async Task A_collected_line_is_rated_only_where_a_scheme_contributes(
+        decimal scheme, bool rated)
+    {
+        var builder = new CollectionServiceBuilder();
+        var dispensing = builder.Waiting(tariff: 90m, scheme: scheme);
+
+        var result = await builder.Build().StartAsync(dispensing.Id);
+
+        result.Value.Lines.Should().ContainSingle()
+              .Which.IsRated.Should().Be(rated);
+    }
+
     [Fact]
     public async Task A_script_already_paid_for_is_refused()
     {

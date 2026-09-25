@@ -71,6 +71,20 @@ public class ReceiptDocumentTests : IDisposable
             "a taller slip is the proof the text was not drawn over");
     }
 
+    /// <remarks>
+    /// The registered name can be cleared at the System Console. The
+    /// slip closes up rather than printing an empty line under the
+    /// trading name.
+    /// </remarks>
+    [Fact]
+    public void A_blank_registered_name_leaves_no_gap()
+    {
+        using var named = Render(Header(logoPath: null));
+        using var unnamed = Render(Header(logoPath: null, registeredName: ""));
+
+        LastInkRow(unnamed).Should().BeLessThan(LastInkRow(named));
+    }
+
     private static Bitmap Render(ReceiptHeaderDto header)
     {
         var sale = new SaleDto(Guid.NewGuid(), "S-001-000042",
@@ -153,9 +167,10 @@ public class ReceiptDocumentTests : IDisposable
     private static bool IsDark(Color pixel) =>
         pixel.R < 200 || pixel.G < 200 || pixel.B < 200;
 
-    private static ReceiptHeaderDto Header(string? logoPath) => new(
+    private static ReceiptHeaderDto Header(string? logoPath,
+        string registeredName = "Riverside Pharmacy Ltd") => new(
         TradingName: "Riverside Pharmacy",
-        RegisteredName: "Riverside Pharmacy Ltd",
+        RegisteredName: registeredName,
         Address: "1 Example Street",
         VatNumber: "4123456789",
         LicenceNumber: "P00123",

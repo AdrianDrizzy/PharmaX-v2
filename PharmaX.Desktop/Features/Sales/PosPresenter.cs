@@ -24,6 +24,17 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     /// </summary>
     private Guid? _collecting;
 
+    private readonly Application.Abstractions.ICurrentUser? _user;
+
+    /// Runtime. Resolved by the container, which picks the fullest
+    /// constructor it can satisfy.
+    public PosPresenter(ISaleService sales, ICollectionService collections,
+        IPermissionService permissions, IReceiptPrinter receipts,
+        ICashDrawer drawer, ReceiptHeaderFactory headers,
+        Application.Abstractions.ICurrentUser user)
+        : this(sales, collections, permissions, receipts, drawer, headers) =>
+        _user = user;
+
     public PosPresenter(ISaleService sales, ICollectionService collections,
         IPermissionService permissions, IReceiptPrinter receipts,
         ICashDrawer drawer, ReceiptHeaderFactory headers)
@@ -44,19 +55,18 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
     protected override void Subscribe()
     {
-        View.CodeScanned += (_, code) => _ = OnScanAsync(code);
-        View.ProductSearchRequested += (_, _) => _ = OnSearchAsync(null);
-        View.CustomerRequested += (_, _) => _ = OnCustomerAsync();
-        View.QuantityRequested += (_, _) => _ = OnQuantityAsync();
-        View.LineDiscountRequested += (_, _) => _ = OnDiscountAsync();
-        View.VoidLineRequested += (_, _) => _ = OnVoidAsync();
-        View.PaymentRequested += (_, _) => _ = OnPaymentAsync();
-        View.HoldRequested += (_, _) => _ = OnHoldAsync();
-        // False, not true. The collection screen reads this dialog's
-        // result as "the patient paid", and closing the till is exactly
-        // the case where they did not - so it was telling the cashier
-        // the money had been taken when nothing had.
-        View.CloseRequested += (_, _) => View.CloseView(false);
+        View.CodeScanned += (_, code) => Enqueue(() => OnScanAsync(code));
+        View.ProductSearchRequested += (_, _) => Enqueue(() => OnSearchAsync(null));
+        View.CustomerRequested += (_, _) => Enqueue(OnCustomerAsync);
+        View.QuantityRequested += (_, _) => Enqueue(OnQuantityAsync);
+        View.LineDiscountRequested += (_, _) => Enqueue(OnDiscountAsync);
+        View.VoidLineRequested += (_, _) => Enqueue(OnVoidAsync);
+        View.PaymentRequested += (_, _) => Enqueue(OnPaymentAsync);
+        View.HoldRequested += (_, _) => Enqueue(OnHoldAsync);
+        View.RecallRequested += (_, _) => Enqueue(OnRecallAsync);
+        View.QuotationRequested += (_, _) => Enqueue(OnQuotationAsync);
+        View.ReprintRequested += (_, _) => Enqueue(OnReprintAsync);
+        View.CloseRequested += (_, _) => Enqueue(OnCloseAsync);
     }
 
     public override Task InitialiseAsync() =>
@@ -94,6 +104,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
             View.ClearSale();
             View.ShowLines(_sale.Lines);
             View.ShowTotals(_sale.Totals);
+            View.ShowRatedPricing(_sale.Lines.Any(l => l.IsRated));
             View.FocusPayment();
         });
 
@@ -173,17 +184,10 @@ public sealed class PosPresenter : PresenterBase<IPosView>
             return;
         }
 
-        var account = result.Value;
-
         // What the cashier needs on screen is how much room is left on
         // the account, because that is what decides whether the sale can
         // go on it at all.
-        View.ShowCustomer(account.Name,
-            string.Format(System.Globalization.CultureInfo.CurrentCulture,
-                "Account {0}   owes {1}   {2} available",
-                account.AccountNumber, Format.Money(account.Balance),
-                Format.Money(account.Available)),
-            ratedPricing: false);
+        ShowAccount(result.Value);
 
         View.FocusScan();
     });
@@ -245,9 +249,19 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
         Guid? authoriser = null;
 
-        // The presenter decides that a supervisor is needed and asks the
-        // view to collect one. It never evaluates the rule itself.
-        if (_permissions.Check(PermissionCode.SaleDiscountAboveLimit)
+        // A supervisor only for a discount over the operator's own limit.
+        // Every discount a cashier gave used to need one - 1.00 off a
+        // 34.95 line from a cashier allowed 5% - which is an authorisation
+        // the business rule does not ask for. The service and the sale
+        // enforce the limit again whatever the screen decides.
+        var gross = line.UnitPrice * line.Quantity;
+        var overLimit = _user is null
+            || amount.Value > Math.Round(
+                gross * _user.DiscountLimitPercent / 100m, 2,
+                MidpointRounding.AwayFromZero);
+
+        if (overLimit
+            && _permissions.Check(PermissionCode.SaleDiscountAboveLimit)
                 == PermissionOutcome.RequiresSupervisor)
         {
             authoriser = View.PromptSupervisor(
@@ -280,13 +294,219 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         await RefreshAsync();
     });
 
-    private Task OnHoldAsync() => GuardAsync(() =>
+    /// <summary>
+    /// Parks the basket - lines, quantities, discounts and customer - so
+    /// the till can serve the next person. Recalled with F9 at any till.
+    /// </summary>
+    private Task OnHoldAsync() => GuardAsync(async () =>
     {
-        // Parked rather than cancelled: the basket stays open in the
-        // database and the next sale starts clean over the top of it.
-        View.ShowInfo("Sale held. Recall it from the till session screen.");
-        return StartNewSaleAsync();
+        if (!HasLines)
+        {
+            View.ShowInfo("There is nothing on this sale to hold.");
+            return;
+        }
+
+        var result = await _sales.HoldAsync(_saleId);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        View.ShowInfo("Sale held. Recall it with F9 on any till.");
+        await StartNewSaleAsync();
     });
+
+    /// <summary>
+    /// Takes a held basket back up and carries on with it.
+    /// </summary>
+    private Task OnRecallAsync() => GuardAsync(async () =>
+    {
+        var held = await _sales.HeldAsync();
+
+        if (held.IsFailure)
+        {
+            View.ShowError(held.Error.Message);
+            return;
+        }
+
+        if (held.Value.Count == 0)
+        {
+            View.ShowInfo("No sales are held.");
+            return;
+        }
+
+        if (View.PromptHeldSale(held.Value) is not Guid chosen) return;
+
+        // What is on the till now is parked in its place rather than lost.
+        var busy = HasLines;
+
+        if (busy)
+        {
+            if (!View.Confirm("Hold the sale that is on the till now, and "
+                              + "recall the other one?"))
+                return;
+
+            var parked = await _sales.HoldAsync(_saleId);
+
+            if (parked.IsFailure)
+            {
+                View.ShowError(parked.Error.Message);
+                return;
+            }
+        }
+
+        var recalled = await _sales.RecallAsync(chosen,
+            replacingSaleId: busy ? null : _saleId);
+
+        if (recalled.IsFailure)
+        {
+            View.ShowError(recalled.Error.Message);
+            return;
+        }
+
+        _sale = recalled.Value;
+        _saleId = _sale.Id;
+
+        View.ClearSale();
+
+        // The customer comes back with the basket, re-checked: an account
+        // put on hold while the sale was parked says so now rather than
+        // at the payment screen.
+        if (_sale.AccountId is Guid accountId)
+        {
+            var account = await _sales.AssignAccountAsync(_saleId, accountId);
+
+            if (account.IsSuccess)
+                ShowAccount(account.Value);
+            else
+                View.ShowError(account.Error.Message);
+        }
+
+        await RefreshAsync();
+    });
+
+    /// <summary>
+    /// Brings a quotation the customer has brought back onto the sale, at
+    /// today's prices and against today's stock.
+    /// </summary>
+    private Task OnQuotationAsync() => GuardAsync(async () =>
+    {
+        if (HasLines)
+        {
+            View.ShowError("Finish or hold this sale first: a quotation is "
+                           + "brought onto an empty one.");
+            return;
+        }
+
+        var number = View.PromptQuotationNumber();
+        if (string.IsNullOrWhiteSpace(number)) return;
+
+        var result = await _sales.ConvertQuotationAsync(_saleId, number);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        await RefreshAsync();
+
+        var summary = $"Quotation {result.Value.QuotationNumber} for "
+                      + $"{result.Value.CustomerName}: "
+                      + $"{result.Value.LinesAdded} item(s) added.";
+
+        if (result.Value.Changes.Count > 0)
+            summary += Environment.NewLine + Environment.NewLine
+                       + "Since it was quoted:" + Environment.NewLine
+                       + string.Join(Environment.NewLine, result.Value.Changes);
+
+        View.ShowInfo(summary);
+    });
+
+    /// The last finalised sale on this till, for a reprint.
+    private Guid? _lastSaleId;
+
+    private Task OnReprintAsync() => GuardAsync(async () =>
+    {
+        if (_lastSaleId is not Guid saleId)
+        {
+            View.ShowInfo("No sale has been completed on this till yet.");
+            return;
+        }
+
+        var sale = await _sales.GetAsync(saleId);
+        if (sale.IsFailure)
+        {
+            View.ShowError(sale.Error.Message);
+            return;
+        }
+
+        var result = await _receipts.PrintAsync(sale.Value, _headers.Build());
+        var what = $"Receipt {sale.Value.DocumentNumber}";
+
+        if (result.Printed)
+            View.ShowInfo(result.Describe(what));
+        else
+            View.ShowError(result.Describe(what));
+    });
+
+    /// <summary>
+    /// Closes the till without leaving a basket nobody can reach.
+    /// </summary>
+    /// <remarks>
+    /// An empty sale is abandoned quietly - opening Sell used to leave one
+    /// behind every time (DEF-0030). One with items on it is held or
+    /// discarded, as the cashier chooses. The dialog result is false
+    /// either way: the collection screen reads it as "the patient paid",
+    /// and closing the till is exactly the case where they did not.
+    /// </remarks>
+    private Task OnCloseAsync() => GuardAsync(async () =>
+    {
+        if (_collecting is null && _sale is not null
+            && string.Equals(_sale.Status, "Open", StringComparison.Ordinal))
+        {
+            if (!HasLines)
+            {
+                await _sales.AbandonAsync(_saleId,
+                    "Till closed with an empty sale.");
+            }
+            else if (View.Confirm("Hold this sale so it can be recalled "
+                                  + "later?"))
+            {
+                var held = await _sales.HoldAsync(_saleId);
+                if (held.IsFailure)
+                {
+                    View.ShowError(held.Error.Message);
+                    return;
+                }
+            }
+            else if (View.Confirm("Discard this sale? Nothing has been paid "
+                                  + "and nothing will be kept."))
+            {
+                await _sales.AbandonAsync(_saleId,
+                    "Discarded when the till was closed.");
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        View.CloseView(false);
+    });
+
+    private bool HasLines =>
+        _sale is not null && _sale.Lines.Any(l => !l.IsVoided);
+
+    private void ShowAccount(Application.Patients.AccountDto account) =>
+        View.ShowCustomer(account.Name,
+            string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                "Account {0}   owes {1}   {2} available",
+                account.AccountNumber, Format.Money(account.Balance),
+                Format.Money(account.Available)),
+            ratedPricing: false);
 
     /// <summary>
     /// Takes the money, finalises, prints.
@@ -326,6 +546,8 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         }
 
         View.ShowDocumentNumber(result.Value.DocumentNumber);
+        View.ShowChange(result.Value.Change);
+        _lastSaleId = _saleId;
 
         // Finalise, then print. The other way round leaves a printed
         // receipt for a sale that never committed, which is the worse of
@@ -354,13 +576,19 @@ public sealed class PosPresenter : PresenterBase<IPosView>
                 StringComparison.OrdinalIgnoreCase)))
             await _drawer.OpenAsync();
 
-        var outcome = await _receipts.PrintAsync(final.Value,
+        var printed = await _receipts.PrintAsync(final.Value,
                                                  _headers.Build());
 
-        if (outcome != PrintOutcome.Printed)
+        // Said honestly, with the reason and the way to put it right; a
+        // printer fault never undoes the sale (POS-014).
+        if (!printed.Printed)
             View.ShowError(
                 "The sale is complete but the receipt did not print. "
-                + "Reprint it from the till session screen.");
+                + (printed.Problem ?? "") + Environment.NewLine
+                + Environment.NewLine
+                + "Press F12 to reprint it once the printer is ready.");
+        else if (printed.Problem is not null)
+            View.ShowInfo(printed.Describe("The receipt"));
     }
 
     private async Task RefreshAsync()

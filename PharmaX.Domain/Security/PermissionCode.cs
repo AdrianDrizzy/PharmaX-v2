@@ -14,11 +14,67 @@ public static class PermissionCode
     public const string ReturnAuthorise = "pos.return.authorise";
     public const string SessionCloseOtherUser = "pos.session.close.other-user";
 
+    /// <summary>
+    /// A pharmacist's own clinical authority: overriding a hard-stop
+    /// clinical warning, releasing a controlled medicine, merging two
+    /// patient files. Not needed to capture or issue an ordinary script.
+    /// </summary>
     public const string ScriptAuthorise = "dsp.script.authorise";
     public const string ScriptReverse = "dsp.script.reverse";
 
+    /// <summary>
+    /// Capturing a prescription into Script Maintenance.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission rather than dsp.script.authorise, which is
+    /// what capture used to demand. That tied the most routine job in
+    /// the dispensary to the one authority only a pharmacist holds, so
+    /// an assistant could not type in the script the patient had just
+    /// handed over, and every script became a supervisor prompt.
+    /// </remarks>
+    public const string ScriptCapture = "dsp.script.capture";
+
+    /// <summary>
+    /// Working the dispensing screen: picking the script, adding the
+    /// medicines, issuing and labelling. The clinical overrides inside it
+    /// still need dsp.script.authorise.
+    /// </summary>
+    public const string ScriptDispense = "dsp.script.dispense";
+
+    /// <summary>
+    /// Finding, adding and editing patient files.
+    /// </summary>
+    public const string PatientMaintain = "dsp.patient.maintain";
+
     public const string ProductRead = "inv.product.read";
+
+    /// <summary>
+    /// Seeing and handling dispensary stock: anything scheduled that
+    /// needs a pharmacist (Product.RequiresPharmacist).
+    /// </summary>
+    /// <remarks>
+    /// Without it a user sees the over-the-counter catalogue only - in
+    /// product searches, at the till, on the product list and in stock
+    /// alerts. The filter is applied in the query itself, so a cashier
+    /// typing an exact dispensary code gets "no product" rather than a
+    /// product the screen then hides.
+    /// </remarks>
+    public const string ProductDispensary = "inv.product.dispensary";
+
+    /// <summary>
+    /// Adding a product and changing its description, filing, reorder
+    /// level and pack. Changing the selling price of an existing product
+    /// is inv.price.change.
+    /// </summary>
+    public const string ProductMaintain = "inv.product.maintain";
+
     public const string PriceChange = "inv.price.change";
+
+    /// <summary>
+    /// Starting a stock count and capturing what is on the shelf.
+    /// Posting the variances is inv.stocktake.post.
+    /// </summary>
+    public const string StockTakeCapture = "inv.stocktake.capture";
     public const string StockTakePost = "inv.stocktake.post";
     public const string SupplierMaintain = "inv.supplier.maintain";
 
@@ -53,7 +109,9 @@ public static class PermissionCode
     {
         SaleCreate, SaleDiscountAboveLimit, ReturnAuthorise,
         SessionCloseOtherUser, ScriptAuthorise, ScriptReverse,
-        ProductRead, PriceChange, StockTakePost, SupplierMaintain,
+        ScriptCapture, ScriptDispense, PatientMaintain,
+        ProductRead, ProductDispensary, ProductMaintain, PriceChange,
+        StockTakeCapture, StockTakePost, SupplierMaintain,
         ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,

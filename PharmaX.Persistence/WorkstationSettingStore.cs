@@ -25,6 +25,67 @@ public sealed class WorkstationSetting
     public DateTime UpdatedAtUtc { get; set; }
 }
 
+/// <summary>
+/// The pharmacy's own settings, kept in the same table as the tills'
+/// under a scope no till can have.
+/// </summary>
+/// <remarks>
+/// Till numbers are short digits, so "PHARMACY" can never collide with
+/// one, and ClaimUnassignedAsync only ever adopts rows with a blank
+/// scope, so it cannot take these for a single till. No migration is
+/// needed: the key is already (scope, key).
+/// </remarks>
+public sealed class PharmacySettingStore : IPharmacySettings
+{
+    public const string Scope = "PHARMACY";
+
+    private readonly PharmaXDbContext _db;
+    private readonly IClock _clock;
+
+    public PharmacySettingStore(PharmaXDbContext db, IClock clock)
+    {
+        _db = db;
+        _clock = clock;
+    }
+
+    public async Task<string?> GetAsync(string key,
+        CancellationToken ct = default)
+    {
+        var setting = await _db.WorkstationSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.WorkstationCode == Scope
+                                      && s.Key == key, ct);
+
+        return setting?.Value;
+    }
+
+    public async Task SetAsync(string key, string? value,
+        CancellationToken ct = default)
+    {
+        var setting = await _db.WorkstationSettings
+            .FirstOrDefaultAsync(s => s.WorkstationCode == Scope
+                                      && s.Key == key, ct);
+
+        if (setting is null)
+        {
+            _db.WorkstationSettings.Add(new WorkstationSetting
+            {
+                WorkstationCode = Scope,
+                Key = key,
+                Value = value,
+                UpdatedAtUtc = _clock.UtcNow
+            });
+        }
+        else
+        {
+            setting.Value = value;
+            setting.UpdatedAtUtc = _clock.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+}
+
 public sealed class WorkstationSettingStore : IWorkstationSettings
 {
     private readonly PharmaXDbContext _db;

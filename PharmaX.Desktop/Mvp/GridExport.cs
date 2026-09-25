@@ -47,11 +47,40 @@ internal static class GridExport
 
         if (save.ShowDialog(owner) != DialogResult.OK) return null;
 
-        writer.WriteTo(Build(grid, title, parameters, username),
-                       save.FileName);
+        var path = WorkbookPath(save.FileName);
 
-        return save.FileName;
+        try
+        {
+            writer.WriteTo(Build(grid, title, parameters, username), path);
+        }
+        catch (Exception ex) when (ex is IOException
+                                       or UnauthorizedAccessException)
+        {
+            // Most often the workbook is still open in Excel from the last
+            // export. Said as that, not as a fault in PharmaX.
+            MessageBox.Show(owner,
+                $"{Path.GetFileName(path)} could not be saved: {ex.Message}"
+                + "\n\nClose it if it is open in Excel, or choose another "
+                + "name, and export again.",
+                owner.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+            return null;
+        }
+
+        return path;
     }
+
+    /// <summary>
+    /// The name the workbook is saved under. The dialog offers only Excel
+    /// workbooks, but a name typed with another extension - "quote.csv" -
+    /// came back as it was typed, and the writer then refused it with an
+    /// exception the operator saw as "something went wrong".
+    /// </summary>
+    internal static string WorkbookPath(string chosen) =>
+        string.Equals(Path.GetExtension(chosen), ".xlsx",
+                      StringComparison.OrdinalIgnoreCase)
+            ? chosen
+            : Path.ChangeExtension(chosen, ".xlsx");
 
     /// <summary>
     /// The grid as a report result: its visible columns, its rows, and

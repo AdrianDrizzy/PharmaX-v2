@@ -84,7 +84,7 @@ public sealed class StocktakeService : IStocktakeService
     public async Task<Result<IReadOnlyList<StocktakeListItemDto>>> RecentAsync(
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.StockTakeCapture);
 
         var stocktakes = await _stocktakes.RecentAsync(ct: ct);
 
@@ -97,7 +97,7 @@ public sealed class StocktakeService : IStocktakeService
     public async Task<Result<StocktakeDto>> GetAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.StockTakeCapture);
 
         var stocktake = await _stocktakes.GetAsync(id, ct);
 
@@ -112,7 +112,7 @@ public sealed class StocktakeService : IStocktakeService
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.StockTakeCapture);
 
         if (string.IsNullOrWhiteSpace(scope.Description))
             return Result<StocktakeDto>.Fail("STK-001",
@@ -127,7 +127,7 @@ public sealed class StocktakeService : IStocktakeService
                 + "is still counting. Post or cancel it first.");
 
         var products = await _products.SearchAsync(scope.SearchTerm ?? "",
-                                                   take: 5000, ct);
+                                                   take: 5000, ct: ct);
 
         var included = products
             .Where(p => p.IsActive)
@@ -195,7 +195,7 @@ public sealed class StocktakeService : IStocktakeService
     public async Task<Result<StocktakeDto>> RecordCountAsync(Guid id,
         int lineNo, decimal? counted, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.StockTakeCapture);
 
         var stocktake = await _stocktakes.GetAsync(id, ct);
         if (stocktake is null)
@@ -217,7 +217,7 @@ public sealed class StocktakeService : IStocktakeService
     public async Task<Result> ExplainVarianceAsync(Guid id, string reason,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.StockTakeCapture);
 
         var stocktake = await _stocktakes.GetAsync(id, ct);
         if (stocktake is null) return Result.Fail("STK-000",
@@ -269,7 +269,7 @@ public sealed class StocktakeService : IStocktakeService
     public async Task<Result> CancelAsync(Guid id, string reason,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.StockTakeCapture);
 
         var stocktake = await _stocktakes.GetAsync(id, ct);
         if (stocktake is null) return Result.Fail("STK-000",

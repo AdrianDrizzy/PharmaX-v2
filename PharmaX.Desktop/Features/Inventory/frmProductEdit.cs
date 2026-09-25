@@ -22,10 +22,45 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
     }
 
     /// Runtime. Resolved by the container.
-    public frmProductEdit(ProductEditPresenter presenter) : this()
+    public frmProductEdit(ProductEditPresenter presenter,
+        Application.Security.IPermissionService permissions) : this()
     {
         _presenter = presenter;
+        _permissions = permissions;
         _presenter.Attach(this);
+    }
+
+    private readonly Application.Security.IPermissionService? _permissions;
+
+    /// <summary>
+    /// Opens the fields this user may change and no others, so nothing is
+    /// typed that Save will then refuse.
+    /// </summary>
+    /// <remarks>
+    /// Saving needs inv.product.maintain; changing an existing product's
+    /// selling price needs inv.price.change on top; a scheduled medicine
+    /// needs inv.product.dispensary. A new product's first price is set by
+    /// whoever adds it - there was no price before it to change.
+    /// </remarks>
+    private void ApplyPermissions()
+    {
+        if (_permissions is null) return;
+
+        bool Has(string code) =>
+            Application.Security.PermissionServiceExtensions.Has(
+                _permissions, code);
+
+        var maintains = Has(Domain.Security.PermissionCode.ProductMaintain);
+
+        btnSave.Visible = maintains;
+        txtRetail.ReadOnly = ProductId is not null
+                             && !Has(Domain.Security.PermissionCode.PriceChange);
+
+        if (!Has(Domain.Security.PermissionCode.ProductDispensary))
+            numSchedule.Maximum = 2;
+
+        if (!maintains)
+            Text = "PharmaX - Product (read only)";
     }
 
     public Guid? ProductId { get; private set; }
@@ -50,6 +85,7 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
     {
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        ApplyPermissions();
     }
 
     /// <summary>
@@ -133,6 +169,7 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         chkBatchTracked.Checked = product.IsBatchTracked;
         txtReorderLevel.Amount = product.ReorderLevel;
         txtPackSize.Text = product.PackSize ?? "";
+        txtUnitsPerPack.Amount = product.UnitsPerPack;
 
         Select(cboDepartment, product.DepartmentId);
         Select(cboCategory, product.CategoryId);
@@ -153,6 +190,7 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         IsBatchTracked: chkBatchTracked.Checked,
         ReorderLevel: txtReorderLevel.Amount ?? 0m,
         PackSize: Blank(txtPackSize.Text),
+        UnitsPerPack: txtUnitsPerPack.Amount,
         DepartmentId: Chosen(cboDepartment),
         CategoryId: Chosen(cboCategory),
         ManufacturerId: Chosen(cboManufacturer));

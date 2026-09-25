@@ -32,7 +32,7 @@ public partial class frmPatientMerge : PhxFormBase
 
         btnChooseKeep.Click += (_, _) => Choose(keep: true);
         btnChooseMerge.Click += (_, _) => Choose(keep: false);
-        btnMerge.Click += (_, _) => _ = MergeAsync();
+        btnMerge.Click += (_, _) => Operations.Enqueue(MergeAsync);
         btnCancel.Click += (_, _) => CloseView(false);
 
         btnMerge.Enabled = false;
@@ -58,7 +58,7 @@ public partial class frmPatientMerge : PhxFormBase
 
         if (keep) _keepId = id; else _mergeId = id;
 
-        _ = PreviewAsync();
+        Operations.Enqueue(PreviewAsync);
     }
 
     /// <summary>

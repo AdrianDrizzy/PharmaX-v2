@@ -14,6 +14,13 @@ public interface IPurchaseOrderListView : IView
     void ShowSuggestions(IReadOnlyList<PurchaseOrderLineDto> suggestions);
     string? PromptCancelReason();
 
+    /// <summary>
+    /// Opens the raise-order form, started from the suggestion where there
+    /// is one. True if an order was raised.
+    /// </summary>
+    bool PromptRaiseOrder(IReadOnlyList<PurchaseOrderLineDto>? suggestion);
+
+    event EventHandler? RaiseRequested;
     event EventHandler? RefreshRequested;
     event EventHandler? SuggestRequested;
     event EventHandler? CancelOrderRequested;
@@ -30,9 +37,10 @@ public sealed class PurchaseOrderListPresenter
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.SuggestRequested += (_, _) => _ = SuggestAsync();
-        View.CancelOrderRequested += (_, _) => _ = CancelAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.SuggestRequested += (_, _) => Enqueue(SuggestAsync);
+        View.RaiseRequested += (_, _) => Enqueue(RaiseAsync);
+        View.CancelOrderRequested += (_, _) => Enqueue(CancelAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -76,7 +84,15 @@ public sealed class PurchaseOrderListPresenter
             return;
         }
 
-        View.ShowSuggestions(result.Value);
+        // Straight into an order the buyer can edit and raise, rather than
+        // a list to read and then type in again (DEF-0012). The open
+        // orders stay on the screen behind it.
+        if (View.PromptRaiseOrder(result.Value)) await LoadAsync();
+    });
+
+    private Task RaiseAsync() => GuardAsync(async () =>
+    {
+        if (View.PromptRaiseOrder(null)) await LoadAsync();
     });
 
     private Task CancelAsync() => GuardAsync(async () =>
@@ -101,9 +117,18 @@ public partial class frmPurchaseOrderList : PhxFormBase,
     IPurchaseOrderListView
 {
     private readonly PurchaseOrderListPresenter? _presenter;
+    private readonly ViewFactory? _views;
+    private readonly Application.Security.IPermissionService? _permissions;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ProductRead;
+        Domain.Security.PermissionCode.PurchaseOrderRaise;
+
+    /// The buyer, or whoever receives the delivery against the order.
+    protected override bool MayOpen(
+        Application.Security.IPermissionService permissions) =>
+        Application.Security.PermissionServiceExtensions.HasAny(permissions,
+            Domain.Security.PermissionCode.PurchaseOrderRaise,
+            Domain.Security.PermissionCode.GoodsReceive);
 
     /// Designer only. Never called at runtime.
     public frmPurchaseOrderList()
@@ -114,6 +139,8 @@ public partial class frmPurchaseOrderList : PhxFormBase,
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnSuggest.Click += (_, _) =>
             SuggestRequested?.Invoke(this, EventArgs.Empty);
+        btnRaise.Click += (_, _) =>
+            RaiseRequested?.Invoke(this, EventArgs.Empty);
         btnCancelOrder.Click += (_, _) =>
             CancelOrderRequested?.Invoke(this, EventArgs.Empty);
         btnChoose.Click += (_, _) =>
@@ -129,10 +156,42 @@ public partial class frmPurchaseOrderList : PhxFormBase,
     }
 
     /// Runtime. Resolved by the container.
-    public frmPurchaseOrderList(PurchaseOrderListPresenter presenter) : this()
+    public frmPurchaseOrderList(PurchaseOrderListPresenter presenter,
+        ViewFactory views, Application.Security.IPermissionService permissions)
+        : this()
     {
         _presenter = presenter;
+        _views = views;
+        _permissions = permissions;
         _presenter.Attach(this);
+    }
+
+    /// <summary>
+    /// Raising and cancelling orders is the buyer's; someone who only
+    /// receives deliveries sees the orders without buttons that would only
+    /// be refused.
+    /// </summary>
+    private void ApplyPermissions()
+    {
+        if (_permissions is null) return;
+
+        if (Application.Security.PermissionServiceExtensions.Has(
+                _permissions, Domain.Security.PermissionCode.PurchaseOrderRaise))
+            return;
+
+        btnRaise.Visible = false;
+        btnSuggest.Visible = false;
+        btnCancelOrder.Visible = false;
+    }
+
+    public bool PromptRaiseOrder(IReadOnlyList<PurchaseOrderLineDto>? suggestion)
+    {
+        if (_views is null) return false;
+
+        using var form = _views.Create<frmPurchaseOrderEdit>();
+        if (suggestion is not null) form.Prefill(suggestion);
+
+        return form.ShowDialog(this) == DialogResult.OK && form.Raised is not null;
     }
 
     public bool IsPickerMode { get; private set; }
@@ -150,12 +209,14 @@ public partial class frmPurchaseOrderList : PhxFormBase,
             AcceptButton = btnChoose;
             btnCancelOrder.Visible = false;
             btnSuggest.Visible = false;
+            btnRaise.Visible = false;
         }
     }
 
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        ApplyPermissions();
         SeatSplitter();
         if (_presenter is not null) await _presenter.InitialiseAsync();
     }
@@ -211,6 +272,7 @@ public partial class frmPurchaseOrderList : PhxFormBase,
             "Why is this order being cancelled? The order is kept and "
             + "marked cancelled; it is never deleted.");
 
+    public event EventHandler? RaiseRequested;
     public event EventHandler? RefreshRequested;
     public event EventHandler? SuggestRequested;
     public event EventHandler? CancelOrderRequested;

@@ -32,6 +32,20 @@ public sealed class Product : AuditableEntity
     public Guid? DefaultSupplierId { get; private set; }
 
     /// <summary>
+    /// How many dispensing units - tablets, capsules, millilitres - the
+    /// priced pack holds. Null where the product is handed over in the
+    /// packs it is priced as, so that each unit dispensed is one pack.
+    /// </summary>
+    /// <remarks>
+    /// The shelf price and a society's tariff are both the price of a
+    /// pack, while a script is dispensed in units. Without this four
+    /// capsules and twenty-one were charged the same pack price, so a
+    /// short course over-charged the patient and a long one under-charged
+    /// the scheme (DEF-0021).
+    /// </remarks>
+    public decimal? UnitsPerPack { get; private set; }
+
+    /// <summary>
     /// What part of the shop this belongs to, and who makes it. Both
     /// optional: a pharmacy that keeps no department list still sells
     /// things, and the sales and stock reports already slice by
@@ -74,6 +88,16 @@ public sealed class Product : AuditableEntity
             IsBatchTracked = isBatchTracked
         };
     }
+
+    /// <summary>
+    /// The active ingredient, as the pharmacist would name it: what the
+    /// allergy screen matches a patient's allergies against, alongside
+    /// the description.
+    /// </summary>
+    public void SetGenericName(string? genericName) =>
+        GenericName = string.IsNullOrWhiteSpace(genericName)
+            ? null
+            : genericName.Trim();
 
     public void Rename(string description)
     {
@@ -145,6 +169,27 @@ public sealed class Product : AuditableEntity
     public void Reactivate() => IsActive = true;
 
     public void SetQuantityOnHand(decimal quantity) => QuantityOnHand = quantity;
+
+    public void SetUnitsPerPack(decimal? units)
+    {
+        if (units is decimal value && value <= 0m)
+            throw new DomainException(
+                "Units per pack must be more than zero, or left blank.");
+
+        UnitsPerPack = units;
+    }
+
+    /// <summary>
+    /// What dispensing so many units costs, where a pack costs
+    /// <paramref name="packPrice"/>: pro rata to the pack, rounded once to
+    /// the cent. A product with no units per pack is dispensed in whole
+    /// packs, so two of them cost two packs - the flat per-line price this
+    /// replaced charged one insulin refill for two.
+    /// </summary>
+    public Money PriceForUnits(Money packPrice, decimal quantity) =>
+        Money.Of(packPrice.Amount * quantity
+                 / (UnitsPerPack is decimal units && units > 0m ? units : 1m),
+                 packPrice.Currency);
 
     /// <summary>
     /// How the product is packed, as it is written on the shelf label:

@@ -20,6 +20,10 @@ public partial class frmQuotation : PhxFormBase
 {
     private readonly IQuotationService? _quotations;
     private readonly ViewFactory? _views;
+    private readonly IDocumentPrinter? _printer;
+    private readonly ReceiptHeaderFactory? _headers;
+    private readonly Application.Reporting.IWorkbookWriter? _workbooks;
+    private readonly Application.Abstractions.ICurrentUser? _user;
 
     private QuotationDto? _current;
 
@@ -35,23 +39,33 @@ public partial class frmQuotation : PhxFormBase
     {
         InitializeComponent();
 
-        btnStart.Click += (_, _) => _ = StartAsync();
-        btnFind.Click += (_, _) => _ = FindAsync();
-        btnRemove.Click += (_, _) => _ = RemoveAsync();
-        btnIssue.Click += (_, _) => _ = IssueAsync();
+        btnStart.Click += (_, _) => Operations.Enqueue(StartAsync);
+        btnFind.Click += (_, _) => Operations.Enqueue(() => FindAsync());
+        btnPrint.Click += (_, _) => Operations.Enqueue(PrintAsync);
+        btnExport.Click += (_, _) => Export();
+        btnOpen.Click += (_, _) => Operations.Enqueue(OpenExistingAsync);
+        btnRemove.Click += (_, _) => Operations.Enqueue(RemoveAsync);
+        btnIssue.Click += (_, _) => Operations.Enqueue(IssueAsync);
         btnClose.Click += (_, _) => CloseView(true);
 
-        scanBar.CodeEntered += (_, code) => _ = AddAsync(code);
+        scanBar.CodeEntered += (_, code) => Operations.Enqueue(() => AddAsync(code));
 
         ShowNoQuotation();
     }
 
     /// Runtime. Resolved by the container.
-    public frmQuotation(IQuotationService quotations, ViewFactory views)
+    public frmQuotation(IQuotationService quotations, ViewFactory views,
+        IDocumentPrinter printer, ReceiptHeaderFactory headers,
+        Application.Reporting.IWorkbookWriter workbooks,
+        Application.Abstractions.ICurrentUser user)
         : this()
     {
         _quotations = quotations;
         _views = views;
+        _printer = printer;
+        _headers = headers;
+        _workbooks = workbooks;
+        _user = user;
     }
 
     private void ShowNoQuotation()
@@ -64,7 +78,67 @@ public partial class frmQuotation : PhxFormBase
         btnFind.Enabled = false;
         btnRemove.Enabled = false;
         btnIssue.Enabled = false;
+        btnPrint.Enabled = false;
+        btnExport.Enabled = false;
     }
+
+    /// <summary>
+    /// Prints the quotation on this till's printer, under the pharmacy's
+    /// fiscal header, and says honestly whether it printed.
+    /// </summary>
+    private Task PrintAsync() => GuardAsync(async () =>
+    {
+        if (_current is null || _printer is null || _headers is null) return;
+
+        var result = await _printer.PrintAsync(
+            QuotationDocument.For(_current), _headers.Build());
+
+        if (result.Printed)
+            ShowInfo(result.Describe($"Quotation {_current.QuotationNumber}"));
+        else
+            ShowError(result.Describe($"Quotation {_current.QuotationNumber}"));
+    });
+
+    /// The lines as a workbook, for a customer who asked for it by email.
+    private void Export()
+    {
+        if (_current is null || _workbooks is null || _user is null) return;
+
+        var saved = GridExport.Offer(this, _workbooks, grdLines,
+            $"Quotation {_current.QuotationNumber}",
+            $"{_current.CustomerName}, valid until "
+            + $"{_current.ValidUntil:dd/MM/yyyy}", _user.Username);
+
+        if (saved is not null) ShowInfo($"Exported to {saved}");
+    }
+
+    /// <summary>
+    /// A quotation already issued, found by the number on it, to read or
+    /// print again. Converting it to a sale happens at the till.
+    /// </summary>
+    private Task OpenExistingAsync() => GuardAsync(async () =>
+    {
+        if (_quotations is null) return;
+
+        var number = frmTextPrompt.Ask(this, "Open quotation",
+            "Quotation number (on the customer's copy)");
+
+        if (string.IsNullOrWhiteSpace(number)) return;
+
+        var result = await _quotations.FindAsync(number);
+
+        if (result.IsFailure)
+        {
+            ShowError(result.Error.Message);
+            return;
+        }
+
+        txtCustomer.Text = result.Value.CustomerName;
+        txtCustomer.ReadOnly = true;
+        btnStart.Enabled = false;
+
+        Show(result.Value);
+    });
 
     private Task StartAsync() => GuardAsync(async () =>
     {
@@ -183,7 +257,9 @@ public partial class frmQuotation : PhxFormBase
         btnIssue.Enabled = false;
 
         ShowInfo(string.Format(CultureInfo.CurrentCulture,
-            "Quotation {0} issued to {1} for {2}, valid until {3:dd/MM/yyyy}.",
+            "Quotation {0} issued to {1} for {2}, valid until {3:dd/MM/yyyy}."
+            + "\n\nPrint it for the customer, or export it to send. It can "
+            + "be converted to a sale at the till (F10).",
             result.Value.QuotationNumber, result.Value.CustomerName,
             Format.Money(result.Value.Total), result.Value.ValidUntil));
     });
@@ -208,6 +284,11 @@ public partial class frmQuotation : PhxFormBase
         btnFind.Enabled = open;
         btnRemove.Enabled = open && quotation.Lines.Count > 0;
         btnIssue.Enabled = open && quotation.Lines.Count > 0;
+
+        // Printed and exported once it is the offer, not while it is
+        // still being put together.
+        btnPrint.Enabled = !open && quotation.Lines.Count > 0;
+        btnExport.Enabled = quotation.Lines.Count > 0;
     }
 
     /// The same guard the presenters use; this screen has no presenter.
@@ -219,6 +300,10 @@ public partial class frmQuotation : PhxFormBase
             await work();
         }
         catch (Domain.Exceptions.DomainException ex)
+        {
+            ShowError(ex.Message);
+        }
+        catch (Application.Security.PermissionDeniedException ex)
         {
             ShowError(ex.Message);
         }

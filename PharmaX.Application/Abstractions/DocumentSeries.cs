@@ -48,4 +48,36 @@ public static class DocumentSeries
         Sale, Dispensing, Return, Patient, Script, GoodsReceipt,
         PurchaseOrder, Stocktake, Quotation, Journal, Claim, Account
     };
+
+    /// <summary>
+    /// What a number in each series starts with: one prefix per series,
+    /// and no two alike.
+    /// </summary>
+    /// <remarks>
+    /// Numbers were prefixed with the series code's first letter, so a
+    /// sale, a script and a stocktake all printed as S-001-000003 and a
+    /// patient file and a purchase order both as P-001-000002 (DEF-0010).
+    /// A number on a label, a receipt or a phone call has to say what it
+    /// is. Sales, dispensings, returns and patient files keep the letter
+    /// they have always had, so every receipt and file card already in a
+    /// drawer still reads the same; the series that collided with them
+    /// take a second letter.
+    /// </remarks>
+    public static string PrefixOf(string series) => series switch
+    {
+        Sale => "S",
+        Dispensing => "D",
+        Return => "R",
+        Patient => "P",
+        Script => "SC",
+        GoodsReceipt => "G",
+        PurchaseOrder => "PO",
+        Stocktake => "ST",
+        Quotation => "Q",
+        Journal => "J",
+        Claim => "C",
+        Account => "A",
+        _ => throw new ArgumentOutOfRangeException(nameof(series), series,
+            "Every series needs its own prefix: add it to PrefixOf.")
+    };
 }

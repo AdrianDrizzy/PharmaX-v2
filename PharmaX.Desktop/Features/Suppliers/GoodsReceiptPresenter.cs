@@ -14,7 +14,14 @@ public interface IGoodsReceiptView : IView
     void ShowSupplier(string description);
     void ShowOrder(PurchaseOrderDto? order);
     void ShowLines(IReadOnlyList<GoodsReceiptLineDto> lines);
+
+    /// What each captured line's code names, line for line: null where
+    /// it names nothing.
+    void ShowProducts(IReadOnlyList<GoodsReceiptProductDto?> products);
     void ShowTotals(decimal captured, decimal? invoiced, decimal? variance);
+
+    /// Why the lines cannot be posted as they stand, or null to clear it.
+    void ShowProblem(string? problem);
     void ClearCapture();
 
     Guid? PromptSupplier();
@@ -49,10 +56,10 @@ public sealed class GoodsReceiptPresenter : PresenterBase<IGoodsReceiptView>
 
     protected override void Subscribe()
     {
-        View.SupplierRequested += (_, _) => _ = ChooseSupplierAsync();
-        View.OrderRequested += (_, _) => _ = ChooseOrderAsync();
-        View.LinesChanged += (_, _) => _ = PreviewAsync();
-        View.PostRequested += (_, _) => _ = PostAsync();
+        View.SupplierRequested += (_, _) => Enqueue(ChooseSupplierAsync);
+        View.OrderRequested += (_, _) => Enqueue(ChooseOrderAsync);
+        View.LinesChanged += (_, _) => Enqueue(PreviewAsync);
+        View.PostRequested += (_, _) => Enqueue(PostAsync);
         View.CloseRequested += (_, _) => View.CloseView(true);
     }
 
@@ -94,6 +101,7 @@ public sealed class GoodsReceiptPresenter : PresenterBase<IGoodsReceiptView>
         }
 
         View.ShowOrder(result.Value);
+        await PreviewAsync();
     });
 
     /// <summary>
@@ -105,10 +113,28 @@ public sealed class GoodsReceiptPresenter : PresenterBase<IGoodsReceiptView>
     {
         var edit = View.Collect();
 
+        // What each code names comes first and on its own, so the product
+        // beside a code is always the one it names. It used to arrive only
+        // with a preview that passed, so while any line still had a problem
+        // a code typed over another kept the old product's description.
+        if (edit.Lines.Count > 0)
+        {
+            var identified = await _receiving.IdentifyAsync(edit);
+
+            if (identified.IsSuccess)
+            {
+                View.ShowProducts(identified.Value);
+
+                // A newly identified line may have brought its cost price.
+                edit = View.Collect();
+            }
+        }
+
         if (edit.Lines.Count == 0)
         {
             View.ShowLines(Array.Empty<GoodsReceiptLineDto>());
             View.ShowTotals(0m, edit.InvoiceTotal, null);
+            View.ShowProblem(null);
             return;
         }
 
@@ -118,11 +144,14 @@ public sealed class GoodsReceiptPresenter : PresenterBase<IGoodsReceiptView>
         {
             // Shown on the status line rather than in a message box: the
             // operator is still typing, and a modal per keystroke would
-            // be unusable.
+            // be unusable. It used to be shown nowhere at all.
             View.ShowLines(Array.Empty<GoodsReceiptLineDto>());
             View.ShowTotals(0m, edit.InvoiceTotal, null);
+            View.ShowProblem(result.Error.Message);
             return;
         }
+
+        View.ShowProblem(null);
 
         var captured = result.Value.Sum(l => l.LineTotal);
 

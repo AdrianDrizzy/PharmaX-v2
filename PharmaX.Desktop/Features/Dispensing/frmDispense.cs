@@ -9,9 +9,9 @@ namespace PharmaX.Desktop.Features.Dispensing;
 
 /// <summary>
 /// Structurally the same as frmPOS, with one addition that changes the
-/// flow: clinical warnings must be acknowledged, and a scheduled item
-/// requires a pharmacist to authenticate at the moment of issue
-/// (DSP-006).
+/// flow: clinical warnings must be acknowledged, and a hard stop or a
+/// controlled medicine needs a pharmacist's authority at the moment of
+/// issue (DSP-006) - the operator's own, where they hold it.
 /// </summary>
 public partial class frmDispense : PhxFormBase, IDispenseView
 {
@@ -20,7 +20,7 @@ public partial class frmDispense : PhxFormBase, IDispenseView
     private readonly ViewFactory? _views;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.ScriptDispense;
 
     /// Designer only. Never called at runtime.
     public frmDispense()
@@ -34,6 +34,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             IssueRequested?.Invoke(this, EventArgs.Empty);
         btnReprint.Click += (_, _) =>
             LabelReprintRequested?.Invoke(this, EventArgs.Empty);
+        btnRemove.Click += (_, _) =>
+            RemoveItemRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) =>
             CloseRequested?.Invoke(this, EventArgs.Empty);
     }
@@ -156,21 +158,42 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             : null;
     }
 
-    public DirectionsDto? PromptDirections(Guid productId)
+    public int? SelectedLineNo =>
+        grdItems.CurrentRow?.Cells["LineNo"].Value is int lineNo
+            ? lineNo
+            : null;
+
+    public DirectionsDto? PromptDirections(ItemProposalDto proposal)
     {
+        ArgumentNullException.ThrowIfNull(proposal);
+
+        // Offered from the script, so the usual answer is Enter twice.
         var quantity = frmNumberPrompt.Ask(this, "Quantity",
-            "Quantity to dispense", 1m, decimals: 3);
+            proposal.FromScript
+                ? $"{proposal.Description}: quantity on the script"
+                : $"{proposal.Description}: quantity to dispense "
+                  + "(not on this script)",
+            proposal.Quantity, decimals: 3);
 
         if (quantity is null) return null;
 
         // Mandatory: a label without directions cannot be dispensed
         // (DSP-004), so a blank answer cancels the item.
         var directions = frmTextPrompt.Ask(this, "Directions",
-            "Directions as they will print on the label");
+            "Directions as they will print on the label",
+            proposal.Directions);
 
         return string.IsNullOrWhiteSpace(directions)
             ? null
-            : new DirectionsDto(quantity.Value, directions);
+            : new DirectionsDto(quantity.Value, directions.Trim());
+    }
+
+    public void ShowLabelScreen()
+    {
+        if (_views is null) return;
+
+        using var labels = _views.Create<frmLabels>();
+        labels.ShowDialog(this);
     }
 
     public Guid? PromptPharmacistAuthorisation(string reasonShown)
@@ -198,6 +221,7 @@ public partial class frmDispense : PhxFormBase, IDispenseView
     public event EventHandler<string>? ProductScanned;
     public event EventHandler? IssueRequested;
     public event EventHandler? LabelReprintRequested;
+    public event EventHandler? RemoveItemRequested;
     public event EventHandler? CloseRequested;
 
     /// <summary>

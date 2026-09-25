@@ -271,7 +271,7 @@ public class ReceivingFlowTests : IClassFixture<PharmaXFixture>
                 new[] { new PurchaseOrderLineEditDto(code, 10m, 8m) }));
 
             raised.IsSuccess.Should().BeTrue(raised.Error.Message);
-            raised.Value.OrderNumber.Should().MatchRegex(@"^P-001-\d{6}$");
+            raised.Value.OrderNumber.Should().MatchRegex(@"^PO-001-\d{6}$");
             raised.Value.Status.Should().Be("Sent");
 
             orderId = raised.Value.Id;

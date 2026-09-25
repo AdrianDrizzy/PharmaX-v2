@@ -17,11 +17,11 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
 
     protected override void Subscribe()
     {
-        View.SearchChanged += (_, _) => _ = LoadAsync();
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.ViewModeChanged += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
-        View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
+        View.SearchChanged += (_, _) => Enqueue(LoadAsync);
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.ViewModeChanged += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
+        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
 
         View.ChooseRequested += (_, _) =>
         {
@@ -101,7 +101,7 @@ public sealed class ProductEditPresenter : PresenterBase<IProductEditView>
 
     protected override void Subscribe()
     {
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

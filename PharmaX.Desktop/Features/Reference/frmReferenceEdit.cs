@@ -8,7 +8,7 @@ public partial class frmReferenceEdit : PhxFormBase, IReferenceEditView
     private readonly ReferenceEditPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.PriceChange;
+        Domain.Security.PermissionCode.ReferenceMaintain;
 
     /// Designer only. Never called at runtime.
     public frmReferenceEdit()

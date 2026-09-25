@@ -51,7 +51,7 @@ public partial class frmAlerts : PhxFormBase, IAlertView
         grdAlerts.DoubleClick += (_, _) =>
             OpenProductRequested?.Invoke(this, EventArgs.Empty);
 
-        _poll.Tick += (_, _) => _ = PollAsync();
+        _poll.Tick += (_, _) => Operations.EnqueueIfIdle(PollAsync);
     }
 
     /// Runtime. Resolved by the container.

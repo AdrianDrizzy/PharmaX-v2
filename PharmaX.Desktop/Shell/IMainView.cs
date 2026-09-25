@@ -7,12 +7,17 @@ public interface IMainView : Mvp.IView
     void SetSession(string sessionState);
     void SetConnectivity(string state);
 
-    /// The trading name, shown on the shell's home screen.
-    void SetPharmacy(string tradingName);
+    /// The pharmacy's name, and its address and VAT number beneath it,
+    /// at the head of the shell's home screen. Particulars may be empty.
+    void SetPharmacy(string name, string particulars);
 
     /// Redraws the logo, after system setup has changed it.
     void RefreshBranding();
-    void EnableMenu(string menuKey, bool enabled);
+    /// <summary>
+    /// Enables each menu entry, shortcut and home tile on its own, by its
+    /// menu key; a heading is enabled while anything under it is.
+    /// </summary>
+    void ApplyAccess(Func<string, bool> canOpen);
 
     /// Called only where test accounts have been seeded, so the window
     /// cannot be mistaken for a live till.

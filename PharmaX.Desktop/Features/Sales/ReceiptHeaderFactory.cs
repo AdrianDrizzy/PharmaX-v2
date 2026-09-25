@@ -1,4 +1,4 @@
-using PharmaX.Application.Abstractions;
+﻿using PharmaX.Application.Abstractions;
 using PharmaX.Application.Sales;
 
 namespace PharmaX.Desktop.Features.Sales;
@@ -12,24 +12,29 @@ namespace PharmaX.Desktop.Features.Sales;
 public sealed class ReceiptHeaderFactory
 {
     private readonly PharmaXOptions _options;
+    private readonly PharmacyProfile _pharmacy;
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
     private readonly Mvp.Branding _branding;
 
-    public ReceiptHeaderFactory(PharmaXOptions options, ICurrentUser user,
-                                IClock clock, Mvp.Branding branding)
+    public ReceiptHeaderFactory(PharmaXOptions options, PharmacyProfile pharmacy,
+                                ICurrentUser user, IClock clock,
+                                Mvp.Branding branding)
     {
         _options = options;
+        _pharmacy = pharmacy;
         _user = user;
         _clock = clock;
         _branding = branding;
     }
 
+    // Names, VAT number and address from the live profile, so a change
+    // at the System Console is on the very next receipt.
     public ReceiptHeaderDto Build() => new(
-        TradingName: _options.Pharmacy.TradingName,
-        RegisteredName: _options.Pharmacy.RegisteredName,
-        Address: _options.Pharmacy.Address,
-        VatNumber: _options.Pharmacy.VatNumber,
+        TradingName: _pharmacy.TradingName,
+        RegisteredName: _pharmacy.RegisteredName,
+        Address: _pharmacy.Address,
+        VatNumber: _pharmacy.VatNumber,
         LicenceNumber: _options.Pharmacy.LicenceNumber,
         BranchAndTill: $"Branch {_options.Workstation.BranchCode} "
                        + $"Till {_options.Workstation.TillNumber}",

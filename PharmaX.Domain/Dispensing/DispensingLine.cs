@@ -10,6 +10,8 @@ namespace PharmaX.Domain.Dispensing;
 /// </summary>
 public sealed class DispensingLine : Entity
 {
+    private readonly List<DispensingLineBatch> _batches = new();
+
     public Guid DispensingId { get; private set; }
     public int LineNo { get; private set; }
     public Guid ProductId { get; private set; }
@@ -25,6 +27,37 @@ public sealed class DispensingLine : Entity
 
     public Money TariffAmount { get; private set; } = Money.Zero();
     public Money SchemeContribution { get; private set; } = Money.Zero();
+
+    /// <summary>
+    /// Where the quantity comes from, batch by batch, earliest expiry
+    /// first.
+    /// </summary>
+    /// <remarks>
+    /// A line used to carry one batch. Twenty-one capsules against a
+    /// first batch holding four was accepted when it was added and then
+    /// refused at issue - "batch holds 4, cannot issue 21" - so the
+    /// pharmacist had to cancel and dispense a smaller quantity than was
+    /// prescribed. The quantity is now spread across as many batches as
+    /// it takes, and BatchId, BatchNumber and BatchExpiry above describe
+    /// the first of them: the earliest expiry, which is the one the label
+    /// has to show.
+    /// </remarks>
+    public IReadOnlyList<DispensingLineBatch> Batches => _batches;
+
+    /// <summary>
+    /// The batches as the label prints them: "AMOX50-A x4, AMOX50-B x17".
+    /// </summary>
+    public string? BatchSummary => _batches.Count switch
+    {
+        0 => BatchNumber,
+        1 => _batches[0].BatchNumber,
+        // Earliest expiry first, however the rows came back from the
+        // database: a reprint must read the same as the first label.
+        _ => string.Join(", ", _batches.OrderBy(b => b.ExpiryDate)
+            .ThenBy(b => b.BatchNumber, StringComparer.Ordinal).Select(b =>
+            string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{b.BatchNumber} x{b.Quantity:0.###}")))
+    };
 
     /// What the patient pays. Never negative: a scheme paying more than
     /// the tariff does not put money in the patient's pocket.
@@ -73,6 +106,51 @@ public sealed class DispensingLine : Entity
     }
 
     /// <summary>
+    /// Records which batches the quantity is taken from, replacing any
+    /// earlier allocation.
+    /// </summary>
+    /// <remarks>
+    /// Called when the item is added, so the pharmacist sees the batches
+    /// on the screen, and again inside the issue transaction against the
+    /// stock as it is at that moment - another till may have sold from
+    /// the same batch in between, and the issue must move what is really
+    /// there.
+    /// </remarks>
+    public void AllocateBatches(IEnumerable<BatchAllocation> allocations)
+    {
+        ArgumentNullException.ThrowIfNull(allocations);
+
+        var ordered = allocations
+            .OrderBy(a => a.Expiry)
+            .ThenBy(a => a.BatchNumber, StringComparer.Ordinal)
+            .ToList();
+
+        if (ordered.Count == 0)
+            throw new DomainException(
+                $"{Description}: no batch to dispense from.");
+
+        if (ordered.Exists(a => a.Quantity <= 0m))
+            throw new DomainException(
+                "A batch allocation must be greater than zero.");
+
+        var total = ordered.Sum(a => a.Quantity);
+
+        if (total != Quantity)
+            throw new DomainException(
+                $"{Description}: the batches supply {total:0.###} but "
+                + $"{Quantity:0.###} is being dispensed.");
+
+        _batches.Clear();
+
+        foreach (var allocation in ordered)
+            _batches.Add(DispensingLineBatch.Create(Id, allocation));
+
+        BatchId = ordered[0].BatchId;
+        BatchNumber = ordered[0].BatchNumber;
+        BatchExpiry = ordered[0].Expiry;
+    }
+
+    /// <summary>
     /// Records that a generic was handed over in place of what was
     /// prescribed. The original product is kept, because the substitution
     /// itself is a fact the pharmacist may have to account for.
@@ -91,6 +169,37 @@ public sealed class DispensingLine : Entity
 
         SchemeContribution = contribution;
     }
+}
+
+/// <summary>
+/// So much of one batch, as the allocator chose it.
+/// </summary>
+public sealed record BatchAllocation(Guid BatchId, string BatchNumber,
+                                     DateOnly Expiry, decimal Quantity);
+
+/// <summary>
+/// One batch a dispensing line draws on, and how much it takes from it.
+/// </summary>
+public sealed class DispensingLineBatch : Entity
+{
+    public Guid DispensingLineId { get; private set; }
+    public Guid BatchId { get; private set; }
+    public string BatchNumber { get; private set; } = "";
+    public DateOnly ExpiryDate { get; private set; }
+    public decimal Quantity { get; private set; }
+
+    private DispensingLineBatch() { }
+
+    internal static DispensingLineBatch Create(Guid lineId,
+                                               BatchAllocation allocation) =>
+        new()
+        {
+            DispensingLineId = lineId,
+            BatchId = allocation.BatchId,
+            BatchNumber = allocation.BatchNumber,
+            ExpiryDate = allocation.Expiry,
+            Quantity = allocation.Quantity
+        };
 }
 
 public enum WarningSeverity { Information = 1, Caution = 2, HardStop = 3 }
@@ -115,6 +224,14 @@ public sealed class ClinicalWarning : Entity
     public Guid? AcknowledgedBy { get; private set; }
     public string? OverrideReason { get; private set; }
 
+    /// <summary>
+    /// The pharmacist whose own credentials released a hard stop, where
+    /// the person working the screen could not release it themselves.
+    /// Null where the operator held the authority, or for a softer
+    /// warning that needs no release.
+    /// </summary>
+    public Guid? AuthorisedBy { get; private set; }
+
     public bool IsHardStop => Severity == WarningSeverity.HardStop;
 
     private ClinicalWarning() { }
@@ -131,7 +248,8 @@ public sealed class ClinicalWarning : Entity
 
     internal void AssignTo(Guid dispensingId) => DispensingId = dispensingId;
 
-    public void Acknowledge(Guid userId, string? reason)
+    public void Acknowledge(Guid userId, string? reason,
+                            Guid? authorisedBy = null)
     {
         if (IsHardStop && string.IsNullOrWhiteSpace(reason))
             throw new DomainException(
@@ -140,6 +258,9 @@ public sealed class ClinicalWarning : Entity
 
         IsAcknowledged = true;
         AcknowledgedBy = userId;
-        OverrideReason = reason;
+        OverrideReason = string.IsNullOrWhiteSpace(reason)
+            ? null
+            : reason.Trim();
+        AuthorisedBy = authorisedBy;
     }
 }

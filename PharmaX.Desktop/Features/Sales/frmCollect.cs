@@ -48,7 +48,7 @@ public partial class frmCollect : PhxFormBase, ICollectView
             FilterChanged?.Invoke(this, EventArgs.Empty);
         };
 
-        _poll.Tick += (_, _) => _ = PollAsync();
+        _poll.Tick += (_, _) => Operations.EnqueueIfIdle(PollAsync);
 
         btnCollect.Click += (_, _) =>
             CollectRequested?.Invoke(this, EventArgs.Empty);

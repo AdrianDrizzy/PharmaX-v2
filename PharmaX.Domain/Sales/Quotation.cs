@@ -34,6 +34,12 @@ public sealed class Quotation : AggregateRoot
     public DateOnly ValidUntil { get; private set; }
 
     public QuotationStatus Status { get; private set; } = QuotationStatus.Open;
+
+    /// <summary>
+    /// The sale the quotation became, once one has been paid for. What
+    /// stops the same quotation being sold, and its stock taken, twice.
+    /// </summary>
+    public Guid? SaleId { get; private set; }
     public string? Notes { get; private set; }
 
     public IReadOnlyList<QuotationLine> Lines => _lines;
@@ -123,6 +129,22 @@ public sealed class Quotation : AggregateRoot
                 + "Quote again at today's prices.");
 
         Status = QuotationStatus.Accepted;
+    }
+
+    /// <summary>
+    /// Records the finalised sale the quotation became.
+    /// </summary>
+    public void AcceptInto(Guid saleId, DateOnly today)
+    {
+        if (SaleId is not null)
+            throw new DomainException(
+                $"Quotation {QuotationNumber} has already been sold.");
+
+        if (saleId == Guid.Empty)
+            throw new DomainException("That is not a sale.");
+
+        Accept(today);
+        SaleId = saleId;
     }
 
     public void MarkExpired() => Status = QuotationStatus.Expired;

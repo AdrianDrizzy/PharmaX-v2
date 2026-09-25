@@ -19,6 +19,8 @@ public sealed class SaleServiceBuilder
     public InMemoryDispensingRepository Dispensings { get; } = new();
     public InMemoryLedgerRepository Ledger { get; } = new();
     public InMemoryAccountRepository Accounts { get; } = new();
+    public InMemoryQuotationRepository Quotations { get; } = new();
+    public InMemoryUserRepository Users { get; } = new();
 
     /// Whether trading writes journals. On, as on a real installation.
     public bool AutoPost { get; init; } = true;
@@ -92,7 +94,7 @@ public sealed class SaleServiceBuilder
             Clock);
 
     public SaleService Build() =>
-        new(Sales, Products, Batches, Dispensings, Journals(), Accounts,
-            AccountService(), Stock, Numbering, PermissionService(), Audit,
-            Outbox, UnitOfWork, User, Clock);
+        new(Sales, Products, Batches, Dispensings, Quotations, Users,
+            Journals(), Accounts, AccountService(), Stock, Numbering,
+            PermissionService(), Audit, Outbox, UnitOfWork, User, Clock);
 }

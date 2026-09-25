@@ -150,10 +150,29 @@ public sealed class TestCatalogueSeeder
             product.SetReorderLevel(Math.Ceiling(item.Quantity / 4m));
             product.SetQuantityOnHand(item.Quantity);
 
+            // The dispensary lines are priced per pack, and the pack size
+            // is on the description: "21s", "60s". Dispensing fewer is
+            // priced pro rata against it (DEF-0021).
+            product.SetUnitsPerPack(item.Code switch
+            {
+                "AMOX50" => 21m,
+                "METF85" => 60m,
+                _ => null
+            });
+
             _db.Products.Add(product);
             added++;
 
-            if (!item.Batched) continue;
+            // The opening balance goes on the stock ledger as a movement,
+            // so the Stock Transactions report explains every unit on the
+            // shelf from the first day rather than starting mid-air.
+            if (!item.Batched)
+            {
+                _db.StockMovements.Add(StockMovement.Record(product.Id, null,
+                    MovementType.Receipt, item.Quantity, item.Quantity, now,
+                    reasonCode: "OPENING", sourceDocumentType: "Opening"));
+                continue;
+            }
 
             // The near batch holds a third of the stock and expires
             // first, so a sale of more than a third has to draw from
@@ -161,13 +180,24 @@ public sealed class TestCatalogueSeeder
             var near = Math.Round(item.Quantity / 3m, 0,
                                   MidpointRounding.AwayFromZero);
 
-            _db.Batches.Add(Batch.Receive(product.Id,
+            var first = Batch.Receive(product.Id,
                 $"{item.Code}-A", today.AddMonths(4), near,
-                product.CostPrice, now));
+                product.CostPrice, now);
 
-            _db.Batches.Add(Batch.Receive(product.Id,
+            var second = Batch.Receive(product.Id,
                 $"{item.Code}-B", today.AddMonths(14),
-                item.Quantity - near, product.CostPrice, now));
+                item.Quantity - near, product.CostPrice, now);
+
+            _db.Batches.Add(first);
+            _db.Batches.Add(second);
+
+            _db.StockMovements.Add(StockMovement.Record(product.Id, first.Id,
+                MovementType.Receipt, near, near, now,
+                reasonCode: "OPENING", sourceDocumentType: "Opening"));
+
+            _db.StockMovements.Add(StockMovement.Record(product.Id, second.Id,
+                MovementType.Receipt, item.Quantity - near, item.Quantity,
+                now, reasonCode: "OPENING", sourceDocumentType: "Opening"));
 
             added += 2;
         }

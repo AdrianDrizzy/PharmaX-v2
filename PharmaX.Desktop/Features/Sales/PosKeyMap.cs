@@ -23,6 +23,16 @@ public static class PosKeyMap
     public const Keys Payment = Keys.F6;
     public const Keys Close = Keys.F7;
     public const Keys Hold = Keys.F8;
+
+    /// Takes a held basket back up, at any till.
+    public const Keys Recall = Keys.F9;
+
+    /// Brings an issued quotation onto the sale.
+    public const Keys Quotation = Keys.F10;
+
+    /// Prints the last receipt again, for the customer who needs a copy
+    /// or the printer that jammed.
+    public const Keys Reprint = Keys.F12;
     public const Keys VoidLine = Keys.Escape;
 
     /// <summary>
@@ -38,6 +48,9 @@ public static class PosKeyMap
         (Payment, "F6 Pay"),
         (Close, "F7 Close"),
         (Hold, "F8 Hold"),
+        (Recall, "F9 Recall"),
+        (Quotation, "F10 Quotation"),
+        (Reprint, "F12 Reprint"),
         (VoidLine, "Esc Void line")
     };
 }

@@ -75,7 +75,7 @@ public sealed class AttachmentService : IAttachmentService
     {
         // A patient's scans are clinical information, held to the same
         // permission as the rest of the file.
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         var stored = await _patients.AttachmentsAsync(patientId, ct);
 
@@ -87,7 +87,7 @@ public sealed class AttachmentService : IAttachmentService
         string sourcePath, AttachmentKind kind, string description,
         Guid? scriptId = null, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         var patient = await _patients.GetAsync(patientId, ct);
 
@@ -141,7 +141,7 @@ public sealed class AttachmentService : IAttachmentService
     public async Task<Result<string>> LocateAsync(Guid attachmentId,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptAuthorise);
+        _permissions.Demand(PermissionCode.PatientMaintain);
 
         var attachment = await _patients.AttachmentAsync(attachmentId, ct);
 

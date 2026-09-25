@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IWorkstationSettings,
             WorkstationSettingStore>();
+        services.AddScoped<IPharmacySettings, PharmacySettingStore>();
 
         // Both interceptors depend only on singletons, so they can be
         // singletons themselves. That matters: the context factory below

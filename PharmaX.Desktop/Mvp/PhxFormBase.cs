@@ -15,8 +15,91 @@ public class PhxFormBase : Form, IView
 
     protected IConnectivityMonitor? Connectivity { get; private set; }
 
+    // The title as the screen asked for it, before branding. Kept so the
+    // window can be re-titled either way when the switch is changed.
+    private string _requestedTitle = "";
+
+    /// <summary>
+    /// The window title, with "PharmaX" replaced by the trading name
+    /// when the pharmacy has chosen that at the System Console.
+    /// </summary>
+    /// <remarks>
+    /// Setting still takes "PharmaX - Sign in" exactly as every designer
+    /// writes it; only what the window shows changes. Reading returns
+    /// what is shown, which is what the operator sees.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+    public override string Text
+    {
+        get => base.Text;
+        set
+        {
+            _requestedTitle = value ?? "";
+            base.Text = WindowTitles.Brand(_requestedTitle);
+        }
+    }
+
+    /// <summary>
+    /// Re-applies the pharmacy's branding to this window after the
+    /// details have changed.
+    /// </summary>
+    internal void RefreshBrand()
+    {
+        base.Text = WindowTitles.Brand(_requestedTitle);
+        OnBrandChanged();
+    }
+
+    /// Where a screen shows the product's name somewhere other than its
+    /// title - the sign-in heading - it re-reads it here.
+    protected virtual void OnBrandChanged() { }
+
     /// Override in a derived form to require a permission to open it.
     protected virtual string? RequiredPermission => null;
+
+    /// <summary>
+    /// The permission this screen needs, read by ViewFactory before the
+    /// window is shown.
+    /// </summary>
+    /// <remarks>
+    /// Screens declared RequiredPermission from the start and nothing ever
+    /// read it, so any form could be opened by anyone who could reach its
+    /// menu key - a shortcut under a disabled heading, a home tile - and
+    /// only the service behind it said no, after the operator had filled
+    /// the screen in (DEF-0027).
+    /// </remarks>
+    internal string? PermissionToOpen => RequiredPermission;
+
+    /// <summary>
+    /// Whether this user may open the screen at all. The declared
+    /// permission by default - one a supervisor could authorise still
+    /// opens, because the screen is where the authorisation is asked for -
+    /// and overridden where a screen serves more than one kind of user.
+    /// </summary>
+    protected virtual bool MayOpen(
+        Application.Security.IPermissionService permissions)
+    {
+        ArgumentNullException.ThrowIfNull(permissions);
+
+        return RequiredPermission is not string code
+               || permissions.Check(code)
+                  != Application.Security.PermissionOutcome.Denied;
+    }
+
+    internal bool MayOpenWith(
+        Application.Security.IPermissionService permissions) =>
+        MayOpen(permissions);
+
+    private OperationQueue? _operations;
+
+    /// <summary>
+    /// This screen's operations, one at a time. See OperationQueue.
+    /// </summary>
+    protected OperationQueue Operations => _operations ??= new OperationQueue(
+        ex =>
+        {
+            ErrorHandler.Log(ex);
+            if (!IsDisposed) ShowError(ErrorHandler.Describe(ex));
+        });
 
     /// <summary>
     /// The shell reports connectivity in its status strip, so it turns
@@ -203,15 +286,15 @@ public class PhxFormBase : Form, IView
     // ---- IView -----------------------------------------------------------
 
     public void ShowError(string message) =>
-        MessageBox.Show(this, message, "PharmaX",
+        MessageBox.Show(this, message, WindowTitles.Caption,
             MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
     public void ShowInfo(string message) =>
-        MessageBox.Show(this, message, "PharmaX",
+        MessageBox.Show(this, message, WindowTitles.Caption,
             MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     public bool Confirm(string question) =>
-        MessageBox.Show(this, question, "PharmaX",
+        MessageBox.Show(this, question, WindowTitles.Caption,
             MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 
     public void SetBusy(bool busy) =>

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Alerts;
 using PharmaX.Application.Offline;
@@ -25,6 +25,7 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 {
     private readonly ICurrentUser _user;
     private readonly PharmaXOptions _options;
+    private readonly PharmacyProfile _pharmacy;
     private readonly ITillSessionService _sessions;
     private readonly IPermissionService _permissions;
     private readonly IConnectivityMonitor _connectivity;
@@ -33,18 +34,22 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     private readonly IServiceScopeFactory _scopes;
 
     public MainPresenter(ICurrentUser user, PharmaXOptions options,
-        ITillSessionService sessions, IPermissionService permissions,
+        PharmacyProfile pharmacy, ITillSessionService sessions, IPermissionService permissions,
         IConnectivityMonitor connectivity, IAuthenticationService auth,
         ViewFactory views, IServiceScopeFactory scopes)
     {
-        _user = user; _options = options; _sessions = sessions;
+        _user = user; _options = options; _pharmacy = pharmacy;
+        _sessions = sessions;
         _permissions = permissions; _connectivity = connectivity;
         _auth = auth; _views = views; _scopes = scopes;
     }
 
     protected override void Subscribe()
     {
-        View.MenuSelected += (_, key) => _ = OnMenuAsync(key);
+        View.MenuSelected += (_, key) => Enqueue(() => OnMenuAsync(key));
+        // Not queued: each count reads through its own scope, and the
+        // queue is held for as long as a menu screen is open - a tick
+        // every fifteen seconds would pile up behind it all afternoon.
         View.WaitingTick += (_, _) => _ = ShowWaitingAsync();
         View.WaitingTick += (_, _) => _ = ShowAlertsAsync();
         _connectivity.StateChanged += (_, s) => View.SetConnectivity(Describe(s));
@@ -52,7 +57,7 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 
     public override async Task InitialiseAsync()
     {
-        View.SetPharmacy(_options.Pharmacy.TradingName);
+        ShowPharmacy();
         View.SetUser(_user.Username, string.Join(", ", RolesOf(_user)));
 
         // A window that is running against seeded test credentials says
@@ -66,35 +71,10 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         var session = await _sessions.CurrentAsync();
         View.SetSession(session is null ? "No open session" : "Session open");
 
-        // Hide what this user may not do, then let the service refuse
-        // anyway if the menu is ever wrong.
-        View.EnableMenu("pos",
-            _permissions.Check(PermissionCode.SaleCreate)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("returns",
-            _permissions.Check(PermissionCode.ReturnAuthorise)
-                != PermissionOutcome.Denied);
-        View.EnableMenu("dispensary",
-            _permissions.Check(PermissionCode.ScriptAuthorise)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("inventory",
-            _permissions.Check(PermissionCode.ProductRead)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("goods-receipt",
-            _permissions.Check(PermissionCode.GoodsReceive)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("stocktake",
-            _permissions.Check(PermissionCode.ProductRead)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("reports",
-            _permissions.Check(PermissionCode.ReportOperational)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("accounts",
-            _permissions.Check(PermissionCode.LedgerRead)
-                == PermissionOutcome.Granted);
-        View.EnableMenu("admin",
-            _permissions.Check(PermissionCode.UserRoleAssign)
-                == PermissionOutcome.Granted);
+        // Offer each screen on its own merits, from the same policy the
+        // guard in OnMenuAsync reads - and every service still refuses
+        // for itself if the menu is ever wrong.
+        View.ApplyAccess(key => ScreenAccess.CanOpen(key, _permissions));
 
         await ShowWaitingAsync();
         await ShowAlertsAsync();
@@ -110,8 +90,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     /// </remarks>
     private async Task ShowAlertsAsync()
     {
-        if (_permissions.Check(PermissionCode.ProductRead)
-                != PermissionOutcome.Granted)
+        // Only for the people who look after stock, the same people the
+        // Stock Alerts screen is offered to.
+        if (!ScreenAccess.CanOpen("alerts", _permissions))
             return;
 
         try
@@ -202,6 +183,17 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 
     private Task OnMenuAsync(string key) => GuardAsync(async () =>
     {
+        // The menu and tiles already hide what this user may not open,
+        // so reaching here with one means a shortcut or a stale window.
+        // Refused, and recorded, rather than opened and left to the
+        // service to refuse after the screen has been filled in.
+        if (ScreenAccess.Keys.Contains(key)
+            && !ScreenAccess.CanOpen(key, _permissions))
+        {
+            View.ShowError("You do not have permission for this action.");
+            return;
+        }
+
         switch (key)
         {
             case "pos":
@@ -376,10 +368,10 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 ShowAbout();
                 return;
             case "exit":
-                if (Confirmed("Close PharmaX?")) View.CloseView(true);
+                if (Confirmed("Close the application?")) View.CloseView(true);
                 return;
             default:
-                View.ShowInfo("That part of PharmaX is not built yet.");
+                View.ShowInfo("That part of the system is not built yet.");
                 break;
         }
 
@@ -422,7 +414,7 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         View.ShowInfo(
             $"PharmaX {typeof(MainPresenter).Assembly.GetName().Version}"
             + Environment.NewLine + Environment.NewLine
-            + $"{_options.Pharmacy.TradingName}" + Environment.NewLine
+            + $"{_pharmacy.TradingName}" + Environment.NewLine
             + $"Branch {_options.Workstation.BranchCode}, "
             + $"till {_options.Workstation.TillNumber}" + Environment.NewLine
             + $"Signed in as {_user.Username}");
@@ -452,6 +444,27 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         using var window = _views.Create<frmSystemInfo>();
         window.Mode = mode;
         window.ShowDialog((Form)View);
+
+        // The pharmacy's details may have been changed at the console, and
+        // the home screen's heading is not a window title, so it is re-read.
+        ShowPharmacy();
+    }
+
+    /// <summary>
+    /// Heads the home screen with the pharmacy - its trading name, and
+    /// its address and VAT number - for whichever user has signed in.
+    /// </summary>
+    /// <remarks>
+    /// "Welcome" rather than the product's name while the pharmacy has
+    /// not been named at the System Console; the logo beside it still
+    /// says whose till this is.
+    /// </remarks>
+    private void ShowPharmacy()
+    {
+        var details = _pharmacy.Current;
+
+        View.SetPharmacy(PharmacyHeading.Name(details, "Welcome"),
+                         PharmacyHeading.Particulars(details));
     }
 
     private void ShowStocktakes(bool startNew)

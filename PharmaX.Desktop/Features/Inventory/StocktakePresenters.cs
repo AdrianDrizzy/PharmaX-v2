@@ -53,10 +53,10 @@ public sealed class StocktakeListPresenter
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.OpenNewRequested += (_, _) => _ = OpenNewAsync();
-        View.ContinueRequested += (_, _) => _ = ContinueAsync(View.SelectedId);
-        View.CancelStocktakeRequested += (_, _) => _ = CancelAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.OpenNewRequested += (_, _) => Enqueue(OpenNewAsync);
+        View.ContinueRequested += (_, _) => Enqueue(() => ContinueAsync(View.SelectedId));
+        View.CancelStocktakeRequested += (_, _) => Enqueue(CancelAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();
@@ -140,10 +140,10 @@ public sealed class StocktakeCapturePresenter
 
     protected override void Subscribe()
     {
-        View.CountRequested += (_, _) => _ = CountAsync();
-        View.ClearCountRequested += (_, _) => _ = ClearAsync();
+        View.CountRequested += (_, _) => Enqueue(CountAsync);
+        View.ClearCountRequested += (_, _) => Enqueue(ClearAsync);
         View.VarianceFilterToggled += (_, _) => Redraw();
-        View.PostRequested += (_, _) => _ = PostAsync();
+        View.PostRequested += (_, _) => Enqueue(PostAsync);
         View.CloseRequested += (_, _) => View.CloseView(true);
     }
 

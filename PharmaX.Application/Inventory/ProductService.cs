@@ -60,8 +60,12 @@ public sealed class ProductService : IProductService
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
-        var products = await _products.SearchAsync(term, take, ct);
-        var total = await _products.CountAsync(term, ct);
+        // A cashier's catalogue is the over-the-counter one, filtered in
+        // the query rather than on the screen.
+        var scope = _permissions.ProductScope();
+
+        var products = await _products.SearchAsync(term, take, scope, ct);
+        var total = await _products.CountAsync(term, scope, ct);
 
         IReadOnlyList<ProductListItemDto> items =
             products.Select(ProductListItemDto.From).ToList();
@@ -74,8 +78,10 @@ public sealed class ProductService : IProductService
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
-        var products = await _products.SearchAsync(term, take, ct);
-        var total = await _products.CountAsync(term, ct);
+        var scope = _permissions.ProductScope();
+
+        var products = await _products.SearchAsync(term, take, scope, ct);
+        var total = await _products.CountAsync(term, scope, ct);
 
         var batches = await _batches.ForProductsAsync(
             products.Select(p => p.Id).ToList(), ct);
@@ -130,19 +136,33 @@ public sealed class ProductService : IProductService
 
         var product = await _products.GetAsync(id, ct);
 
-        return product is null
+        // Out of scope reads exactly like absent: saying "you may not see
+        // that one" confirms it exists.
+        return product is null || !InScope(product)
             ? Result<ProductDto>.Fail("INV-000", "Product not found.")
             : Result<ProductDto>.Ok(ProductDto.From(product));
     }
+
+    private bool InScope(Product product) =>
+        !product.RequiresPharmacist
+        || _permissions.ProductScope() == ProductScope.All;
 
     public async Task<Result<Guid>> CreateAsync(ProductEditDto edit,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.PriceChange);
+        // Adding a product sets its first price, which is not a price
+        // change: there was no price before it. Maintaining the catalogue
+        // is its own permission, so a stock controller can add what a
+        // delivery brought in without being handed the shelf prices.
+        _permissions.Demand(PermissionCode.ProductMaintain);
 
-        var existing = await _products.FindByCodeOrBarcodeAsync(edit.Code, ct);
+        if (edit.Schedule >= 3)
+            _permissions.Demand(PermissionCode.ProductDispensary);
+
+        var existing = await _products.FindByCodeOrBarcodeAsync(edit.Code,
+            ct: ct);
         if (existing is not null)
             return Result<Guid>.Fail("INV-002",
                 $"Product code {edit.Code} is already in use.");
@@ -158,6 +178,11 @@ public sealed class ProductService : IProductService
 
         product.ChangeCostPrice(Money.Of(edit.CostPrice));
         product.SetReorderLevel(edit.ReorderLevel);
+        product.SetGenericName(edit.GenericName);
+        product.SetPackSize(edit.PackSize);
+        product.SetUnitsPerPack(edit.UnitsPerPack is > 0m
+            ? edit.UnitsPerPack
+            : null);
 
         product.Classify(edit.DepartmentId, edit.CategoryId,
                          edit.ManufacturerId);
@@ -176,11 +201,15 @@ public sealed class ProductService : IProductService
         ArgumentNullException.ThrowIfNull(edit);
 
         var product = await _products.GetAsync(id, ct);
-        if (product is null) return Result.Fail("INV-000", "Product not found.");
+        if (product is null || !InScope(product))
+            return Result.Fail("INV-000", "Product not found.");
 
-        // Only a price change needs the price permission; renaming does
-        // not, and demanding it for everything would put the whole screen
-        // behind a permission most staff do not need.
+        // Editing the catalogue at all needs the maintenance permission.
+        // Nothing was demanded here before, so anyone who could read a
+        // product - a cashier - could rename it or change its cost.
+        _permissions.Demand(PermissionCode.ProductMaintain);
+
+        // Only a price change needs the price permission on top.
         if (product.RetailPrice.Amount != edit.RetailPrice)
         {
             _permissions.Demand(PermissionCode.PriceChange);
@@ -196,9 +225,16 @@ public sealed class ProductService : IProductService
         product.Rename(edit.Description);
         product.ChangeCostPrice(Money.Of(edit.CostPrice));
         product.SetReorderLevel(edit.ReorderLevel);
+        product.SetGenericName(edit.GenericName);
+        product.SetPackSize(edit.PackSize);
+        product.SetUnitsPerPack(edit.UnitsPerPack is > 0m
+            ? edit.UnitsPerPack
+            : null);
 
         product.Classify(edit.DepartmentId, edit.CategoryId,
                          edit.ManufacturerId);
+
+        _audit.Applied("inv.product.maintain", "Product", product.Id);
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();
@@ -207,7 +243,7 @@ public sealed class ProductService : IProductService
     public async Task<Result> DeactivateAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.PriceChange);
+        _permissions.Demand(PermissionCode.ProductMaintain);
 
         var product = await _products.GetAsync(id, ct);
         if (product is null) return Result.Fail("INV-000", "Product not found.");

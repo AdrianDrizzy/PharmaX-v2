@@ -85,9 +85,26 @@ public sealed class ReceiptDocument : PrintDocument
 
         // Fiscal particulars are mandatory (specification Section 6.10).
         Centre(_header.TradingName, _title);
-        Centre(_header.RegisteredName, _body);
-        Centre(_header.Address, _body);
-        Centre($"VAT {_header.VatNumber}  Lic {_header.LicenceNumber}", _body);
+
+        // A pharmacy with no company name behind it - one cleared at the
+        // System Console - prints no blank line where it would have been.
+        if (!string.IsNullOrWhiteSpace(_header.RegisteredName))
+            Centre(_header.RegisteredName, _body);
+        // One printed line per address line. Centre advances by a single
+        // line height, so a multi-line address drawn in one call
+        // overprinted the VAT line beneath it.
+        foreach (var addressLine in (_header.Address ?? "")
+                     .Split('\n')
+                     .Select(part => part.Trim())
+                     .Where(part => part.Length > 0))
+            Centre(addressLine, _body);
+
+        // A pharmacy not yet registered for VAT prints no VAT number
+        // rather than a bare "VAT" label.
+        Centre(string.IsNullOrWhiteSpace(_header.VatNumber)
+                ? $"Lic {_header.LicenceNumber}"
+                : $"VAT {_header.VatNumber}  Lic {_header.LicenceNumber}",
+            _body);
         Rule();
 
         Line($"{_header.BranchAndTill}  {_header.OperatorName}");
@@ -97,11 +114,22 @@ public sealed class ReceiptDocument : PrintDocument
 
         foreach (var l in _sale.Lines.Where(x => !x.IsVoided))
         {
-            Line(string.Format(culture, "{0,3:0.##} {1,-24}{2,10:N2}",
-                l.Quantity, Truncate(l.Description, 24), l.LineTotal));
+            // The whole description, over as many lines as it takes. It
+            // was cut at 24 characters, which took "60s x 30" off every
+            // collected script - the only place the receipt says how much
+            // of the medicine was paid for.
+            var description = Wrap(l.Description, 24, 38);
+
+            // 3 + 1 + 24 + 14 = the 42 characters of the roll, so each
+            // amount ends under the totals rather than four short of them.
+            Line(string.Format(culture, "{0,3:0.##} {1,-24}{2,14:N2}",
+                l.Quantity, description[0], l.LineTotal));
+
+            foreach (var more in description.Skip(1))
+                Line("    " + more);
 
             if (l.Discount > 0m)
-                Line(string.Format(culture, "      less discount {0,20:N2}",
+                Line(string.Format(culture, "      less discount {0,22:N2}",
                     l.Discount));
 
             if (l.BatchNumber is not null)
@@ -115,6 +143,13 @@ public sealed class ReceiptDocument : PrintDocument
         Amount("VAT", _sale.Totals.VatTotal);
         Amount("TOTAL", _sale.Totals.Total, _bold);
         Rule();
+
+        // How it was paid. A receipt that does not say whether it was
+        // cash or card cannot settle the commonest query at the counter.
+        foreach (var payment in _sale.Payments ?? Array.Empty<PaymentDto>())
+            Amount($"Paid by {TenderLabel(payment.TenderType)}",
+                   payment.Amount);
+
         Amount("Tendered", _sale.Totals.Tendered);
         Amount("Change", _sale.Totals.Change);
         Rule();
@@ -183,6 +218,44 @@ public sealed class ReceiptDocument : PrintDocument
         }
     }
 
-    private static string Truncate(string value, int length) =>
-        value.Length <= length ? value : value[..length];
+    /// <summary>
+    /// Splits a description at spaces: the first piece fits beside the
+    /// quantity and the amount, the rest fit the line beneath. A word too
+    /// long for either is split where it has to be.
+    /// </summary>
+    internal static IReadOnlyList<string> Wrap(string value, int first,
+                                               int rest)
+    {
+        var pieces = new List<string>();
+        var remaining = (value ?? "").Trim();
+
+        while (remaining.Length > 0)
+        {
+            var width = pieces.Count == 0 ? first : rest;
+
+            if (remaining.Length <= width)
+            {
+                pieces.Add(remaining);
+                break;
+            }
+
+            var cut = remaining.LastIndexOf(' ', width);
+            if (cut <= 0) cut = width;
+
+            pieces.Add(remaining[..cut].TrimEnd());
+            remaining = remaining[cut..].TrimStart();
+        }
+
+        if (pieces.Count == 0) pieces.Add("");
+
+        return pieces;
+    }
+
+    /// The tender as the till offers it, not as the enum spells it.
+    private static string TenderLabel(string tender) => tender switch
+    {
+        "Eft" => "EFT",
+        "MedicalAid" => "medical aid",
+        _ => tender.ToLowerInvariant()
+    };
 }

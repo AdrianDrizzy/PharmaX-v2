@@ -1,4 +1,4 @@
-using PharmaX.Desktop.Mvp;
+﻿using PharmaX.Desktop.Mvp;
 using PharmaX.Domain.Patients;
 
 namespace PharmaX.Desktop.Features.Patients;
@@ -70,7 +70,7 @@ internal sealed class frmAttachmentDetails : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = "PharmaX - File a scan";
+        Text = WindowTitles.Brand("PharmaX - File a scan");
     }
 
     /// <summary>

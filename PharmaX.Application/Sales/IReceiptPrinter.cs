@@ -5,6 +5,85 @@ namespace PharmaX.Application.Sales;
 public enum PrintOutcome { Printed, Failed, NoPrinter }
 
 /// <summary>
+/// What happened when something was sent to a printer, in words the
+/// operator can act on.
+/// </summary>
+/// <remarks>
+/// The printers used to answer with a bare outcome, or - for labels - not
+/// at all, and the screens filled the gap with a confident message of
+/// their own: "The Z-read has printed" when nothing had (DEF-0018), a
+/// label that "printed" to a printer that had been unplugged. Every print
+/// path now returns one of these, and the screen reports what it says.
+/// </remarks>
+/// <param name="PrinterName">The printer it went to, where there was one.</param>
+/// <param name="Problem">
+/// Why it did not print, or - where it printed somewhere other than the
+/// printer chosen for this till - a note saying where it went.
+/// </param>
+public sealed record PrintResult(PrintOutcome Outcome, string? PrinterName,
+                                 string? Problem)
+{
+    public bool Printed => Outcome == PrintOutcome.Printed;
+
+    public static PrintResult Ok(string printerName, string? note = null) =>
+        new(PrintOutcome.Printed, printerName, note);
+
+    public static PrintResult NoPrinter(string problem) =>
+        new(PrintOutcome.NoPrinter, null, problem);
+
+    public static PrintResult Failed(string? printerName, string problem) =>
+        new(PrintOutcome.Failed, printerName, problem);
+
+    /// <summary>
+    /// A bare outcome, for callers that only ever had one.
+    /// </summary>
+    public static implicit operator PrintResult(PrintOutcome outcome) =>
+        FromOutcome(outcome);
+
+    public static PrintResult FromOutcome(PrintOutcome outcome) =>
+        outcome switch
+        {
+            PrintOutcome.Printed => new(outcome, null, null),
+            PrintOutcome.NoPrinter => new(outcome, null,
+                "No printer is installed on this workstation."),
+            _ => new(outcome, null, "The printer reported a fault.")
+        };
+
+    /// One sentence for a message box or a status line.
+    public string Describe(string what) => Outcome switch
+    {
+        PrintOutcome.Printed when PrinterName is null => $"{what} printed.",
+        PrintOutcome.Printed => Problem is null
+            ? $"{what} printed on {PrinterName}."
+            : $"{what} printed on {PrinterName}. {Problem}",
+        _ => $"{what} did not print. {Problem}".TrimEnd()
+    };
+}
+
+/// <summary>
+/// A document that is lines of text rather than a laid-out form: an X-read
+/// or Z-read, a quotation, a goods received note, a purchase order.
+/// </summary>
+/// <param name="Title">Printed large at the top, and the spooler job name.</param>
+/// <param name="Lines">
+/// Monospaced, at most 42 characters, so the same document suits the till
+/// roll and an A4 printer.
+/// </param>
+public sealed record PrintableDocument(string Title,
+                                       IReadOnlyList<string> Lines);
+
+/// <summary>
+/// Prints a PrintableDocument on this workstation's receipt printer, under
+/// the pharmacy's fiscal header.
+/// </summary>
+public interface IDocumentPrinter
+{
+    Task<PrintResult> PrintAsync(PrintableDocument document,
+                                 ReceiptHeaderDto header,
+                                 CancellationToken ct = default);
+}
+
+/// <summary>
 /// Everything the fiscal particulars on a receipt need (specification
 /// Section 6.10). A plain record, so the printer adapter needs no
 /// reference to the domain.
@@ -34,8 +113,8 @@ public interface IReceiptPrinter
     /// continuation needed the very thread that was blocked waiting for
     /// it, so the till froze with the hourglass up and never came back.
     /// </remarks>
-    Task<PrintOutcome> PrintAsync(SaleDto sale, ReceiptHeaderDto header,
-                                  CancellationToken ct = default);
+    Task<PrintResult> PrintAsync(SaleDto sale, ReceiptHeaderDto header,
+                                 CancellationToken ct = default);
 
     bool IsAvailable { get; }
 }

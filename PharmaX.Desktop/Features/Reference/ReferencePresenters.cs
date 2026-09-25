@@ -17,11 +17,11 @@ public sealed class ReferenceListPresenter : PresenterBase<IReferenceListView>
 
     protected override void Subscribe()
     {
-        View.SearchChanged += (_, _) => _ = LoadAsync();
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
-        View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
-        View.ToggleActiveRequested += (_, _) => _ = ToggleAsync();
+        View.SearchChanged += (_, _) => Enqueue(LoadAsync);
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
+        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
+        View.ToggleActiveRequested += (_, _) => Enqueue(ToggleAsync);
     }
 
     public override Task InitialiseAsync()
@@ -88,7 +88,7 @@ public sealed class ReferenceEditPresenter : PresenterBase<IReferenceEditView>
 
     protected override void Subscribe()
     {
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

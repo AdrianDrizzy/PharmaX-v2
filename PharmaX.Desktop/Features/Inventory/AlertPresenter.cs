@@ -14,7 +14,7 @@ public sealed class AlertPresenter : PresenterBase<IAlertView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.FilterChanged += (_, _) => Show();
         View.OpenProductRequested += (_, _) => OnOpenProduct();
     }

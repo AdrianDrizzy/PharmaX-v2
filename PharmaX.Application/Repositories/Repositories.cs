@@ -42,6 +42,20 @@ public interface ISaleRepository
     /// identifier they can hand back across a counter.
     Task<Sale?> ByDocumentNumberAsync(string documentNumber,
                                       CancellationToken ct = default);
+
+    /// <summary>
+    /// Baskets parked at this branch's tills, oldest first, so a held sale
+    /// can be recalled from any till - the customer comes back to
+    /// whichever one is free.
+    /// </summary>
+    Task<IReadOnlyList<Sale>> HeldAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// An unfinished sale already converting this quotation, so recalling
+    /// it twice carries on with the same basket.
+    /// </summary>
+    Task<Sale?> OpenForQuotationAsync(Guid quotationId,
+                                      CancellationToken ct = default);
 }
 
 public interface IReturnRepository
@@ -65,19 +79,40 @@ public interface IReturnRepository
     Task AddAsync(SaleReturn saleReturn, CancellationToken ct = default);
 }
 
+/// <summary>
+/// How much of the catalogue a query may return.
+/// </summary>
+/// <remarks>
+/// Applied in the query, not by the screen afterwards: a cashier who types
+/// an exact dispensary code must get "no product", not a product the till
+/// then declines to show.
+/// </remarks>
+public enum ProductScope
+{
+    /// Everything, scheduled medicines included.
+    All = 0,
+
+    /// Only what sells over the counter: Schedule 0 to 2
+    /// (Product.RequiresPharmacist is false).
+    OverTheCounter = 1
+}
+
 public interface IProductRepository
 {
     Task<Product?> GetAsync(Guid id, CancellationToken ct = default);
 
     Task<Product?> FindByCodeOrBarcodeAsync(string code,
-                                            CancellationToken ct = default);
+        ProductScope scope = ProductScope.All,
+        CancellationToken ct = default);
 
     Task<IReadOnlyList<Product>> SearchAsync(string term, int take = 200,
-                                             CancellationToken ct = default);
+        ProductScope scope = ProductScope.All,
+        CancellationToken ct = default);
 
     /// How many the same term matches altogether, so a list screen can
     /// say how much it is not showing.
-    Task<int> CountAsync(string term, CancellationToken ct = default);
+    Task<int> CountAsync(string term, ProductScope scope = ProductScope.All,
+                         CancellationToken ct = default);
 
     /// <summary>
     /// Active products at or under their reorder level.

@@ -1,3 +1,4 @@
+﻿using PharmaX.Desktop.Mvp;
 using System.Globalization;
 
 namespace PharmaX.Desktop.Controls;
@@ -16,16 +17,19 @@ public sealed class frmNumberPrompt : Form
                             int decimals)
     {
         _decimals = decimals;
+        Name = "frmNumberPrompt";
 
         var label = new Label
         {
             AutoSize = false,
             Location = new Point(16, 16),
+            Name = "lblPrompt",
             Size = new Size(320, 20),
             Text = prompt
         };
 
         _input.Location = new Point(16, 42);
+        _input.Name = "txtPromptInput";
         _input.Size = new Size(320, 26);
         _input.Text = current.ToString($"N{decimals}",
                                        CultureInfo.CurrentCulture);
@@ -34,6 +38,7 @@ public sealed class frmNumberPrompt : Form
         {
             DialogResult = DialogResult.OK,
             Location = new Point(180, 82),
+            Name = "btnOk",
             Size = new Size(75, 28),
             Text = "OK"
         };
@@ -42,6 +47,7 @@ public sealed class frmNumberPrompt : Form
         {
             DialogResult = DialogResult.Cancel,
             Location = new Point(261, 82),
+            Name = "btnCancel",
             Size = new Size(75, 28),
             Text = "Cancel"
         };
@@ -55,7 +61,7 @@ public sealed class frmNumberPrompt : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = title;
+        Text = WindowTitles.Brand(title);
 
         // Selected on open, so the operator types over the current value
         // rather than having to clear it first.
@@ -88,24 +94,40 @@ public sealed class frmTextPrompt : Form
 {
     private readonly TextBox _input = new();
 
-    private frmTextPrompt(string title, string prompt)
+    private frmTextPrompt(string title, string prompt, string? initial)
     {
+        // Named, so that assistive technology and the end-to-end suite
+        // can find them (DEF-0030).
+        Name = "frmTextPrompt";
+
+        // Grows to the prompt, which can be a clinical warning of two or
+        // three lines rather than a one-line question.
         var label = new Label
         {
             AutoSize = false,
             Location = new Point(16, 16),
+            MaximumSize = new Size(400, 0),
+            Name = "lblPrompt",
             Size = new Size(400, 20),
             Text = prompt
         };
 
-        _input.Location = new Point(16, 42);
+        label.Height = Math.Max(20, TextRenderer.MeasureText(prompt,
+            label.Font, new Size(400, 0), TextFormatFlags.WordBreak).Height);
+
+        var top = label.Bottom + 6;
+
+        _input.Location = new Point(16, top);
         _input.MaxLength = 250;
+        _input.Name = "txtPromptInput";
         _input.Size = new Size(400, 23);
+        _input.Text = initial ?? "";
 
         var ok = new Button
         {
             DialogResult = DialogResult.OK,
-            Location = new Point(260, 82),
+            Location = new Point(260, top + 40),
+            Name = "btnOk",
             Size = new Size(75, 28),
             Text = "OK"
         };
@@ -113,7 +135,8 @@ public sealed class frmTextPrompt : Form
         var cancel = new Button
         {
             DialogResult = DialogResult.Cancel,
-            Location = new Point(341, 82),
+            Location = new Point(341, top + 40),
+            Name = "btnCancel",
             Size = new Size(75, 28),
             Text = "Cancel"
         };
@@ -122,12 +145,14 @@ public sealed class frmTextPrompt : Form
 
         AcceptButton = ok;
         CancelButton = cancel;
-        ClientSize = new Size(432, 124);
+        ClientSize = new Size(432, top + 82);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = title;
+        Text = WindowTitles.Brand(title);
+
+        Shown += (_, _) => { _input.Focus(); _input.SelectAll(); };
 
         // A reason that is only spaces is not a reason. Refused here so
         // that no caller has to remember to check.
@@ -140,9 +165,9 @@ public sealed class frmTextPrompt : Form
     }
 
     public static string? Ask(IWin32Window owner, string title,
-                              string prompt)
+                              string prompt, string? initial = null)
     {
-        using var dialog = new frmTextPrompt(title, prompt);
+        using var dialog = new frmTextPrompt(title, prompt, initial);
 
         return dialog.ShowDialog(owner) == DialogResult.OK
             ? dialog._input.Text.Trim()
@@ -194,7 +219,7 @@ public sealed class frmTextViewer : Form
         ClientSize = new Size(790, 520);
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = title;
+        Text = WindowTitles.Brand(title);
 
         // The caret starts at the top rather than wherever a selection
         // left it, and nothing is selected on opening.
@@ -275,7 +300,7 @@ public sealed class frmChoicePrompt : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = title;
+        Text = WindowTitles.Brand(title);
     }
 
     public static TValue? Ask<TValue>(IWin32Window owner, string title,

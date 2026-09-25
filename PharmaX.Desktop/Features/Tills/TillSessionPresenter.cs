@@ -1,4 +1,6 @@
+using PharmaX.Application.Sales;
 using PharmaX.Application.Tills;
+using PharmaX.Desktop.Features.Sales;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Tills;
@@ -7,20 +9,26 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
 {
     private readonly ITillSessionService _sessions;
     private readonly ICashUpService _cashUp;
+    private readonly IDocumentPrinter _printer;
+    private readonly ReceiptHeaderFactory _headers;
 
     public TillSessionPresenter(ITillSessionService sessions,
-                                ICashUpService cashUp)
+                                ICashUpService cashUp,
+                                IDocumentPrinter printer,
+                                ReceiptHeaderFactory headers)
     {
         _sessions = sessions;
         _cashUp = cashUp;
+        _printer = printer;
+        _headers = headers;
     }
 
     protected override void Subscribe()
     {
-        View.OpenRequested         += (_, _) => _ = OpenAsync();
-        View.XReadRequested        += (_, _) => _ = XReadAsync();
-        View.DeclareRequested      += (_, _) => _ = DeclareAsync();
-        View.CloseSessionRequested += (_, _) => _ = CloseAsync();
+        View.OpenRequested         += (_, _) => Enqueue(OpenAsync);
+        View.XReadRequested        += (_, _) => Enqueue(XReadAsync);
+        View.DeclareRequested      += (_, _) => Enqueue(DeclareAsync);
+        View.CloseSessionRequested += (_, _) => Enqueue(CloseAsync);
     }
 
     public override Task InitialiseAsync() => GuardAsync(async () =>
@@ -54,7 +62,19 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
 
         // The header counts the reads taken, and taking one has just
         // changed that count.
-        View.ShowSession(await _sessions.CurrentAsync());
+        var session = await _sessions.CurrentAsync();
+        View.ShowSession(session);
+
+        if (session is null) return;
+
+        // Printed, and the screen says whether it really did.
+        var printed = await _printer.PrintAsync(
+            TillReads.XRead(session, read), _headers.Build());
+
+        if (printed.Printed)
+            View.ShowInfo(printed.Describe($"X-read {read.ReadNumber}"));
+        else
+            View.ShowError(printed.Describe($"X-read {read.ReadNumber}"));
     });
 
     private Task DeclareAsync() => GuardAsync(async () =>
@@ -87,6 +107,7 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
         if (!View.Confirm("Close the session? This cannot be undone."))
             return;
 
+        var session = await _sessions.CurrentAsync();
         var result = await _cashUp.CloseAsync(reason);
 
         if (result.IsFailure)
@@ -95,7 +116,21 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
             return;
         }
 
-        View.ShowInfo("Session closed. The Z-read has printed.");
+        // The Z-read is printed after the close has committed, and the
+        // message says what actually happened to it. It used to say "The
+        // Z-read has printed" when nothing had (DEF-0018).
+        var message = "Session closed.";
+
+        if (session is not null)
+        {
+            var printed = await _printer.PrintAsync(
+                TillReads.ZRead(session, declaration, reason, DateTime.Now),
+                _headers.Build());
+
+            message += " " + printed.Describe("The Z-read");
+        }
+
+        View.ShowInfo(message);
         View.CloseView(true);
     });
 }

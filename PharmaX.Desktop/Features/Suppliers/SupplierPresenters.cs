@@ -47,10 +47,10 @@ public sealed class SupplierListPresenter : PresenterBase<ISupplierListView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
-        View.AddRequested += (_, _) => _ = OpenEditorAsync(null);
-        View.EditRequested += (_, _) => _ = OpenEditorAsync(View.SelectedId);
-        View.DeactivateRequested += (_, _) => _ = DeactivateAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
+        View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
+        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
+        View.DeactivateRequested += (_, _) => Enqueue(DeactivateAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -113,7 +113,7 @@ public sealed class SupplierEditPresenter : PresenterBase<ISupplierEditView>
 
     protected override void Subscribe()
     {
-        View.SaveRequested += (_, _) => _ = SaveAsync();
+        View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
     }
 

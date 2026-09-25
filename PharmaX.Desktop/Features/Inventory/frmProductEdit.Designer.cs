@@ -10,6 +10,7 @@ partial class frmProductEdit
     private TextBox txtGenericName = null!;
     private TextBox txtTaxCode = null!;
     private TextBox txtPackSize = null!;
+    private MoneyTextBox txtUnitsPerPack = null!;
     private MoneyTextBox txtRetail = null!;
     private MoneyTextBox txtCost = null!;
     private MoneyTextBox txtVatRate = null!;
@@ -43,6 +44,8 @@ partial class frmProductEdit
         txtTaxCode.Name = "txtTaxCode";
         txtPackSize = new TextBox();
         txtPackSize.Name = "txtPackSize";
+        txtUnitsPerPack = new MoneyTextBox();
+        txtUnitsPerPack.Name = "txtUnitsPerPack";
         txtRetail = new MoneyTextBox();
         txtRetail.Name = "txtRetail";
         txtCost = new MoneyTextBox();
@@ -76,6 +79,20 @@ partial class frmProductEdit
         Field("Sc&hedule", numSchedule, 7, 60);
         Field("Reorder &level", txtReorderLevel, 8, 140);
         Field("Pack si&ze", txtPackSize, 9, 140);
+
+        // Beside the pack description: how many tablets, capsules or
+        // millilitres the priced pack holds, which is what a script for
+        // fewer is priced against.
+        Controls.Add(new Label
+        {
+            AutoSize = true,
+            Location = new Point(310, 24 + 9 * 34),
+            Text = "U&nits per pack"
+        });
+        txtUnitsPerPack.Location = new Point(410, 20 + 9 * 34);
+        txtUnitsPerPack.Size = new Size(100, 23);
+        txtUnitsPerPack.TabIndex = 9;
+        Controls.Add(txtUnitsPerPack);
 
         // Where the product is filed. Three lists the pharmacy
         // maintains itself, so they are chosen rather than typed.

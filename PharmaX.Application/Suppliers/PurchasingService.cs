@@ -62,16 +62,17 @@ public sealed class PurchasingService : IPurchasingService
         OutstandingAsync(Guid? supplierId = null,
                          CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        DemandOrderAccess();
 
         var orders = await _orders.OutstandingAsync(supplierId, ct);
         var suppliers = await _suppliers.ListAsync(includeInactive: true, ct);
 
         var names = suppliers.ToDictionary(s => s.Id, s => s.Name);
+        var codes = await CodesAsync(orders.SelectMany(o => o.Lines), ct);
 
         IReadOnlyList<PurchaseOrderDto> items = orders
             .Select(o => PurchaseOrderDto.From(o,
-                names.GetValueOrDefault(o.SupplierId, "Unknown")))
+                names.GetValueOrDefault(o.SupplierId, "Unknown"), codes))
             .ToList();
 
         return Result<IReadOnlyList<PurchaseOrderDto>>.Ok(items);
@@ -80,7 +81,7 @@ public sealed class PurchasingService : IPurchasingService
     public async Task<Result<PurchaseOrderDto>> GetAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        DemandOrderAccess();
 
         var order = await _orders.GetAsync(id, ct);
         if (order is null)
@@ -88,8 +89,10 @@ public sealed class PurchasingService : IPurchasingService
 
         var supplier = await _suppliers.GetAsync(order.SupplierId, ct);
 
-        return Result<PurchaseOrderDto>.Ok(
-            PurchaseOrderDto.From(order, supplier?.Name ?? "Unknown"));
+        // Each line carries its product's own code, which is what goods
+        // receipt posts against - not the description (DEF-0013).
+        return Result<PurchaseOrderDto>.Ok(PurchaseOrderDto.From(order,
+            supplier?.Name ?? "Unknown", await CodesAsync(order.Lines, ct)));
     }
 
     public async Task<Result<PurchaseOrderDto>> RaiseAsync(
@@ -114,7 +117,7 @@ public sealed class PurchasingService : IPurchasingService
         foreach (var line in edit.Lines)
         {
             var product = await _products
-                .FindByCodeOrBarcodeAsync(line.ProductCode, ct);
+                .FindByCodeOrBarcodeAsync(line.ProductCode, ct: ct);
 
             if (product is null)
                 return Result<PurchaseOrderDto>.Fail("PO-003",
@@ -152,8 +155,36 @@ public sealed class PurchasingService : IPurchasingService
 
         await _uow.SaveChangesAsync(ct);
 
-        return Result<PurchaseOrderDto>.Ok(
-            PurchaseOrderDto.From(order, supplier.Name));
+        return Result<PurchaseOrderDto>.Ok(PurchaseOrderDto.From(order,
+            supplier.Name, resolved.ToDictionary(r => r.Product.Id,
+                                                 r => r.Product.Code)));
+    }
+
+    /// <summary>
+    /// Who may look at orders: the buyers who raise them and the people
+    /// who receive the deliveries against them.
+    /// </summary>
+    private void DemandOrderAccess()
+    {
+        if (_permissions.HasAny(PermissionCode.PurchaseOrderRaise,
+                                PermissionCode.GoodsReceive))
+            return;
+
+        _permissions.Demand(PermissionCode.PurchaseOrderRaise);
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, string>> CodesAsync(
+        IEnumerable<PurchaseOrderLine> lines, CancellationToken ct)
+    {
+        var codes = new Dictionary<Guid, string>();
+
+        foreach (var productId in lines.Select(l => l.ProductId).Distinct())
+        {
+            if (await _products.GetAsync(productId, ct) is { } product)
+                codes[productId] = product.Code;
+        }
+
+        return codes;
     }
 
     public async Task<Result> CancelAsync(Guid id, string reason,
@@ -180,9 +211,9 @@ public sealed class PurchasingService : IPurchasingService
     public async Task<Result<IReadOnlyList<PurchaseOrderLineDto>>>
         SuggestAsync(CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductRead);
+        _permissions.Demand(PermissionCode.PurchaseOrderRaise);
 
-        var products = await _products.SearchAsync("", take: 2000, ct);
+        var products = await _products.SearchAsync("", take: 2000, ct: ct);
 
         // Orders up to twice the reorder level, which is the simplest
         // rule that does not reorder the same item next week. A proper
@@ -198,7 +229,8 @@ public sealed class PurchasingService : IPurchasingService
                 Outstanding: p.ReorderLevel * 2m - p.QuantityOnHand,
                 UnitCost: p.CostPrice.Amount,
                 LineTotal: (p.ReorderLevel * 2m - p.QuantityOnHand)
-                           * p.CostPrice.Amount))
+                           * p.CostPrice.Amount,
+                ProductCode: p.Code))
             .ToList();
 
         return Result<IReadOnlyList<PurchaseOrderLineDto>>.Ok(suggestions);

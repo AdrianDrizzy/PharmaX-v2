@@ -191,7 +191,11 @@ partial class frmPOS
             {
                 Font = PhxTheme.Emphasis,
                 Location = new Point(x, 7),
-                Size = new Size(126, 34),
+
+                // Named by its key, so assistive technology and the
+                // end-to-end suite can find it (DEF-0030).
+                Name = $"btn{key}",
+                Size = new Size(112, 34),
 
                 // The key it stands for, so one handler serves the whole
                 // bar and each button raises exactly what its key does.
@@ -203,7 +207,7 @@ partial class frmPOS
             button.Click += OnFunctionButton;
 
             pnlFunctions.Controls.Add(button);
-            x += 132;
+            x += 117;
         }
 
         // Paying is what the screen is for, so it is the one that looks

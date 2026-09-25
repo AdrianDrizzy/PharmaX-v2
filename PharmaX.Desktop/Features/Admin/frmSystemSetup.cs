@@ -40,7 +40,7 @@ public sealed class frmSystemSetup : PhxFormBase
     private bool _logoChanged;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.UserRoleAssign;
+        Domain.Security.PermissionCode.SettingsChange;
 
     public frmSystemSetup(IWorkstationSettings settings, Branding branding,
                           ICurrencyChanger currency)
@@ -386,14 +386,18 @@ public sealed class frmSystemSetup : PhxFormBase
         var changingCurrency = !string.Equals(currency.Code,
             _originalCurrency, StringComparison.OrdinalIgnoreCase);
 
+        // Written the way the new currency writes it. It said "100,00"
+        // whatever was chosen, a decimal comma no dollar or ZiG till uses.
+        var sample = Format.Amount(100m, currency);
+
         if (changingCurrency && !Confirm(
                 $"Change the trading currency to {currency.Name}?"
                 + Environment.NewLine + Environment.NewLine
                 + "Every figure already recorded will be relabelled "
                 + $"{currency.Code}. The amounts themselves do not "
-                + "change: 100,00 stays 100,00, it is simply now "
-                + $"{currency.Symbol}100. This is meant for correcting a "
-                + "currency that was set wrong, not for revaluing a "
+                + $"change: {sample} stays {sample}, it is simply now "
+                + $"{currency.Symbol}{sample}. This is meant for correcting "
+                + "a currency that was set wrong, not for revaluing a "
                 + "pharmacy's stock."))
             return;
 

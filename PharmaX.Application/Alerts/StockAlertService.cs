@@ -110,6 +110,22 @@ public sealed class StockAlertService : IStockAlertService
         alerts.AddRange(await ExpiryAlertsAsync(today, ct));
         alerts.AddRange(await LevelAlertsAsync(ct));
 
+        // A user who sees only the over-the-counter catalogue sees only
+        // its alerts: an expiring dispensary batch is not a cashier's to
+        // know about, any more than the batch itself is.
+        if (_permissions.ProductScope() != ProductScope.All)
+        {
+            var visible = new List<StockAlertDto>();
+
+            foreach (var alert in alerts)
+            {
+                var product = await _products.GetAsync(alert.ProductId, ct);
+                if (product is { RequiresPharmacist: false }) visible.Add(alert);
+            }
+
+            alerts = visible;
+        }
+
         // Worst first, then soonest, then by name, so the order is the
         // order somebody would work through them.
         var ordered = alerts

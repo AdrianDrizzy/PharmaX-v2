@@ -14,7 +14,7 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
     private readonly PatientEditPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.PatientMaintain;
 
     /// Designer only. Never called at runtime.
     public frmPatientEdit()

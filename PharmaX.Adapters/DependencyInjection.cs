@@ -20,6 +20,7 @@ public static class DependencyInjection
         // the process.
         services.AddScoped<IReceiptPrinter, ReceiptPrinter>();
         services.AddScoped<ILabelPrinter, LabelPrinter>();
+        services.AddScoped<IDocumentPrinter, DocumentPrinter>();
         services.AddScoped<ICashDrawer, EscPosCashDrawer>();
 
         // Scanned documents live on this workstation's disk.

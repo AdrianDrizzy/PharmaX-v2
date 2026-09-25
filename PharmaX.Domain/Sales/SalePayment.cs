@@ -60,5 +60,20 @@ public sealed class SalePayment : Entity
 
     internal void AssignTo(Guid saleId) => SaleId = saleId;
 
+    /// <summary>
+    /// Takes the change given back off a cash tender, so the payment
+    /// records what stayed in the drawer.
+    /// </summary>
+    internal void Reduce(Money by)
+    {
+        var reduced = Amount - by;
+
+        if (reduced.IsNegative)
+            throw new DomainException(
+                "Change cannot be more than the tender it comes from.");
+
+        Amount = reduced;
+    }
+
     public bool IsRefund => SaleId is null;
 }

@@ -25,9 +25,9 @@ public sealed class CollectPresenter : PresenterBase<ICollectView>
 
     protected override void Subscribe()
     {
-        View.RefreshRequested += (_, _) => _ = LoadAsync();
+        View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.FilterChanged += (_, _) => Show();
-        View.CollectRequested += (_, _) => _ = OnCollectAsync();
+        View.CollectRequested += (_, _) => Enqueue(OnCollectAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();

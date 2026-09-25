@@ -19,7 +19,7 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         new() { Interval = 250 };
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.PatientMaintain;
 
     /// Designer only. Never called at runtime.
     public frmPatientList()

@@ -64,6 +64,29 @@ public sealed class SaleRepository : ISaleRepository
             .Include(s => s.Lines)
             .Include(s => s.Payments)
             .FirstOrDefaultAsync(s => s.DocumentNumber == documentNumber, ct);
+
+    public async Task<IReadOnlyList<Sale>> HeldAsync(
+        CancellationToken ct = default)
+    {
+        var branch = CurrentBranchId;
+
+        return await _db.Sales
+            .AsNoTracking()
+            .Include(s => s.Lines)
+            .Where(s => s.Status == SaleStatus.Held && s.BranchId == branch)
+            .OrderBy(s => s.OccurredAtUtc)
+            .ToListAsync(ct);
+    }
+
+    public async Task<Sale?> OpenForQuotationAsync(Guid quotationId,
+        CancellationToken ct = default) =>
+        await _db.Sales
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .Where(s => s.QuotationId == quotationId)
+            .Where(s => s.Status == SaleStatus.Open
+                        || s.Status == SaleStatus.Held)
+            .FirstOrDefaultAsync(ct);
 }
 
 public sealed class ProductRepository : IProductRepository
@@ -79,6 +102,7 @@ public sealed class ProductRepository : IProductRepository
             .FirstOrDefaultAsync(p => p.Id == id, ct);
 
     public async Task<Product?> FindByCodeOrBarcodeAsync(string code,
+        ProductScope scope = ProductScope.All,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
@@ -87,8 +111,7 @@ public sealed class ProductRepository : IProductRepository
 
         // The code is indexed and unique, so try it first: the great
         // majority of scans at the till are a product code.
-        var byCode = await _db.Products
-            .Include(p => p.Prices)
+        var byCode = await InScope(_db.Products.Include(p => p.Prices), scope)
             .FirstOrDefaultAsync(p => p.Code == normalised, ct);
 
         if (byCode is not null) return byCode;
@@ -96,8 +119,8 @@ public sealed class ProductRepository : IProductRepository
         // Barcodes are a primitive collection, so this is a scan of a
         // short table rather than an index seek. Acceptable because it
         // only runs when the code lookup already missed.
-        var candidates = await _db.Products
-            .Include(p => p.Prices)
+        var candidates = await InScope(_db.Products.Include(p => p.Prices),
+                                       scope)
             .Where(p => p.IsActive)
             .ToListAsync(ct);
 
@@ -105,15 +128,32 @@ public sealed class ProductRepository : IProductRepository
     }
 
     public async Task<IReadOnlyList<Product>> SearchAsync(string term,
-        int take = 200, CancellationToken ct = default) =>
-        await Matching(term)
+        int take = 200, ProductScope scope = ProductScope.All,
+        CancellationToken ct = default) =>
+        await Matching(term, scope)
             .OrderBy(p => p.Description)
             .Take(take)
             .ToListAsync(ct);
 
     public async Task<int> CountAsync(string term,
+        ProductScope scope = ProductScope.All,
         CancellationToken ct = default) =>
-        await Matching(term).CountAsync(ct);
+        await Matching(term, scope).CountAsync(ct);
+
+    /// <summary>
+    /// Narrows a product query to what this caller may see.
+    /// </summary>
+    /// <remarks>
+    /// Schedule 3 and above is dispensary stock (Product.
+    /// RequiresPharmacist). Written as the column comparison rather than
+    /// the property, so that it is translated into the SQL and the rows
+    /// never leave the database.
+    /// </remarks>
+    private static IQueryable<Product> InScope(IQueryable<Product> query,
+                                               ProductScope scope) =>
+        scope == ProductScope.OverTheCounter
+            ? query.Where(p => p.Schedule < 3)
+            : query;
 
     /// <remarks>
     /// Filtered in the database rather than by pulling the catalogue
@@ -135,9 +175,9 @@ public sealed class ProductRepository : IProductRepository
 
     /// The one place the search predicate is written, so the page and
     /// the count can never disagree about what matched.
-    private IQueryable<Product> Matching(string term)
+    private IQueryable<Product> Matching(string term, ProductScope scope)
     {
-        var query = _db.Products.AsNoTracking().AsQueryable();
+        var query = InScope(_db.Products.AsNoTracking(), scope);
 
         if (string.IsNullOrWhiteSpace(term)) return query;
 
@@ -375,14 +415,14 @@ public sealed class DispensingRepository : IDispensingRepository
     public async Task<Domain.Dispensing.Dispensing?> GetAsync(Guid id,
         CancellationToken ct = default) =>
         await _db.Dispensings
-            .Include(d => d.Lines)
+            .Include(d => d.Lines).ThenInclude(l => l.Batches)
             .Include(d => d.Warnings)
             .FirstOrDefaultAsync(d => d.Id == id, ct);
 
     public async Task<Domain.Dispensing.Dispensing?> ByWarningAsync(
         Guid warningId, CancellationToken ct = default) =>
         await _db.Dispensings
-            .Include(d => d.Lines)
+            .Include(d => d.Lines).ThenInclude(l => l.Batches)
             .Include(d => d.Warnings)
             .FirstOrDefaultAsync(d => d.Warnings.Any(w => w.Id == warningId),
                                  ct);
@@ -390,7 +430,7 @@ public sealed class DispensingRepository : IDispensingRepository
     public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
         ForPatientAsync(Guid patientId, CancellationToken ct = default) =>
         await _db.Dispensings
-            .Include(d => d.Lines)
+            .Include(d => d.Lines).ThenInclude(l => l.Batches)
             .Where(d => d.PatientId == patientId)
             .OrderByDescending(d => d.IssuedAtUtc)
             .ToListAsync(ct);
@@ -408,7 +448,7 @@ public sealed class DispensingRepository : IDispensingRepository
         AwaitingCollectionAsync(CancellationToken ct = default)
     {
         var issued = await _db.Dispensings
-            .Include(d => d.Lines)
+            .Include(d => d.Lines).ThenInclude(l => l.Batches)
             .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Issued)
             .Where(d => d.SaleId == null)
             .OrderBy(d => d.IssuedAtUtc)

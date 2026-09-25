@@ -13,7 +13,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     private readonly ScriptEditPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.ScriptAuthorise;
+        Domain.Security.PermissionCode.ScriptCapture;
 
     /// Designer only. Never called at runtime.
     public frmScriptEdit()

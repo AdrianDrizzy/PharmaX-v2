@@ -1,0 +1,305 @@
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using PharmaX.Application.Dispensing;
+using PharmaX.Application.Dispensing.Dtos;
+using PharmaX.Application.Security;
+using PharmaX.Domain.Dispensing;
+using PharmaX.Domain.Inventory;
+using PharmaX.Domain.Security;
+using PharmaX.Persistence;
+
+namespace PharmaX.Tests.Integration.Workflows;
+
+/// <summary>
+/// Create the script, add the medicines, issue, dispense - as each role
+/// that is meant to do it, with no authorisation asked for where none is
+/// needed, and a pharmacist asked for exactly where one is.
+/// </summary>
+public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
+{
+    private readonly WorkflowSteps _steps;
+
+    public DispensingWorkflowTests(PharmaXFixture fixture) =>
+        _steps = new WorkflowSteps(fixture);
+
+    [Theory]
+    [InlineData("wf.pharmacist", Role.Standard.Pharmacist)]
+    [InlineData("wf.assistant", Role.Standard.PharmacistAssistant)]
+    [InlineData("wf.admin", Role.Standard.Administrator)]
+    public async Task Each_dispensing_role_captures_and_issues_a_script_on_its_own_authority(
+        string username, string role)
+    {
+        await _steps.OpenTillAsync();
+
+        var code = "WF" + username[3..6].ToUpperInvariant();
+        await _steps.ProductAsync(code, $"Metformin 500mg tablets 60s ({role})",
+            90m, schedule: 3, unitsPerPack: 60m,
+            batches: new[] { ($"{code}-A", 6, 120m) });
+
+        var operatorId = await _steps.SignInAsync(username, role);
+
+        // Patients and scripts are captured by the same role, not by an
+        // administrator on its behalf.
+        var patientId = await _steps.PatientAsync($"Role{username[3..]}", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            (code, 30m, "One tablet twice a day"));
+
+        using var scope = _steps.Fixture.NewScope();
+        var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+        var begun = await dispensing.BeginAsync(scriptId);
+        begun.IsSuccess.Should().BeTrue(begun.Error.Message);
+
+        var added = await dispensing.AddScriptItemsAsync(begun.Value.Id);
+        added.IsSuccess.Should().BeTrue(added.Error.Message);
+        added.Value.Added.Should().Be(1);
+
+        // The prescriber's quantity and directions, carried through
+        // rather than re-keyed (DEF-0020).
+        var line = added.Value.State.Items.Should().ContainSingle().Subject;
+        line.Quantity.Should().Be(30m);
+        line.Directions.Should().Be("One tablet twice a day");
+
+        var authority = await dispensing.IssueAuthorityAsync(begun.Value.Id);
+        authority.Value.OperatorMayIssue.Should().BeTrue(
+            "an ordinary script needs nobody else's password");
+
+        var issued = await dispensing.IssueAsync(begun.Value.Id);
+        issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+        issued.Value.Labels.Should().ContainSingle()
+            .Which.Directions.Should().Be("One tablet twice a day");
+
+        using var check = _steps.Fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        var stored = await db.Dispensings.AsNoTracking()
+            .SingleAsync(d => d.Id == begun.Value.Id);
+
+        stored.Status.Should().Be(DispensingStatus.Issued);
+        stored.PharmacistId.Should().Be(operatorId);
+    }
+
+    [Fact]
+    public async Task A_cashier_cannot_begin_a_dispensing()
+    {
+        await _steps.OpenTillAsync();
+        await _steps.ProductAsync("WFCSH1", "Cashier-proof capsules", 20m,
+            schedule: 4, batches: new[] { ("WFCSH1-A", 6, 10m) });
+
+        var patientId = await _steps.PatientAsync("NoCashier", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFCSH1", 5m, "One daily"));
+
+        await _steps.SignInAsync("wf.cashier", Role.Standard.Cashier);
+
+        using var scope = _steps.Fixture.NewScope();
+        var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+        var act = () => dispensing.BeginAsync(scriptId);
+
+        await act.Should().ThrowAsync<PermissionDeniedException>();
+    }
+
+    /// <summary>
+    /// DEF-0009 and DEF-0008 together: 30 needed, 10 in the earliest batch
+    /// and 20 in the next. Both batches are drawn on, earliest first; the
+    /// product's own on-hand falls by the same 30; and there is a stock
+    /// movement for every batch touched.
+    /// </summary>
+    [Fact]
+    public async Task Dispensing_allocates_FEFO_across_batches_and_keeps_stock_consistent()
+    {
+        await _steps.OpenTillAsync();
+
+        var productId = await _steps.ProductAsync("WFFEFO", "Fefo caps 30s",
+            60m, schedule: 4, unitsPerPack: 30m,
+            batches: new[] { ("FEFO-LATE", 12, 20m), ("FEFO-EARLY", 2, 10m) });
+
+        await _steps.SignInAsync("wf.pharm2", Role.Standard.Pharmacist);
+
+        var patientId = await _steps.PatientAsync("Fefo", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFFEFO", 30m, "One capsule daily"));
+
+        Guid dispensingId;
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+            var begun = await dispensing.BeginAsync(scriptId);
+            dispensingId = begun.Value.Id;
+
+            var added = await dispensing.AddScriptItemsAsync(dispensingId);
+            added.Value.State.Items.Single().BatchNumber
+                .Should().Be("FEFO-EARLY x10, FEFO-LATE x20");
+
+            var issued = await dispensing.IssueAsync(dispensingId);
+            issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+
+            var label = issued.Value.Labels.Single();
+            label.BatchNumber.Should().Contain("FEFO-EARLY").And
+                .Contain("FEFO-LATE");
+        }
+
+        var (onHand, inBatches) = await _steps.StockOfAsync(productId);
+        onHand.Should().Be(0m);
+        inBatches.Should().Be(0m);
+
+        using var check = _steps.Fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        var movements = await db.StockMovements.AsNoTracking()
+            .Where(m => m.SourceDocumentId == dispensingId)
+            .ToListAsync();
+
+        movements.Should().HaveCount(2);
+        movements.Should().OnlyContain(m => m.MovementType == MovementType.Issue
+                                            && m.SourceDocumentType == "Dispensing");
+        movements.Sum(m => m.Quantity).Should().Be(-30m);
+
+        var allocations = await db.Set<DispensingLineBatch>().AsNoTracking()
+            .ToListAsync();
+        allocations.Where(a => a.BatchNumber.StartsWith("FEFO", StringComparison.Ordinal))
+            .Select(a => (a.BatchNumber, a.Quantity))
+            .Should().BeEquivalentTo(new[] { ("FEFO-EARLY", 10m), ("FEFO-LATE", 20m) });
+    }
+
+    /// <summary>
+    /// DEF-0006: penicillin-allergic patient, amoxicillin on the script. A
+    /// hard stop; an assistant cannot pass it alone; a pharmacist's
+    /// authority with a reason can, and both are kept.
+    /// </summary>
+    [Fact]
+    public async Task A_penicillin_allergy_stops_amoxicillin_until_a_pharmacist_overrides_it()
+    {
+        await _steps.OpenTillAsync();
+        await _steps.ProductAsync("WFAMOX", "Amoxicillin 500mg capsules 21s",
+            118m, schedule: 4, unitsPerPack: 21m,
+            batches: new[] { ("WFAMOX-A", 6, 50m) });
+
+        var pharmacistId = await _steps.UserAsync("wf.pharm3",
+            Role.Standard.Pharmacist);
+
+        await _steps.SignInAsync("wf.assist3", Role.Standard.PharmacistAssistant);
+
+        var patientId = await _steps.PatientAsync("Naidoo", "Priya",
+            ("Penicillin", "Moderate"));
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFAMOX", 21m, "One capsule three times a day"));
+
+        using var scope = _steps.Fixture.NewScope();
+        var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+        var begun = await dispensing.BeginAsync(scriptId);
+        var added = await dispensing.AddScriptItemsAsync(begun.Value.Id);
+
+        var warning = added.Value.State.Warnings.Should().ContainSingle().Subject;
+        warning.Kind.Should().Be("Allergy");
+        warning.IsHardStop.Should().BeTrue();
+        warning.Message.Should().Contain("Penicillin").And.Contain("penicillin");
+
+        (await dispensing.OverrideNeedsPharmacistAsync(warning.Id))
+            .Should().BeTrue();
+
+        var alone = await dispensing.AcknowledgeWarningAsync(warning.Id,
+            "Tolerated before");
+        alone.IsFailure.Should().BeTrue();
+        alone.Error.Code.Should().Be("DSP-032");
+
+        var released = await dispensing.AcknowledgeWarningAsync(warning.Id,
+            "Tolerated amoxicillin in 2024; prescriber consulted",
+            pharmacistId);
+        released.IsSuccess.Should().BeTrue(released.Error.Message);
+
+        var issued = await dispensing.IssueAsync(begun.Value.Id);
+        issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+
+        using var check = _steps.Fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        var stored = await db.Set<ClinicalWarning>().AsNoTracking()
+            .SingleAsync(w => w.Id == warning.Id);
+
+        stored.IsAcknowledged.Should().BeTrue();
+        stored.AuthorisedBy.Should().Be(pharmacistId);
+        stored.OverrideReason.Should().Contain("prescriber consulted");
+
+        (await db.AuditEntries.AsNoTracking()
+                .AnyAsync(a => a.Action == "dsp.warning.override"
+                               && a.EntityId == warning.Id
+                               && a.Outcome == "Applied"))
+            .Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A controlled medicine is the genuine exception: an assistant needs a
+    /// pharmacist to authorise it, and the authoriser's grant is checked.
+    /// </summary>
+    [Fact]
+    public async Task A_controlled_medicine_needs_a_pharmacist_to_authorise_the_issue()
+    {
+        await _steps.OpenTillAsync();
+        await _steps.ProductAsync("WFCTRL", "Codeine phosphate 30mg 20s",
+            55m, schedule: 6, batches: new[] { ("WFCTRL-A", 6, 40m) });
+
+        var pharmacistId = await _steps.UserAsync("wf.pharm4",
+            Role.Standard.Pharmacist);
+        var otherAssistant = await _steps.UserAsync("wf.assist5",
+            Role.Standard.PharmacistAssistant);
+
+        await _steps.SignInAsync("wf.assist4", Role.Standard.PharmacistAssistant);
+
+        var patientId = await _steps.PatientAsync("Controlled", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFCTRL", 10m, "One at night when needed"));
+
+        using var scope = _steps.Fixture.NewScope();
+        var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+        var begun = await dispensing.BeginAsync(scriptId);
+        await dispensing.AddScriptItemsAsync(begun.Value.Id);
+
+        var authority = await dispensing.IssueAuthorityAsync(begun.Value.Id);
+        authority.Value.OperatorMayIssue.Should().BeFalse();
+        authority.Value.Reason.Should().Contain("controlled");
+
+        (await dispensing.IssueAsync(begun.Value.Id)).Error.Code
+            .Should().Be("DSP-030");
+
+        (await dispensing.IssueAsync(begun.Value.Id, otherAssistant)).Error.Code
+            .Should().Be("DSP-031", "another assistant is not a pharmacist");
+
+        var issued = await dispensing.IssueAsync(begun.Value.Id, pharmacistId);
+        issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+    }
+
+    /// <summary>
+    /// DEF-0021: the pack price is for 21 capsules, so 7 cost a third.
+    /// </summary>
+    [Fact]
+    public async Task The_price_follows_the_quantity_dispensed()
+    {
+        await _steps.OpenTillAsync();
+        await _steps.ProductAsync("WFPRO", "Prorata capsules 21s", 126m,
+            schedule: 4, unitsPerPack: 21m,
+            batches: new[] { ("WFPRO-A", 6, 100m) });
+
+        await _steps.SignInAsync("wf.pharm5", Role.Standard.Pharmacist);
+
+        var patientId = await _steps.PatientAsync("Prorata", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFPRO", 7m, "One daily"));
+
+        using var scope = _steps.Fixture.NewScope();
+        var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+        var begun = await dispensing.BeginAsync(scriptId);
+        var seven = await dispensing.AddScriptItemsAsync(begun.Value.Id);
+        seven.Value.State.Items.Single().Tariff.Should().Be(42m);
+
+        var more = await dispensing.AddItemAsync(begun.Value.Id, "WFPRO",
+            new DirectionsDto(21m, "One daily"));
+        more.Value.Items.Last().Tariff.Should().Be(126m);
+    }
+}

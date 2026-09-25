@@ -10,9 +10,17 @@ public interface IDispenseView : Mvp.IView
     void ShowWarnings(IReadOnlyList<ClinicalWarningDto> warnings);
     void ShowCoPayment(decimal tariff, decimal contribution, decimal coPayment);
 
+    /// The item the pharmacist has selected in the grid, if any.
+    int? SelectedLineNo { get; }
+
     Guid? PromptPatientSearch();
     Guid? PromptScriptSearch(Guid patientId);
-    DirectionsDto? PromptDirections(Guid productId);
+
+    /// <summary>
+    /// Asks for the quantity and directions, starting from what the
+    /// script says. Null if cancelled.
+    /// </summary>
+    DirectionsDto? PromptDirections(ItemProposalDto proposal);
 
     /// Returns the pharmacist who authenticated, or null if cancelled.
     Guid? PromptPharmacistAuthorisation(string reasonShown);
@@ -21,10 +29,15 @@ public interface IDispenseView : Mvp.IView
     /// override a hard-stop warning.
     string? PromptWarningOverride(ClinicalWarningDto warning);
 
+    /// Opens the Labels screen, where any issued dispensing's labels are
+    /// printed again.
+    void ShowLabelScreen();
+
     event EventHandler? PatientRequested;
     event EventHandler? ScriptRequested;
     event EventHandler<string>? ProductScanned;
     event EventHandler? IssueRequested;
     event EventHandler? LabelReprintRequested;
+    event EventHandler? RemoveItemRequested;
     event EventHandler? CloseRequested;
 }
