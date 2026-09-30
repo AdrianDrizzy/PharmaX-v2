@@ -143,6 +143,15 @@ public sealed record LabelDto(
     string PharmacistName, string ScriptNumber, DateOnly DispensedOn,
     IReadOnlyList<string> Cautions);
 
+/// <param name="ClaimNumber">
+/// The medical aid claim the issue raised, if the scheme pays any of it,
+/// so the dispensary can hand the member the claim form to sign.
+/// </param>
+/// <param name="Trailer">
+/// The trailer label that follows the item labels: the whole script on
+/// one label.
+/// </param>
 public sealed record IssueResultDto(
     string ScriptNumber, string DocumentNumber, decimal CoPayment,
-    IReadOnlyList<LabelDto> Labels);
+    IReadOnlyList<LabelDto> Labels, string? ClaimNumber = null,
+    TrailerLabelDto? Trailer = null);

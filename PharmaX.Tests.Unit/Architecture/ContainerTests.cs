@@ -47,6 +47,7 @@ public class ContainerTests
         typeof(Desktop.Features.Suppliers.frmGoodsReceipt),
         typeof(Desktop.Features.Suppliers.frmPurchaseOrderList),
         typeof(Desktop.Features.Inventory.frmStocktakeList),
+        typeof(Desktop.Features.Inventory.frmStockAdjustment),
         typeof(Desktop.Features.Inventory.frmStocktakeCapture),
 
         // The accounts and ledger screens. Added when they grew a

@@ -1,0 +1,4 @@
+-- select Code, Description, RetailPrice, CostPrice, VatRatePercent, Schedule, IsBatchTracked, QuantityOnHand from product where Code in ('E2ECD6','E2EOTC');
+Code	Description	RetailPrice	CostPrice	VatRatePercent	Schedule	IsBatchTracked	QuantityOnHand
+E2ECD6	Codeine phosphate 30mg tablets 30s	38.00	20.00	0.0000	6	1	0.000
+E2EOTC	BethRapha Vitamin C 1000mg effervescent 10s	4.50	2.10	15.0000	0	0	0.000

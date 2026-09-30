@@ -1,0 +1,3 @@
+-- select Status, OpeningFloat, ClosedAtUtc from tillsession order by OpenedAtUtc desc limit 1;
+Status	OpeningFloat	ClosedAtUtc
+Closed	200.00	2026-09-25 04:20:15.728550

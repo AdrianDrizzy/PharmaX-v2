@@ -325,6 +325,8 @@ public partial class frmReports : PhxFormBase, IReportsView
             grdPreview.Rows.Add(values);
         }
 
+        FitColumns();
+
         // RPT-012 on screen as well as on paper: what was asked, by whom,
         // when, and how current the data is.
         lblProvenance.Text = string.Format(CultureInfo.CurrentCulture,
@@ -332,6 +334,62 @@ public partial class frmReports : PhxFormBase, IReportsView
             result.Provenance.ParameterSummary, result.RowCount,
             result.Provenance.RunByUsername, result.Provenance.RunAtLocal,
             result.Provenance.DataCurrency);
+    }
+
+    /// <summary>
+    /// Each column as wide as what it holds, and the window's width shared
+    /// out only when everything already fits.
+    /// </summary>
+    /// <remarks>
+    /// Shared out equally, a report of fifteen columns cut every value to
+    /// three letters and an ellipsis. It scrolls sideways now instead, and
+    /// a report of four columns still fills the window.
+    /// </remarks>
+    private void FitColumns()
+    {
+        if (grdPreview.Columns.Count == 0) return;
+
+        grdPreview.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+        grdPreview.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.DisplayedCells);
+
+        var needed = 0;
+
+        foreach (DataGridViewColumn column in grdPreview.Columns)
+        {
+            column.Width = Math.Min(column.Width + 8, 420);
+            needed += column.Width;
+        }
+
+        var room = grdPreview.ClientSize.Width
+                   - SystemInformation.VerticalScrollBarWidth - 2;
+
+        if (needed > room) return;
+
+        foreach (DataGridViewColumn column in grdPreview.Columns)
+            column.FillWeight = Math.Max(1, column.Width);
+
+        grdPreview.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+    }
+
+    public void ClearPreview(string caption)
+    {
+        grdPreview.Columns.Clear();
+        grdPreview.Rows.Clear();
+        lblProvenance.Text = caption;
+    }
+
+    public string? PromptExportPath(string suggestedName)
+    {
+        using var save = new SaveFileDialog
+        {
+            DefaultExt = "xlsx",
+            FileName = suggestedName,
+            Filter = "Excel workbook (*.xlsx)|*.xlsx",
+            OverwritePrompt = true,
+            Title = "Export report"
+        };
+
+        return save.ShowDialog(this) == DialogResult.OK ? save.FileName : null;
     }
 
     public event EventHandler? PresetChanged;

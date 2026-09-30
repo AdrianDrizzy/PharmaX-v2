@@ -21,6 +21,7 @@ partial class frmPatientEdit
     private TextBox txtIdNumber = null!;
     private TextBox txtTelephone = null!;
     private TextBox txtEmail = null!;
+    private TextBox txtAddress = null!;
     private CheckBox chkHasDateOfBirth = null!;
     private DateTimePicker dtpDateOfBirth = null!;
     private MoneyTextBox txtWeight = null!;
@@ -69,6 +70,8 @@ partial class frmPatientEdit
         txtTelephone.Name = "txtTelephone";
         txtEmail = new TextBox();
         txtEmail.Name = "txtEmail";
+        txtAddress = new TextBox();
+        txtAddress.Name = "txtAddress";
         chkHasDateOfBirth = new CheckBox();
         dtpDateOfBirth = new DateTimePicker();
         txtWeight = new MoneyTextBox();
@@ -107,6 +110,15 @@ partial class frmPatientEdit
         Field(tabIdentity, "&ID number", txtIdNumber, 3, 180, 20);
         Field(tabIdentity, "&Telephone", txtTelephone, 5, 180, 30);
         Field(tabIdentity, "&Email", txtEmail, 6, 260, 150);
+
+        // Where the patient lives. Searched with the telephone number, so
+        // two patients of the same name can be told apart, and two lines
+        // tall because an address is written over two.
+        Field(tabIdentity, "Add&ress", txtAddress, 7, 380, 250);
+        txtAddress.AcceptsReturn = true;
+        txtAddress.Multiline = true;
+        txtAddress.ScrollBars = ScrollBars.Vertical;
+        txtAddress.Size = new Size(380, 50);
 
         chkHasDateOfBirth.AutoSize = true;
         chkHasDateOfBirth.Location = new Point(150, 20 + 4 * 34);

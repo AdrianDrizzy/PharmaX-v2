@@ -41,6 +41,25 @@ public sealed class Batch : AuditableEntity
         };
     }
 
+    /// <summary>
+    /// The number printed on the pack. What a sale already took home
+    /// stays on that sale: the line keeps the number it was issued with.
+    /// </summary>
+    public void SetBatchNumber(string batchNumber)
+    {
+        if (string.IsNullOrWhiteSpace(batchNumber))
+            throw new DomainException("A batch requires a batch number.");
+
+        BatchNumber = batchNumber.Trim();
+    }
+
+    /// <summary>
+    /// The date on the pack, including one that has already passed.
+    /// Expired stock is still on the shelf until it is written off, and
+    /// the date is how the list knows to flag it.
+    /// </summary>
+    public void SetExpiry(DateOnly expiry) => ExpiryDate = expiry;
+
     public bool IsExpiredOn(DateOnly today) => ExpiryDate < today;
 
     public bool IsAvailableOn(DateOnly today) =>

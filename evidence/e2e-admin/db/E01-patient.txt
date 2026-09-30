@@ -1,0 +1,3 @@
+-- select p.FileNumber, p.Surname, p.IdNumber, p.MembershipNumber, p.DependantCode, s.Code scheme, c.WeightKg, c.ChronicConditions from patient p left join medicalaidscheme s on s.Id=p.MedicalAidSchemeId left join clinicalprofile c on c.Id=p.ClinicalProfileId where p.Surname='Ncube';
+FileNumber	Surname	IdNumber	MembershipNumber	DependantCode	scheme	WeightKg	ChronicConditions
+P-001-000007	Ncube	08-2345678-N-08	CIM-771020	00	E2EMAS	68.000	["Hypertension"]

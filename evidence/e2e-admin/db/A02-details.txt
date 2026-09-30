@@ -1,0 +1,6 @@
+-- select `Key`, replace(Value, char(13,10), ' / ') Value from workstationsetting where WorkstationCode='PHARMACY' order by `Key`;
+Key	Value
+pharmacy.address	28 Woodstock Thorngrove / Bulawayo (Along Luveve Road)
+pharmacy.registered-name	BethRapha Pharmacy (Pvt) Ltd
+pharmacy.trading-name	BethRapha Pharmacy
+pharmacy.vat-number	TEST-0001

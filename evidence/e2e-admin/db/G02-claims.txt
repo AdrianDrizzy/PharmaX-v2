@@ -1,0 +1,5 @@
+-- select ClaimNumber, Status, Claimed, Settled, WrittenOff from medicalaidclaim order by ClaimNumber;
+ClaimNumber	Status	Claimed	Settled	WrittenOff
+C-001-000001	Settled	26.29	23.66	2.63
+C-001-000002	Outstanding	26.29	0.00	0.00
+C-001-000003	Settled	13.00	13.00	0.00

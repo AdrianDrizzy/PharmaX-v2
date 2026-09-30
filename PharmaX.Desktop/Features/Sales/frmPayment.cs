@@ -40,14 +40,21 @@ public partial class frmPayment : Form
         public override string ToString() => Label;
     }
 
+    /// <remarks>
+    /// EcoCash sits beside cash because in Zimbabwe it is used as freely.
+    /// Medical aid is not offered: a scheme pays its share through the
+    /// claim raised when the script is issued, and taken here it
+    /// finalised walk-in sales no scheme would ever be billed for
+    /// (ADM-DEF-10).
+    /// </remarks>
     private static readonly Tender[] Tenders =
     {
-        new(TenderType.Cash, "Cash"),
-        new(TenderType.Card, "Card"),
-        new(TenderType.Eft, "EFT"),
-        new(TenderType.Account, "Account"),
-        new(TenderType.MedicalAid, "Medical aid"),
-        new(TenderType.Voucher, "Voucher")
+        new(TenderType.Cash, TenderType.Cash.DisplayName()),
+        new(TenderType.EcoCash, TenderType.EcoCash.DisplayName()),
+        new(TenderType.Card, TenderType.Card.DisplayName()),
+        new(TenderType.Eft, TenderType.Eft.DisplayName()),
+        new(TenderType.Account, TenderType.Account.DisplayName()),
+        new(TenderType.Voucher, TenderType.Voucher.DisplayName())
     };
 
     /// <summary>
@@ -60,8 +67,7 @@ public partial class frmPayment : Form
     /// the reference to the operator's discretion.
     /// </remarks>
     private static bool SettledElsewhere(TenderType tender) =>
-        tender is TenderType.Card or TenderType.Eft
-            or TenderType.MedicalAid;
+        tender is TenderType.Card or TenderType.Eft;
 
     public IReadOnlyList<PaymentDto> Payments => _payments;
 
@@ -107,9 +113,11 @@ public partial class frmPayment : Form
     {
         lblReference.Text = "&Reference";
 
-        txtReference.PlaceholderText = SettledElsewhere(Selected.Type)
-            ? "Optional - slip or approval number"
-            : "Optional";
+        txtReference.PlaceholderText = Selected.Type == TenderType.EcoCash
+            ? "Optional - EcoCash transaction ID"
+            : SettledElsewhere(Selected.Type)
+                ? "Optional - slip or approval number"
+                : "Optional";
     }
 
     private decimal Outstanding =>
@@ -148,7 +156,8 @@ public partial class frmPayment : Form
 
         return -outstanding > cashTendered
             ? $"Over-tendered by {Format.Money(-outstanding)}, and only cash "
-              + "can give change. Reduce the card, EFT or account amount."
+              + "can give change. Reduce the EcoCash, card, EFT or account "
+              + "amount."
             : null;
     }
 
@@ -166,15 +175,35 @@ public partial class frmPayment : Form
     /// without a window: a form that has never been shown cannot be
     /// clicked, and the rule is the part worth testing anyway.
     /// </remarks>
+    /// <para>
+    /// Only cash gives change, so any other tender is held to what is
+    /// still outstanding as it is added. A 150.00 card against 103.81 due
+    /// used to go into the list and show as "Change $46.19" while Pay sat
+    /// disabled with nothing saying why (ADM-OBS-09). A refund is held to
+    /// what is owed on every tender, cash included.
+    /// </para>
     internal static string? Refuse(TenderType tender, decimal? amount,
-                                   string? reference)
+                                   string? reference, decimal outstanding,
+                                   bool refund = false)
     {
-        _ = tender;
         _ = reference;
 
-        return amount is not decimal value || value <= 0m
-            ? "Enter an amount greater than zero."
-            : null;
+        if (amount is not decimal value || value <= 0m)
+            return "Enter an amount greater than zero.";
+
+        if (outstanding <= 0m)
+            return refund
+                ? "The refund is already covered."
+                : "The sale is already covered. Pay, or remove a tender.";
+
+        if ((refund || tender != TenderType.Cash) && value > outstanding)
+            return refund
+                ? $"Only {Format.Money(outstanding)} is owed back."
+                : $"{tender.DisplayName()} cannot be more than the "
+                  + $"{Format.Money(outstanding)} still due - only cash "
+                  + "gives change.";
+
+        return null;
     }
 
     private void AddTender()
@@ -182,7 +211,8 @@ public partial class frmPayment : Form
         var tender = Selected;
         var reference = txtReference.Text.Trim();
 
-        if (Refuse(tender.Type, txtAmount.Amount, reference) is string problem)
+        if (Refuse(tender.Type, txtAmount.Amount, reference, Outstanding,
+                   _isRefund) is string problem)
         {
             lblError.Text = problem;
             txtAmount.Focus();

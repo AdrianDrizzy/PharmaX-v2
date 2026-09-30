@@ -1,0 +1,9 @@
+-- select Code, QuantityOnHand from product where Code in ('E2EOTC','E2ECD6','AMOX50'); select b.BatchNumber, p.Code, b.ExpiryDate, b.QuantityOnHand from batch b join product p on p.Id=b.ProductId where p.Code in ('AMOX50','E2ECD6');
+Code	QuantityOnHand
+AMOX50	40.000
+E2ECD6	0.000
+E2EOTC	0.000
+BatchNumber	Code	ExpiryDate	QuantityOnHand
+AMOX50-A	AMOX50	2027-01-25	4.000
+AMOX50-B	AMOX50	2027-11-25	24.000
+AMOX50-WARNING	AMOX50	2026-11-26	12.000

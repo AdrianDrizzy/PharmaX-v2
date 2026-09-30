@@ -111,6 +111,7 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
         txtIdNumber.Text = patient.IdNumber ?? "";
         txtTelephone.Text = patient.Telephone ?? "";
         txtEmail.Text = patient.Email ?? "";
+        txtAddress.Text = patient.Address ?? "";
 
         chkHasDateOfBirth.Checked = patient.DateOfBirth is not null;
 
@@ -163,7 +164,11 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
             .ToList(),
         MedicalAidSchemeId: ChosenScheme,
         MembershipNumber: Blank(txtMembershipNumber.Text),
-        DependantCode: Blank(txtDependantCode.Text));
+        DependantCode: Blank(txtDependantCode.Text),
+
+        // Sent even when blank, which clears it: null would leave the
+        // address as it was.
+        Address: txtAddress.Text.Trim());
 
     private IReadOnlyList<AllergyDto> CollectAllergies()
     {

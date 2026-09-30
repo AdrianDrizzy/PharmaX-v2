@@ -48,6 +48,8 @@ public partial class frmJournal : PhxFormBase, IJournalView
 
         btnPost.Click += (_, _) => PostRequested?.Invoke(this, EventArgs.Empty);
         btnClear.Click += (_, _) => Clear();
+        btnAddLine.Click += (_, _) => AddLine();
+        btnRemoveLine.Click += (_, _) => RemoveLine();
         btnExport.Click += (_, _) => Export();
 
         btnClose.Click += (_, _) => CloseView(false);
@@ -76,9 +78,38 @@ public partial class frmJournal : PhxFormBase, IJournalView
 
     public string Narration => txtNarration.Text.Trim();
 
+    private IReadOnlyList<(string Code, string Label)> _accounts =
+        Array.Empty<(string, string)>();
+
+    /// <summary>
+    /// Keys a line through a dialog and puts it on the grid.
+    /// </summary>
+    private void AddLine()
+    {
+        if (PharmaX.Desktop.Controls.frmJournalLinePrompt.Ask(this, _accounts) is not var (code, amount,
+                isDebit, note))
+            return;
+
+        grdLines.Rows.Add(code, isDebit ? amount : null,
+                          isDebit ? null : amount, note);
+        RaiseChanged();
+    }
+
+    private void RemoveLine()
+    {
+        if (grdLines.CurrentRow is not { IsNewRow: false } row) return;
+
+        grdLines.Rows.Remove(row);
+        RaiseChanged();
+    }
+
     public void ShowAccounts(IReadOnlyList<LedgerAccountDto> accounts)
     {
         ArgumentNullException.ThrowIfNull(accounts);
+
+        _accounts = accounts
+            .Select(a => (a.Code, $"{a.Code}  {a.Name}"))
+            .ToList();
 
         // "5900  Cash Short or Over" in the list, "5900" as the value:
         // the operator picks by name and the journal stores the code.

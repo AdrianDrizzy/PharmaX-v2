@@ -13,6 +13,8 @@ partial class frmLabels
     private PhxGrid grdDispensings = null!;
     private Button btnPreview = null!;
     private Button btnReprint = null!;
+    private Button btnReverse = null!;
+    private Button btnClaimForm = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -34,6 +36,10 @@ partial class frmLabels
         btnPreview.Name = "btnPreview";
         btnReprint = new Button();
         btnReprint.Name = "btnReprint";
+        btnReverse = new Button();
+        btnReverse.Name = "btnReverse";
+        btnClaimForm = new Button();
+        btnClaimForm.Name = "btnClaimForm";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -82,22 +88,38 @@ partial class frmLabels
         btnReprint.Text = "&Print labels";
         btnReprint.UseVisualStyleBackColor = true;
 
+        // Taking back what was issued to the wrong patient, or not in
+        // the end handed over. Shown only to those who may reverse.
+        btnReverse.Location = new Point(264, 8);
+        btnReverse.Size = new Size(140, 30);
+        btnReverse.TabIndex = 3;
+        btnReverse.Text = "Re&verse dispensing";
+        btnReverse.UseVisualStyleBackColor = true;
+
+        // The medical aid claim form, on the A4 printer, for the member to
+        // sign - again, if the first was lost or never printed.
+        btnClaimForm.Location = new Point(410, 8);
+        btnClaimForm.Size = new Size(110, 30);
+        btnClaimForm.TabIndex = 4;
+        btnClaimForm.Text = "Claim &form";
+        btnClaimForm.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(500, 8);
+        btnClose.Location = new Point(590, 8);
         btnClose.Size = new Size(90, 30);
-        btnClose.TabIndex = 3;
+        btnClose.TabIndex = 5;
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
 
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnReprint, btnPreview });
+            { btnClose, btnClaimForm, btnReverse, btnReprint, btnPreview });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
         pnlBottom.Name = "pnlBottom";
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(610, 480);
+        ClientSize = new Size(700, 480);
         Controls.Add(grdDispensings);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

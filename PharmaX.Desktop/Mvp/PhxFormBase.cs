@@ -1,4 +1,5 @@
 using PharmaX.Application.Offline;
+using PharmaX.Desktop.Controls;
 
 namespace PharmaX.Desktop.Mvp;
 
@@ -114,6 +115,35 @@ public class PhxFormBase : Form, IView
     /// </summary>
     protected virtual bool ClosesOnEscape => true;
 
+    /// <summary>
+    /// Whether the buttons are given function keys (see FunctionKeys).
+    /// Off where a screen keeps a map of its own that people already know
+    /// - the till's - and on the shell, whose menu carries the keys.
+    /// </summary>
+    protected virtual bool AssignsFunctionKeys => true;
+
+    private Dictionary<Keys, Button>? _functionKeys;
+
+    /// <summary>
+    /// The keys and the buttons they press. Handed out when the screen
+    /// opens; a test can hand them out without opening it.
+    /// </summary>
+    internal IReadOnlyDictionary<Keys, Button> FunctionKeyMap
+    {
+        get
+        {
+            AssignFunctionKeys();
+            return _functionKeys ?? new Dictionary<Keys, Button>();
+        }
+    }
+
+    internal void AssignFunctionKeys()
+    {
+        if (_functionKeys is not null || !AssignsFunctionKeys) return;
+
+        _functionKeys = FunctionKeys.Assign(this, escape: ClosesOnEscape);
+    }
+
     public void UseConnectivity(IConnectivityMonitor monitor,
                                 bool sharedDatabase = false)
     {
@@ -145,6 +175,10 @@ public class PhxFormBase : Form, IView
 
         if (Connectivity is not null) RenderBanner(Connectivity.State);
         KeyPreview = true;
+
+        // After the theme, which sets the buttons' font, and before the
+        // window is fitted: the keys make some captions longer.
+        AssignFunctionKeys();
 
         FitWindowToContents();
     }
@@ -219,7 +253,53 @@ public class PhxFormBase : Form, IView
             return true;
         }
 
+        if (_functionKeys is not null && PressFunctionKey(keyData))
+            return true;
+
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    /// <summary>
+    /// F1 lists the screen's keys; any other key presses its button,
+    /// where the button can be pressed at all.
+    /// </summary>
+    /// <remarks>
+    /// A hidden or disabled button stays unpressed from the keyboard as
+    /// it is from the mouse: a key must never do what the screen has just
+    /// decided this user may not. Escape is left to the form's own cancel
+    /// button, and F2 and F4 to a grid or a list that has the focus.
+    /// </remarks>
+    internal bool PressFunctionKey(Keys key)
+    {
+        if (_functionKeys is null) return false;
+
+        if (key == Keys.F1)
+        {
+            frmTextViewer.Show(this, "Keyboard shortcuts",
+                FunctionKeys.Describe(_functionKeys));
+            return true;
+        }
+
+        if (key == Keys.Escape
+            || !_functionKeys.TryGetValue(key, out var button)
+            || FunctionKeys.BelongsToControl(Focused(), key)
+            || !button.Visible || !button.Enabled)
+            return false;
+
+        button.PerformClick();
+        return true;
+    }
+
+    /// The control that actually has the focus, inside any container.
+    private Control? Focused()
+    {
+        Control? control = ActiveControl;
+
+        while (control is ContainerControl container
+               && container.ActiveControl is not null)
+            control = container.ActiveControl;
+
+        return control;
     }
 
     private void RenderBanner(ConnectivityState state)

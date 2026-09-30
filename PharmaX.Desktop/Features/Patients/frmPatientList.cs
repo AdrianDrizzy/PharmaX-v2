@@ -1,5 +1,6 @@
 using System.Globalization;
 using PharmaX.Application.Patients.Dtos;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Patients;
@@ -18,6 +19,11 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     private readonly System.Windows.Forms.Timer _debounce =
         new() { Interval = 250 };
 
+    /// The matching patients, offered under the search box - surname
+    /// first, with the file, telephone and address that tell two of the
+    /// same name apart.
+    private readonly SearchSuggestions _suggestions;
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.PatientMaintain;
 
@@ -25,6 +31,28 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     public frmPatientList()
     {
         InitializeComponent();
+
+        _suggestions = new SearchSuggestions(txtSearch);
+        _suggestions.Chosen += (_, chosen) =>
+        {
+            if (!Suggest.SelectRow(grdPatients, item =>
+                    item is PatientListItemDto p && Equals(p.Id, chosen.Value)))
+                return;
+
+            if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
+        };
+
+        // An address kept over two lines reads as one on the list.
+        grdPatients.CellFormatting += (_, e) =>
+        {
+            if (e.ColumnIndex >= 0
+                && grdPatients.Columns[e.ColumnIndex].DataPropertyName == "Address"
+                && e.Value is string address)
+            {
+                e.Value = Suggest.OneLine(address);
+                e.FormattingApplied = true;
+            }
+        };
 
         txtSearch.TextChanged += (_, _) => Restart();
         _debounce.Tick += (_, _) =>
@@ -135,6 +163,8 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
             if (!patient.IsActive)
                 row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
         }
+
+        _suggestions.Offer(patients.Select(Suggest.Patient));
     }
 
     public void ShowCount(int count) =>

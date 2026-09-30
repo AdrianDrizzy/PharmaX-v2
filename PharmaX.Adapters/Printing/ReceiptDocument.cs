@@ -16,10 +16,20 @@ namespace PharmaX.Adapters.Printing;
 /// document in the Desktop project would mean an adapter referencing the
 /// presentation layer, which is the one direction the dependency rule
 /// forbids (Section 4.1).
+///
+/// Laid out as the pharmacy's fiscal tax invoice slip: the pharmacy's
+/// name and address, the transaction, a code-and-quantity line over a
+/// description-and-amount line for each item, then the totals and the
+/// tenders in the trading currency. No logo: a picture costs roll, time
+/// and toner on every sale, and the name says who the pharmacy is.
 /// </remarks>
 public sealed class ReceiptDocument : PrintDocument
 {
     private const int CharactersPerLine = 42;
+
+    /// Where every amount ends, so the item amounts line up under the
+    /// totals and a two-letter VAT mark still fits after them.
+    private const int AmountEnd = 39;
 
     private readonly SaleDto _sale;
     private readonly ReceiptHeaderDto _header;
@@ -47,117 +57,208 @@ public sealed class ReceiptDocument : PrintDocument
     }
 
     /// <summary>
+    /// The slip, top to bottom, as it is printed. Public so a test can
+    /// read what the customer will be handed without a printer.
+    /// </summary>
+    public IReadOnlyList<ReceiptRow> Rows()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        var rows = new List<ReceiptRow>();
+        var currency = (_header.CurrencyCode ?? "").Trim();
+
+        void Line(string text, ReceiptStyle style = ReceiptStyle.Body) =>
+            rows.Add(new ReceiptRow(text, style, Centred: false));
+
+        void Centre(string text, ReceiptStyle style = ReceiptStyle.Body) =>
+            rows.Add(new ReceiptRow(text, style, Centred: true));
+
+        void Rule() => Line(new string('-', CharactersPerLine));
+
+        void Field(string label, string value) =>
+            Line($"{label,-12}: {value}");
+
+        void Amount(string label, decimal value,
+                    ReceiptStyle style = ReceiptStyle.Body) =>
+            Line(AmountLine(label, value, culture), style);
+
+        // Who sold it: the name and the address, and the VAT number a tax
+        // invoice cannot be one without (specification Section 6.10).
+        Centre(_header.TradingName, ReceiptStyle.Title);
+
+        // One printed line per address line: a multi-line address drawn
+        // in one call overprinted whatever came under it.
+        foreach (var addressLine in (_header.Address ?? "")
+                     .Split('\n')
+                     .Select(part => part.Trim())
+                     .Where(part => part.Length > 0))
+            Centre(addressLine);
+
+        // A pharmacy not yet registered for VAT prints no VAT number
+        // rather than a bare label.
+        if (!string.IsNullOrWhiteSpace(_header.VatNumber))
+            Centre($"VAT No: {_header.VatNumber.Trim()}");
+
+        Rule();
+        Centre("Fiscal Tax Invoice", ReceiptStyle.Bold);
+        Centre(SaleKind());
+
+        if (_header.IsCopy) Centre(CopyMark, ReceiptStyle.Bold);
+
+        Rule();
+
+        Field("Trans No", _sale.DocumentNumber);
+        Field("Date", _header.PrintedAtLocal.ToString("dd/MM/yyyy HH:mm",
+            culture));
+        Field("Operator", _header.OperatorName);
+        Field("Till Number", string.IsNullOrWhiteSpace(_header.TillNumber)
+            ? _header.BranchAndTill
+            : _header.TillNumber.Trim());
+
+        // Whose it is. The account a sale went on, and the patient and
+        // script a collection paid for, were on no receipt at all
+        // (ADM-DEF-09, ADM-OBS-15).
+        var who = _sale.Particulars;
+
+        if (who?.AccountNumber is string account)
+            Field("Account", $"{account} {who.AccountName}".Trim());
+
+        if (who?.PatientName is string patient)
+            Field("Patient", who.FileNumber is null
+                ? patient
+                : $"{patient} ({who.FileNumber})");
+
+        if (who?.ScriptNumber is string script)
+            Line($"REF: Script No-{script}");
+
+        Rule();
+        Line(string.Format(culture, "{0,-10}{1,-7}{2,11}{3,11}",
+            "Code", "QTY", "Unit Price", "Amount Inc"));
+        Rule();
+
+        var sold = _sale.Lines.Where(x => !x.IsVoided).ToList();
+
+        foreach (var l in sold)
+        {
+            Line(CodeLine(l, culture));
+
+            // The whole description, over as many lines as it takes. It
+            // was cut short once, which took "60s x 30" off every
+            // collected script - the only place the receipt says how much
+            // of the medicine was paid for.
+            var description = Wrap(l.Description, 28, AmountEnd);
+            var mark = l.VatRatePercent == 0m ? " NV" : "";
+
+            Line(string.Format(culture, "{0,-28}{1,11:N2}{2}",
+                description[0], l.LineTotal, mark));
+
+            foreach (var more in description.Skip(1))
+                Line(more);
+
+            if (l.Discount > 0m)
+                Amount("  less discount", l.Discount);
+        }
+
+        Rule();
+        Amount("Sub Total", _sale.Totals.Subtotal);
+
+        if (_sale.Totals.Discount > 0m)
+            Amount("Discount", _sale.Totals.Discount);
+
+        foreach (var (label, vat) in VatLines(sold, currency, culture))
+            Amount(label, vat);
+
+        Amount(Labelled("TOTAL", currency) + ":", _sale.Totals.Total,
+               ReceiptStyle.Bold);
+        Rule();
+
+        // How it was paid. A receipt that does not say whether it was
+        // cash or card cannot settle the commonest query at the counter.
+        foreach (var payment in _sale.Payments ?? Array.Empty<PaymentDto>())
+            Amount(TenderLabel(payment.TenderType)
+                   + (currency.Length > 0 ? " " + currency : ""),
+                   payment.Amount);
+
+        if (_sale.Totals.Change > 0m)
+        {
+            Amount("Tendered", _sale.Totals.Tendered);
+            Amount("Change", _sale.Totals.Change);
+        }
+
+        // The patient's portion is what was paid here; the scheme's is
+        // claimed. Both, so the patient can see the script was not
+        // charged to them in full.
+        if (who?.SchemeShare is decimal share)
+        {
+            Rule();
+            Amount($"Claimed from {who.SchemeName ?? "medical aid"}", share);
+            Amount("Your portion", _sale.Totals.Total);
+        }
+
+        // Somebody signs for a sale put on their account.
+        if (_sale.Payments?.Any(p => p.TenderType == "Account") == true)
+        {
+            Line("");
+            Line("Signed ______________________________");
+        }
+
+        Rule();
+
+        if (_header.IsCopy) Centre(CopyMark, ReceiptStyle.Bold);
+
+        Centre("Thank you");
+
+        return rows;
+    }
+
+    /// <summary>
     /// Draws the whole slip onto a surface.
     /// </summary>
     /// <remarks>
     /// Separate from OnPrintPage so that a test can render the receipt
     /// to a bitmap and look at it. A receipt is the one thing PharmaX
     /// produces that a customer keeps and an auditor reads, and
-    /// "it compiled" is not evidence that the fiscal particulars and
-    /// the pharmacy's logo actually landed on the paper.
+    /// "it compiled" is not evidence that the fiscal particulars actually
+    /// landed on the paper.
     /// </remarks>
     internal void RenderPage(Graphics g, Rectangle margins)
     {
         ArgumentNullException.ThrowIfNull(g);
 
-        var culture = CultureInfo.CurrentCulture;
-        var width = margins.Width;
         float y = margins.Top;
-        var left = margins.Left;
 
-        void Line(string text, Font? font = null)
+        using var centred = new StringFormat
         {
-            g.DrawString(text, font ?? _body, Brushes.Black, left, y);
-            y += (font ?? _body).GetHeight(g);
-        }
+            Alignment = StringAlignment.Center
+        };
 
-        void Centre(string text, Font font)
+        foreach (var row in Rows())
         {
-            var size = g.MeasureString(text, font);
-            g.DrawString(text, font, Brushes.Black,
-                left + (width - size.Width) / 2, y);
+            var font = row.Style switch
+            {
+                ReceiptStyle.Title => _title,
+                ReceiptStyle.Bold => _bold,
+                _ => _body
+            };
+
+            // Centred rows wrap within the roll: a long trading name in
+            // the large type would otherwise run off both edges.
+            if (row.Centred)
+            {
+                var height = Math.Max(
+                    g.MeasureString(row.Text, font, margins.Width).Height,
+                    font.GetHeight(g));
+
+                g.DrawString(row.Text, font, Brushes.Black,
+                    new RectangleF(margins.Left, y, margins.Width, height),
+                    centred);
+
+                y += height;
+                continue;
+            }
+
+            g.DrawString(row.Text, font, Brushes.Black, margins.Left, y);
             y += font.GetHeight(g);
         }
-
-        void Rule() => Line(new string('-', CharactersPerLine));
-
-        y += DrawLogo(g, left, width, y);
-
-        // Fiscal particulars are mandatory (specification Section 6.10).
-        Centre(_header.TradingName, _title);
-
-        // A pharmacy with no company name behind it - one cleared at the
-        // System Console - prints no blank line where it would have been.
-        if (!string.IsNullOrWhiteSpace(_header.RegisteredName))
-            Centre(_header.RegisteredName, _body);
-        // One printed line per address line. Centre advances by a single
-        // line height, so a multi-line address drawn in one call
-        // overprinted the VAT line beneath it.
-        foreach (var addressLine in (_header.Address ?? "")
-                     .Split('\n')
-                     .Select(part => part.Trim())
-                     .Where(part => part.Length > 0))
-            Centre(addressLine, _body);
-
-        // A pharmacy not yet registered for VAT prints no VAT number
-        // rather than a bare "VAT" label.
-        Centre(string.IsNullOrWhiteSpace(_header.VatNumber)
-                ? $"Lic {_header.LicenceNumber}"
-                : $"VAT {_header.VatNumber}  Lic {_header.LicenceNumber}",
-            _body);
-        Rule();
-
-        Line($"{_header.BranchAndTill}  {_header.OperatorName}");
-        Line(_header.PrintedAtLocal.ToString("dd/MM/yyyy HH:mm", culture));
-        Line($"Document {_sale.DocumentNumber}", _bold);
-        Rule();
-
-        foreach (var l in _sale.Lines.Where(x => !x.IsVoided))
-        {
-            // The whole description, over as many lines as it takes. It
-            // was cut at 24 characters, which took "60s x 30" off every
-            // collected script - the only place the receipt says how much
-            // of the medicine was paid for.
-            var description = Wrap(l.Description, 24, 38);
-
-            // 3 + 1 + 24 + 14 = the 42 characters of the roll, so each
-            // amount ends under the totals rather than four short of them.
-            Line(string.Format(culture, "{0,3:0.##} {1,-24}{2,14:N2}",
-                l.Quantity, description[0], l.LineTotal));
-
-            foreach (var more in description.Skip(1))
-                Line("    " + more);
-
-            if (l.Discount > 0m)
-                Line(string.Format(culture, "      less discount {0,22:N2}",
-                    l.Discount));
-
-            if (l.BatchNumber is not null)
-                Line(string.Format(culture, "      Batch {0} Exp {1:MM/yyyy}",
-                    l.BatchNumber, l.Expiry));
-        }
-
-        Rule();
-        Amount("Subtotal", _sale.Totals.Subtotal);
-        Amount("Discount", _sale.Totals.Discount);
-        Amount("VAT", _sale.Totals.VatTotal);
-        Amount("TOTAL", _sale.Totals.Total, _bold);
-        Rule();
-
-        // How it was paid. A receipt that does not say whether it was
-        // cash or card cannot settle the commonest query at the counter.
-        foreach (var payment in _sale.Payments ?? Array.Empty<PaymentDto>())
-            Amount($"Paid by {TenderLabel(payment.TenderType)}",
-                   payment.Amount);
-
-        Amount("Tendered", _sale.Totals.Tendered);
-        Amount("Change", _sale.Totals.Change);
-        Rule();
-        Centre("Thank you", _body);
-
-        void Amount(string label, decimal value, Font? font = null) =>
-            Line(string.Format(culture, "{0,-30}{1,12:N2}", label, value),
-                 font);
     }
 
     protected override void Dispose(bool disposing)
@@ -173,49 +274,91 @@ public sealed class ReceiptDocument : PrintDocument
     }
 
     /// <summary>
-    /// The pharmacy's logo, centred above the trading name. Returns the
-    /// height it used, or zero.
+    /// What kind of sale the slip is for, under the title.
+    /// </summary>
+    private string SaleKind() =>
+        _sale.Payments?.Any(p => p.TenderType == "Account") == true
+            ? "Account Sale"
+            : "Cash Sale";
+
+    /// <summary>
+    /// The first line of an item: its code, how many, and the price of
+    /// one.
+    /// </summary>
+    private static string CodeLine(SaleLineDto line, CultureInfo culture)
+    {
+        var code = (line.ProductCode ?? "").Trim();
+        var quantity = line.Quantity.ToString("0.###", culture) + " @";
+        var price = line.UnitPrice.ToString("N2", culture);
+
+        // A code longer than its column pushes the quantity along rather
+        // than running into it.
+        var lead = (code.Length < 10 ? code.PadRight(10) : code + " ")
+                   + quantity;
+
+        const int priceEnd = 28;
+
+        return lead.PadRight(Math.Max(lead.Length + 1,
+                   priceEnd - price.Length)) + price;
+    }
+
+    /// <summary>
+    /// The VAT, one line per rate the sale was charged at.
     /// </summary>
     /// <remarks>
-    /// Capped at a third of the roll's height allowance and never
-    /// enlarged past its own size: a logo that pushes the fiscal
-    /// particulars off the first page is worse than no logo. Failure to
-    /// read the file is silent for the same reason a printer fault is
-    /// (POS-014) - the sale is already committed and the customer is
-    /// waiting for their slip.
+    /// One rate is the usual case and prints the sale's own VAT total
+    /// beside it. A sale mixing rates prints each rate's share, worked
+    /// out from the lines, so the rate printed is never a rate nothing on
+    /// the slip was charged at.
     /// </remarks>
-    private float DrawLogo(Graphics g, int left, int width, float top)
+    private IEnumerable<(string Label, decimal Vat)> VatLines(
+        IReadOnlyList<SaleLineDto> lines, string currency,
+        CultureInfo culture)
     {
-        if (string.IsNullOrWhiteSpace(_header.LogoPath)
-            || !File.Exists(_header.LogoPath)) return 0f;
+        var label = Labelled("VAT", currency);
 
-        try
+        var rates = lines.Select(l => l.VatRatePercent)
+            .Where(rate => rate > 0m)
+            .Distinct()
+            .OrderByDescending(rate => rate)
+            .ToList();
+
+        if (rates.Count == 0)
         {
-            using var stream =
-                new MemoryStream(File.ReadAllBytes(_header.LogoPath));
-
-            using var logo = Image.FromStream(stream);
-
-            const int maximumHeight = 120;
-
-            var scale = Math.Min(
-                Math.Min((float)width / logo.Width,
-                         (float)maximumHeight / logo.Height), 1f);
-
-            var drawnWidth = logo.Width * scale;
-            var drawnHeight = logo.Height * scale;
-
-            g.DrawImage(logo, left + (width - drawnWidth) / 2, top,
-                        drawnWidth, drawnHeight);
-
-            return drawnHeight + 6f;
+            yield return (label + " :", _sale.Totals.VatTotal);
+            yield break;
         }
-#pragma warning disable CA1031 // Deliberately broad: see the remarks.
-        catch (Exception)
-#pragma warning restore CA1031
+
+        if (rates.Count == 1)
         {
-            return 0f;
+            yield return (Rated(rates[0]), _sale.Totals.VatTotal);
+            yield break;
         }
+
+        foreach (var rate in rates)
+        {
+            var vat = Math.Round(lines
+                .Where(l => l.VatRatePercent == rate)
+                .Sum(l => l.LineTotal * rate / (100m + rate)), 2,
+                MidpointRounding.AwayFromZero);
+
+            yield return (Rated(rate), vat);
+        }
+
+        string Rated(decimal rate) =>
+            string.Format(culture, "{0} : {1:0.0}%", label, rate);
+    }
+
+    private static string Labelled(string label, string currency) =>
+        currency.Length == 0 ? label : $"{label}-{currency}";
+
+    private static string AmountLine(string label, decimal value,
+                                     CultureInfo culture)
+    {
+        var amount = value.ToString("N2", culture);
+        var room = AmountEnd - amount.Length - 1;
+
+        return Trim(label, room).PadRight(room + 1) + amount;
     }
 
     /// <summary>
@@ -224,38 +367,27 @@ public sealed class ReceiptDocument : PrintDocument
     /// long for either is split where it has to be.
     /// </summary>
     internal static IReadOnlyList<string> Wrap(string value, int first,
-                                               int rest)
-    {
-        var pieces = new List<string>();
-        var remaining = (value ?? "").Trim();
+                                               int rest) =>
+        SlipLayout.Wrap(value, first, rest);
 
-        while (remaining.Length > 0)
-        {
-            var width = pieces.Count == 0 ? first : rest;
+    /// What a reprint says, above the sale and again at the foot.
+    internal const string CopyMark = "*** COPY - REPRINTED ***";
 
-            if (remaining.Length <= width)
-            {
-                pieces.Add(remaining);
-                break;
-            }
-
-            var cut = remaining.LastIndexOf(' ', width);
-            if (cut <= 0) cut = width;
-
-            pieces.Add(remaining[..cut].TrimEnd());
-            remaining = remaining[cut..].TrimStart();
-        }
-
-        if (pieces.Count == 0) pieces.Add("");
-
-        return pieces;
-    }
+    private static string Trim(string text, int width) =>
+        text.Length <= width ? text : text[..width];
 
     /// The tender as the till offers it, not as the enum spells it.
     private static string TenderLabel(string tender) => tender switch
     {
         "Eft" => "EFT",
-        "MedicalAid" => "medical aid",
-        _ => tender.ToLowerInvariant()
+        "EcoCash" => "EcoCash",
+        "MedicalAid" => "Medical aid",
+        _ => tender
     };
 }
+
+public enum ReceiptStyle { Body, Bold, Title }
+
+/// <summary>One printed line of a receipt.</summary>
+public sealed record ReceiptRow(string Text, ReceiptStyle Style,
+                                bool Centred);

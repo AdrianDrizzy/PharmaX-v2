@@ -22,6 +22,7 @@ partial class frmDispense
     private Label lblContributionValue = null!;
     private Label lblCoPaymentValue = null!;
     private Button btnFindScript = null!;
+    private Button btnQuote = null!;
     private Button btnIssue = null!;
     private Button btnReprint = null!;
     private Button btnRemove = null!;
@@ -50,6 +51,8 @@ partial class frmDispense
         lblWarningsCaption = new Label();
         btnFindScript = new Button();
         btnFindScript.Name = "btnFindScript";
+        btnQuote = new Button();
+        btnQuote.Name = "btnQuote";
         btnIssue = new Button();
         btnIssue.Name = "btnIssue";
         btnReprint = new Button();
@@ -177,6 +180,13 @@ partial class frmDispense
         btnRemove.Text = "Re&move item";
         btnRemove.UseVisualStyleBackColor = true;
 
+        // What it will cost, for a customer who has not decided: priced,
+        // saved, and dispensed here if they go ahead.
+        btnQuote.Location = new Point(596, 8);
+        btnQuote.Size = new Size(140, 32);
+        btnQuote.Text = "&Quote";
+        btnQuote.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(910, 8);
         btnClose.Size = new Size(100, 32);
@@ -184,7 +194,7 @@ partial class frmDispense
         btnClose.UseVisualStyleBackColor = true;
 
         pnlButtons.Controls.AddRange(new Control[]
-            { btnClose, btnRemove, btnReprint, btnIssue, btnFindScript });
+            { btnClose, btnQuote, btnRemove, btnReprint, btnIssue, btnFindScript });
         pnlButtons.Dock = DockStyle.Bottom;
         pnlButtons.Height = 50;
         pnlButtons.Name = "pnlButtons";

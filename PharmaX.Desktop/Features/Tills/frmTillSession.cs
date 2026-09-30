@@ -2,6 +2,7 @@ using System.Globalization;
 using PharmaX.Application.Tills.Dtos;
 using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
+using PharmaX.Domain.Sales;
 
 namespace PharmaX.Desktop.Features.Tills;
 
@@ -76,6 +77,7 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
         btnDeclare.Enabled = open;
         btnCloseSession.Enabled = open;
         grdDenominations.Enabled = open;
+        txtEcoCash.Enabled = open;
 
         // Nothing to count against a closed till, so the grid reads as
         // unavailable rather than as an empty one somebody should fill.
@@ -146,6 +148,12 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
         }
     }
 
+    /// <summary>
+    /// What the EcoCash merchant statement shows this till received, or
+    /// null where the operator has not entered it.
+    /// </summary>
+    public decimal? EcoCashStatement => txtEcoCash.Amount;
+
     public void ShowDenominationGrid(
         IReadOnlyList<DenominationDto> denominations)
     {
@@ -177,7 +185,8 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
             - pnlCount.Padding.Vertical
             - lblCountCaption.Height
             - lblCountHint.Height
-            - pnlCountFooter.Height;
+            - pnlCountFooter.Height
+            - pnlStatement.Height;
 
         grdDenominations.Height = Math.Max(120, Math.Min(wanted, available));
     }
@@ -227,10 +236,14 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
             "How much is being counted into the drawer as the opening "
             + "float?", 0m, decimals: 2);
 
-    public string? PromptVarianceReason(decimal variance) =>
+    public string? PromptVarianceReason(string tender, decimal variance) =>
         frmTextPrompt.Ask(this, "Variance",
             string.Format(Format.Culture,
-                "The drawer is {0} by {1}. Why?",
+                "The {0} is {1} by {2}. Why?",
+                Enum.TryParse<TenderType>(tender, out var t)
+                    && t != TenderType.Cash
+                    ? t.DisplayName() + " statement"
+                    : "drawer",
                 variance < 0m ? "short" : "over",
                 Format.Money(Math.Abs(variance))));
 

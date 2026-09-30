@@ -217,7 +217,7 @@ public sealed class Sale : AuditableEntity
             if (over.Amount > cash.Amount)
                 throw new DomainException(
                     $"{over} more than the sale was tendered, and only cash "
-                    + "can give change. Reduce the card or account amount.");
+                    + "can give change. Reduce the EcoCash, card or account amount.");
 
             // Out of the last cash tender first, which is the note the
             // cashier is holding when they count the change.

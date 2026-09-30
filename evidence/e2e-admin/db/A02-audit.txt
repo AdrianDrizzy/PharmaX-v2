@@ -1,0 +1,3 @@
+-- select * from auditentry where Action like 'adm.pharmacy%';
+Id	OccurredAtUtc	UserId	Workstation	Action	EntityType	EntityId	BeforeJson	AfterJson	Outcome	Reason
+5667fa41-3408-42df-a365-6c9a17b1eae1	2026-09-25 02:16:14.034250	51999a5e-8b42-416f-a05b-4cfe9e9ee511	1	adm.pharmacy.details	Pharmacy	00000000-0000-0000-0000-000000000000	NULL	NULL	Applied	trading name: 'PharmaX' -> 'BethRapha Pharmacy'; registered name: 'PharmaX (Pty) Ltd' -> 'BethRapha Pharmacy (Pvt) Ltd'; VAT number: '' -> 'TEST-0001'; address: '' -> '28 Woodstock Thorngrove, Bulawayo (Along Luveve Road)'

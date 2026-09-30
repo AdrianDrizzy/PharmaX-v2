@@ -133,6 +133,15 @@ public sealed class PurchaseOrderLine : Entity
         if (quantity <= 0m)
             throw new DomainException("A receipt must be greater than zero.");
 
+        // More than was ordered is not a receipt against this order: it
+        // is stock the pharmacy never asked for, and an invoice it may
+        // not owe (ADM-DEF-07).
+        if (quantity > Outstanding)
+            throw new DomainException(
+                $"{Description}: {quantity:0.###} received against line "
+                + $"{LineNo}, which has only {Math.Max(Outstanding, 0m):0.###} "
+                + "still to come.");
+
         QuantityReceived += quantity;
     }
 }

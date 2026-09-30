@@ -35,6 +35,14 @@ public sealed class frmAccountPicker : PhxFormBase
     {
         BuildLayout();
 
+        _suggestions = new SearchSuggestions(_search);
+        _suggestions.Chosen += (_, chosen) =>
+        {
+            if (Suggest.SelectRow(_grid, item =>
+                    item is AccountRow r && Equals(r.Source.Id, chosen.Value)))
+                Accept();
+        };
+
         _search.TextChanged += (_, _) =>
         {
             _debounce.Stop();
@@ -57,6 +65,9 @@ public sealed class frmAccountPicker : PhxFormBase
     /// Runtime. Resolved by the container.
     public frmAccountPicker(IAccountService accounts) : this() =>
         _accounts = accounts;
+
+    /// The matching accounts, offered under the search box.
+    private readonly SearchSuggestions _suggestions;
 
     /// The account the operator picked, once the dialog returns OK.
     public AccountDto? Chosen { get; private set; }
@@ -101,6 +112,8 @@ public sealed class frmAccountPicker : PhxFormBase
 
         _count.Text = string.Format(CultureInfo.CurrentCulture,
             "{0} account(s)", result.Value.Count);
+
+        _suggestions.Offer(result.Value.Select(Suggest.Account));
 
         _choose.Enabled = result.Value.Count > 0;
         PhxTheme.MakePrimary(_choose);

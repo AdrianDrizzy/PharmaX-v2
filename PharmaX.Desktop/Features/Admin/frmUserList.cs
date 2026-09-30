@@ -80,7 +80,7 @@ public partial class frmUserList : PhxFormBase, IUserListView
     }
 
     public string? PromptNewPassword(string username) =>
-        frmTextPrompt.Ask(this, "Reset password",
+        frmPasswordPrompt.Ask(this, "Reset password",
             $"New password for {username} (at least 8 characters). They "
             + "will have to change it at their next sign-in.");
 

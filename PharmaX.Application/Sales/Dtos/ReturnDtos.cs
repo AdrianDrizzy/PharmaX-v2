@@ -26,10 +26,14 @@ public sealed record ReturnEditDto(
     IReadOnlyList<ReturnLineEditDto> Lines,
     IReadOnlyList<PaymentDto> Refunds);
 
+/// <param name="Vat">
+/// The VAT inside the line total, at the rate the goods were sold at:
+/// what the credit takes back off the VAT collected.
+/// </param>
 public sealed record ReturnLineDto(
     int LineNo, int OriginalLineNo, string Description, decimal Quantity,
     decimal UnitPrice, decimal LineTotal, bool RestockToShelf,
-    string? LineReason)
+    string? LineReason, decimal Vat = 0m)
 {
     public static ReturnLineDto From(SaleReturnLine l)
     {
@@ -37,7 +41,10 @@ public sealed record ReturnLineDto(
 
         return new ReturnLineDto(l.LineNo, l.OriginalLineNo, l.Description,
             l.Quantity, l.UnitPrice.Amount, l.LineTotal.Amount,
-            l.RestockToShelf, l.LineReason);
+            l.RestockToShelf, l.LineReason,
+            Domain.Pricing.VatCalculator
+                .FromInclusive(l.LineTotal, l.VatRatePercent)
+                .VatAmount.Amount);
     }
 }
 
@@ -47,6 +54,9 @@ public sealed record ReturnDto(
     decimal Total, decimal Refunded, decimal WriteOffValue,
     int RestockedLines, IReadOnlyList<ReturnLineDto> Lines)
 {
+    /// The VAT the credit reverses, line by line at each line's rate.
+    public decimal VatTotal => Lines.Sum(l => l.Vat);
+
     public static ReturnDto From(SaleReturn r)
     {
         ArgumentNullException.ThrowIfNull(r);

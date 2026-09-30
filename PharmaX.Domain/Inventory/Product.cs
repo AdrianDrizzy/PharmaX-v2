@@ -108,6 +108,45 @@ public sealed class Product : AuditableEntity
     }
 
     /// <summary>
+    /// The code the shelf and the till know this product by.
+    /// </summary>
+    /// <remarks>
+    /// A sale keeps the product's id, so renumbering does not rewrite a
+    /// receipt that has already been printed. The code still has to be
+    /// unique: two products answering to one code is a scan that rings
+    /// up the wrong box.
+    /// </remarks>
+    public void ChangeCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            throw new DomainException("A product requires a code.");
+
+        Code = code.Trim().ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Schedule 0 to 8. Three and above is dispensary stock, and the
+    /// service is what demands that permission before calling this.
+    /// </summary>
+    public void SetSchedule(int schedule)
+    {
+        if (schedule is < 0 or > 8)
+            throw new DomainException("Schedule must be between 0 and 8.");
+
+        Schedule = schedule;
+    }
+
+    /// <summary>
+    /// Whether the till has to pick a batch before it can sell this.
+    /// </summary>
+    /// <remarks>
+    /// Turning it off while a batch still holds stock would leave units
+    /// the till could no longer see. The service refuses that; this only
+    /// records the answer.
+    /// </remarks>
+    public void SetBatchTracked(bool tracked) => IsBatchTracked = tracked;
+
+    /// <summary>
     /// Files the product under a department, a category and a
     /// manufacturer, or under none of them.
     /// </summary>
@@ -136,6 +175,40 @@ public sealed class Product : AuditableEntity
 
         if (!_barcodes.Contains(normalised, StringComparer.OrdinalIgnoreCase))
             _barcodes.Add(normalised);
+    }
+
+    /// <summary>
+    /// The barcodes the product scans by, as the product form lists them.
+    /// </summary>
+    /// <remarks>
+    /// Replaced as a set, because the form shows them all and a code
+    /// taken off it is one the pack no longer carries. Whether another
+    /// product already answers to one is the service's to check: it
+    /// needs the catalogue, which the product cannot see.
+    /// </remarks>
+    public void ReplaceBarcodes(IEnumerable<string> barcodes)
+    {
+        ArgumentNullException.ThrowIfNull(barcodes);
+
+        var wanted = new List<string>();
+
+        foreach (var raw in barcodes)
+        {
+            var barcode = raw?.Trim() ?? "";
+            if (barcode.Length == 0) continue;
+
+            if (barcode.Length is < 4 or > 48
+                || !barcode.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'))
+                throw new DomainException(
+                    $"\"{barcode}\" is not a barcode: 4 to 48 letters or "
+                    + "digits, as printed under the bars.");
+
+            if (!wanted.Contains(barcode, StringComparer.OrdinalIgnoreCase))
+                wanted.Add(barcode);
+        }
+
+        _barcodes.Clear();
+        _barcodes.AddRange(wanted);
     }
 
     public bool MatchesCode(string scannedCode) =>
@@ -187,9 +260,29 @@ public sealed class Product : AuditableEntity
     /// replaced charged one insulin refill for two.
     /// </summary>
     public Money PriceForUnits(Money packPrice, decimal quantity) =>
-        Money.Of(packPrice.Amount * quantity
-                 / (UnitsPerPack is decimal units && units > 0m ? units : 1m),
+        Money.Of(packPrice.Amount * quantity / UnitsInPack,
                  packPrice.Currency);
+
+    /// <summary>
+    /// How many dispensing units one pack on the shelf holds: the units
+    /// per pack where it is set, otherwise one - the pack is the unit.
+    /// </summary>
+    public decimal UnitsInPack =>
+        UnitsPerPack is decimal units && units > 0m ? units : 1m;
+
+    /// <summary>
+    /// The packs a dispensed quantity takes off the shelf.
+    /// </summary>
+    /// <remarks>
+    /// Stock is counted in packs and a script in tablets, capsules or
+    /// millilitres. The dispensary compared the two directly, so sixty
+    /// tablets of a sixty-tablet pack were refused against sixteen packs
+    /// on hand, and issuing took sixty packs off the shelf for one
+    /// (ADM-DEF-15). Rounded to the thousandth the stock is held to, so a
+    /// broken pack reads as the fraction of it that is left.
+    /// </remarks>
+    public decimal PacksFor(decimal units) =>
+        Math.Round(units / UnitsInPack, 3, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// How the product is packed, as it is written on the shelf label:

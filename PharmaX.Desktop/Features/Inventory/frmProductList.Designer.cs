@@ -93,8 +93,8 @@ partial class frmProductList
         Bind(grdProducts, "RetailPrice", "Retail", 80, "N2", true);
         Bind(grdProducts, "QuantityOnHand", "On hand", 80, "0.###", true);
         Bind(grdProducts, "Schedule", "Sch", 40, rightAlign: true);
-        Bind(grdProducts, "IsBatchTracked", "Batch", 50);
-        Bind(grdProducts, "IsActive", "Active", 50);
+        Bind(grdProducts, "BatchTracked", "Batch", 50);
+        Bind(grdProducts, "Active", "Active", 50);
 
         // The same shelf, a batch at a time. A second grid rather than
         // rebinding the first: the two have different columns, and a grid
@@ -108,8 +108,8 @@ partial class frmProductList
         Bind(grdBatches, "Code", "Code", 70);
         Bind(grdBatches, "Description", "Description", 260);
         Bind(grdBatches, "BatchNumber", "Batch", 110);
-        Bind(grdBatches, "Expiry", "Expires", 90, "dd/MM/yyyy");
-        Bind(grdBatches, "DaysToExpiry", "Days left", 70, "N0", true);
+        Bind(grdBatches, "Expiry", "Expires", 90);
+        Bind(grdBatches, "DaysLeft", "Days left", 70, rightAlign: true);
         Bind(grdBatches, "QuantityOnHand", "On hand", 80, "0.###", true);
 
         btnAdd.Location = new Point(12, 8);

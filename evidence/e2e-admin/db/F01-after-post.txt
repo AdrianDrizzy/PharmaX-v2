@@ -1,0 +1,7 @@
+-- select Code, QuantityOnHand from product where Code in ('E2EOTC','E2ECD6'); select StocktakeNumber, Status from stocktake order by StocktakeNumber;
+Code	QuantityOnHand
+E2ECD6	19.000
+E2EOTC	45.000
+StocktakeNumber	Status
+ST-001-000001	Posted
+ST-001-000002	Posted

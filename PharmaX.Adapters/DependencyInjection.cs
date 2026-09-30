@@ -14,13 +14,15 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Scoped, not singleton: all three read the workstation's chosen
+        // Scoped, not singleton: all of them read the workstation's chosen
         // printer through a scoped store, and a singleton holding that
         // would capture one screen's database context for the life of
         // the process.
         services.AddScoped<IReceiptPrinter, ReceiptPrinter>();
         services.AddScoped<ILabelPrinter, LabelPrinter>();
         services.AddScoped<IDocumentPrinter, DocumentPrinter>();
+        services.AddScoped<Application.Claims.IClaimFormPrinter,
+                           ClaimFormPrinter>();
         services.AddScoped<ICashDrawer, EscPosCashDrawer>();
 
         // Scanned documents live on this workstation's disk.

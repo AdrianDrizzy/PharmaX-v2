@@ -32,6 +32,17 @@ internal sealed class HomeTile : Panel
         Margin = new Padding(0, 0, 14, 14);
         Size = new Size(212, 94);
 
+        // Named after its own caption. A panel has no name of its own, so
+        // assistive technology borrowed the text before it in the window
+        // and every tile was announced as the one before - Collect as
+        // "Sell", Dispense as "Collect" (ADM-OBS-19). A button, because
+        // that is what it does, and one the keyboard can reach and press.
+        AccessibleName = title;
+        AccessibleDescription = hint;
+        AccessibleRole = AccessibleRole.PushButton;
+        SetStyle(ControlStyles.Selectable, true);
+        TabStop = true;
+
         _title.AutoSize = false;
         _title.BackColor = Color.Transparent;
         _title.Font = PhxTheme.Subheading;
@@ -73,6 +84,57 @@ internal sealed class HomeTile : Panel
         if (Enabled) Chosen?.Invoke(this, EventArgs.Empty);
     }
 
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (e.KeyCode is Keys.Enter or Keys.Space)
+        {
+            Choose();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    protected override bool IsInputKey(Keys keyData) =>
+        keyData is Keys.Enter or Keys.Space || base.IsInputKey(keyData);
+
+    protected override void OnGotFocus(EventArgs e)
+    {
+        base.OnGotFocus(e);
+        Hot(true);
+    }
+
+    protected override void OnLostFocus(EventArgs e)
+    {
+        base.OnLostFocus(e);
+        _hot = false;
+        BackColor = Enabled ? Color.White : PhxTheme.Band;
+        Invalidate();
+    }
+
+    protected override AccessibleObject CreateAccessibilityInstance() =>
+        new TileAccessibleObject(this);
+
+    /// <summary>
+    /// Lets a screen reader, or UI Automation, press the tile the way a
+    /// click does.
+    /// </summary>
+    private sealed class TileAccessibleObject : ControlAccessibleObject
+    {
+        private readonly HomeTile _tile;
+
+        public TileAccessibleObject(HomeTile tile) : base(tile) => _tile = tile;
+
+        public override AccessibleRole Role => AccessibleRole.PushButton;
+
+        public override string DefaultAction => "Open";
+
+        public override void DoDefaultAction() => _tile.Choose();
+    }
+
     /// <remarks>
     /// Leaving the card for one of its own labels raises MouseLeave, so
     /// the pointer is asked where it actually is rather than trusted.
@@ -102,6 +164,7 @@ internal sealed class HomeTile : Panel
         _title.ForeColor = Enabled ? SystemColors.ControlText : PhxTheme.Muted;
 
         _hint.Text = Enabled ? _shortcut : "Not permitted for this user";
+        AccessibleDescription = _hint.Text;
         Invalidate();
     }
 

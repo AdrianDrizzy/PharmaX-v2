@@ -40,5 +40,7 @@ public sealed class ReceiptHeaderFactory
                        + $"Till {_options.Workstation.TillNumber}",
         OperatorName: _user.Username,
         PrintedAtLocal: _clock.UtcNow.ToLocalTime(),
-        LogoPath: _branding.LogoPath);
+        LogoPath: _branding.LogoPath,
+        TillNumber: _options.Workstation.TillNumber,
+        CurrencyCode: Mvp.Format.Currency.Code);
 }

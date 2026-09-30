@@ -235,6 +235,13 @@ public sealed class PlainDocument : PrintDocument
             Line(new string('-', 42), _body);
             Line(_document.Title, _title);
             Line(new string('-', 42), _body);
+
+            // The documents open with their own title as their first line
+            // as well, so it printed twice (ADM-OBS-07).
+            if (_next == 0 && _document.Lines.Count > 0
+                && string.Equals(_document.Lines[0].Trim(),
+                                 _document.Title.Trim(), StringComparison.Ordinal))
+                _next = 1;
         }
 
         while (_next < _document.Lines.Count)
@@ -270,13 +277,24 @@ public sealed class PlainDocument : PrintDocument
 public sealed class LabelDocument : PrintDocument
 {
     private readonly LabelDto _label;
+    private readonly string? _dispensedBy;
     private readonly Font _body = new("Segoe UI", 8f);
+    private readonly Font _small = new("Segoe UI", 7f);
     private readonly Font _bold = new("Segoe UI", 9f, FontStyle.Bold);
     private readonly Font _directions = new("Segoe UI", 10f, FontStyle.Bold);
 
-    public LabelDocument(LabelDto label)
+    /// <param name="dispensedBy">
+    /// The pharmacy the medicine came from - its name and address - which
+    /// every dispensed label has to carry. The label printed without it,
+    /// so a container out of its bag said nothing of where it was
+    /// dispensed or who to call about it (ADM-DEF-16).
+    /// </param>
+    public LabelDocument(LabelDto label, string? dispensedBy = null)
     {
         _label = label;
+        _dispensedBy = string.IsNullOrWhiteSpace(dispensedBy)
+            ? null
+            : dispensedBy.Trim();
 
         DefaultPageSettings.PaperSize = new PaperSize("Label", 276, 197);
         DefaultPageSettings.Margins = new Margins(8, 8, 8, 8);
@@ -316,8 +334,23 @@ public sealed class LabelDocument : PrintDocument
             _label.DispensedOn, _label.PharmacistName));
         lines.Add(string.Format(culture, "Script {0}", _label.ScriptNumber));
 
+        // Last, and in the smallest type: the patient reads the top of a
+        // label, the regulation reads the foot.
+        if (_dispensedBy is not null) lines.Add(_dispensedBy);
+
         return lines;
     }
+
+    /// <summary>
+    /// The pharmacy as a label names it: trading name, then the address
+    /// on one line.
+    /// </summary>
+    public static string DispensedBy(string tradingName, string? address) =>
+        string.Join(", ", new[] { tradingName }
+            .Concat((address ?? "").Split('\n')
+                .Select(part => part.Trim())
+                .Where(part => part.Length > 0))
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
 
     internal void RenderPage(Graphics g, Rectangle bounds)
     {
@@ -351,7 +384,15 @@ public sealed class LabelDocument : PrintDocument
 
         y += 4;
 
-        foreach (var line in lines.Skip(3)) Line(line, _body);
+        foreach (var line in lines.Skip(3)
+                     .Take(lines.Count - 3 - (_dispensedBy is null ? 0 : 1)))
+            Line(line, _body);
+
+        if (_dispensedBy is not null)
+        {
+            y += 2;
+            Line(_dispensedBy, _small);
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -359,6 +400,7 @@ public sealed class LabelDocument : PrintDocument
         if (disposing)
         {
             _body.Dispose();
+            _small.Dispose();
             _bold.Dispose();
             _directions.Dispose();
         }
@@ -371,6 +413,13 @@ public sealed class LabelPrinter : ILabelPrinter
 {
     private readonly ILogger<LabelPrinter> _log;
     private readonly IWorkstationSettings _settings;
+    private readonly PharmacyProfile? _pharmacy;
+
+    public LabelPrinter(ILogger<LabelPrinter> log,
+                        IWorkstationSettings settings,
+                        PharmacyProfile pharmacy)
+        : this(log, settings) =>
+        _pharmacy = pharmacy;
 
     public LabelPrinter(ILogger<LabelPrinter> log,
                         IWorkstationSettings settings)
@@ -392,11 +441,34 @@ public sealed class LabelPrinter : ILabelPrinter
     {
         ArgumentNullException.ThrowIfNull(label);
 
-        using var doc = new LabelDocument(label);
+        using var doc = new LabelDocument(label, _pharmacy is null
+            ? null
+            : LabelDocument.DispensedBy(_pharmacy.TradingName,
+                                        _pharmacy.Address));
 
         return await Spooler.PrintAsync(doc, _settings,
             WorkstationSettingKey.LabelPrinter, "label",
             $"Label {label.ScriptNumber} {label.ProductDescription}", _log, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <remarks>
+    /// On the label printer, straight after the item labels, so it comes
+    /// off the same roll as the rest of the script.
+    /// </remarks>
+    public async Task<PrintResult> PrintTrailerAsync(TrailerLabelDto trailer,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(trailer);
+
+        using var doc = new TrailerLabelDocument(trailer, _pharmacy is null
+            ? null
+            : LabelDocument.DispensedBy(_pharmacy.TradingName,
+                                        _pharmacy.Address));
+
+        return await Spooler.PrintAsync(doc, _settings,
+            WorkstationSettingKey.LabelPrinter, "label",
+            $"Trailer label {trailer.ScriptNumber}", _log, ct)
             .ConfigureAwait(false);
     }
 }

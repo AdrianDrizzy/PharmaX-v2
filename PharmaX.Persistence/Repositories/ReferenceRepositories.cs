@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Reference;
 using PharmaX.Domain.Reference;
 
@@ -36,19 +37,37 @@ public sealed class ReferenceRepository : IReferenceRepository
         CancellationToken ct = default) =>
         kind switch
         {
-            ReferenceKind.Department =>
-                await _db.Departments.FirstOrDefaultAsync(x => x.Id == id, ct),
-            ReferenceKind.Category =>
-                await _db.Categories.FirstOrDefaultAsync(x => x.Id == id, ct),
-            ReferenceKind.Manufacturer =>
-                await _db.Manufacturers.FirstOrDefaultAsync(x => x.Id == id, ct),
-            ReferenceKind.Branch =>
-                await _db.Branches.FirstOrDefaultAsync(x => x.Id == id, ct),
+            ReferenceKind.Department => await Fresh(_db.Departments, id, ct),
+            ReferenceKind.Category => await Fresh(_db.Categories, id, ct),
+            ReferenceKind.Manufacturer => await Fresh(_db.Manufacturers, id, ct),
+            ReferenceKind.Branch => await Fresh(_db.Branches, id, ct),
             ReferenceKind.MedicalAidScheme =>
-                await _db.MedicalAidSchemes.FirstOrDefaultAsync(
-                    x => x.Id == id, ct),
+                await Fresh(_db.MedicalAidSchemes, id, ct),
             _ => null
         };
+
+    /// <summary>
+    /// The entry as the database holds it now, ready to change.
+    /// </summary>
+    /// <remarks>
+    /// A list screen keeps its context for as long as it is open. An
+    /// entry it had already loaded stayed as it was then, so after an
+    /// edit made in the edit dialog the list's copy kept the old name and
+    /// the old row version - and retiring it failed as "someone else
+    /// changed this record" (ADM-DEF-01). A copy this context already
+    /// tracks, unchanged, is read again rather than trusted.
+    /// </remarks>
+    private async Task<T?> Fresh<T>(DbSet<T> set, Guid id,
+        CancellationToken ct) where T : ReferenceEntry
+    {
+        var entry = await set.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+        if (entry is not null
+            && _db.Entry(entry).State == EntityState.Unchanged)
+            await _db.Entry(entry).ReloadAsync(ct);
+
+        return entry;
+    }
 
     public async Task<ReferenceEntry?> FindByCodeAsync(ReferenceKind kind,
         string code, CancellationToken ct = default)
@@ -93,13 +112,16 @@ public sealed class ReferenceRepository : IReferenceRepository
         DbSet<T> set, string term, bool includeInactive,
         CancellationToken ct) where T : ReferenceEntry
     {
-        var query = set.AsQueryable();
+        // Read, not tracked: the list shows what the table holds each time
+        // it is refreshed, rather than this context's first copy of it.
+        var query = set.AsNoTracking();
 
         if (!includeInactive) query = query.Where(x => x.IsActive);
 
-        if (!string.IsNullOrWhiteSpace(term))
+        // Word by word, like every other search.
+        foreach (var word in SearchTerms.Words(term))
         {
-            var pattern = $"%{term.Trim()}%";
+            var pattern = $"%{word}%";
             query = query.Where(x => EF.Functions.Like(x.Code, pattern)
                                   || EF.Functions.Like(x.Name, pattern));
         }
@@ -137,18 +159,10 @@ public sealed class TariffRepository : ITariffRepository
                 x.t.EffectiveFrom, x.t.EffectiveTo, x.t.IsActive))
             .ToListAsync(ct);
 
+        // Word by word, so "cimas amox" finds Cimas's amoxicillin tariff.
         if (!string.IsNullOrWhiteSpace(term))
-        {
-            var needle = term.Trim();
-
-            rows = rows.Where(r =>
-                r.ProductCode.Contains(needle,
-                    StringComparison.OrdinalIgnoreCase)
-                || r.ProductDescription.Contains(needle,
-                    StringComparison.OrdinalIgnoreCase)
-                || r.SchemeName.Contains(needle,
-                    StringComparison.OrdinalIgnoreCase)).ToList();
-        }
+            rows = rows.Where(r => SearchTerms.Matches(term, r.ProductCode,
+                r.ProductDescription, r.SchemeName)).ToList();
 
         return rows
             .OrderBy(r => r.SchemeName)
@@ -193,9 +207,11 @@ public sealed class QuotationRepository : Application.Sales.IQuotationRepository
             .FirstOrDefaultAsync(q => q.Id == id, ct);
 
     public async Task<IReadOnlyList<Domain.Sales.Quotation>> RecentAsync(
-        int take = 100, CancellationToken ct = default) =>
+        int take = 100, Domain.Sales.QuotationKind? kind = null,
+        CancellationToken ct = default) =>
         await _db.Quotations
             .Include(q => q.Lines)
+            .Where(q => kind == null || q.Kind == kind)
             .OrderByDescending(q => q.QuotedOn)
             .ThenByDescending(q => q.QuotationNumber)
             .Take(take)

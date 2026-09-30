@@ -58,7 +58,8 @@ partial class frmPatientList
 
         txtSearch.Location = new Point(70, 13);
         txtSearch.Name = "txtSearch";
-        txtSearch.PlaceholderText = "Surname or file number";
+        txtSearch.PlaceholderText =
+            "Surname then name, file, ID, membership, telephone or address";
         txtSearch.Size = new Size(320, 23);
         txtSearch.TabIndex = 0;
 
@@ -83,6 +84,7 @@ partial class frmPatientList
         Bind(grdPatients, "FirstNames", "First names", 140);
         Bind(grdPatients, "Age", "Age", 45, rightAlign: true);
         Bind(grdPatients, "Telephone", "Telephone", 110);
+        Bind(grdPatients, "Address", "Address", 170);
         Bind(grdPatients, "HasAllergies", "Allergies", 65);
         Bind(grdPatients, "IsActive", "Active", 50);
 

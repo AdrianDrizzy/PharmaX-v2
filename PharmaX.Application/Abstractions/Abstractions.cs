@@ -19,6 +19,19 @@ public interface IUnitOfWork
 {
     Task<int> SaveChangesAsync(CancellationToken ct = default);
     Task<IAsyncDisposable> BeginTransactionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Forgets every record read so far, and anything not yet saved, so
+    /// the next read comes from the database.
+    /// </summary>
+    /// <remarks>
+    /// For a screen that stays open while other screens change what it
+    /// shows. The product list keeps one unit of work for as long as it is
+    /// open; the product editor saves through its own, and a batch the
+    /// list read before that save would otherwise come back as it was then
+    /// - and be refused as stale when the list tried to change it.
+    /// </remarks>
+    void Forget();
 }
 
 public interface IOutbox

@@ -236,12 +236,17 @@ public sealed class ClaimsPresenter : PresenterBase<IClaimsView>
 {
     private readonly IClaimService _claims;
     private readonly IReferenceDataService _reference;
+    private readonly IClaimFormService _forms;
+    private readonly IClaimFormPrinter _printer;
 
     public ClaimsPresenter(IClaimService claims,
-                           IReferenceDataService reference)
+                           IReferenceDataService reference,
+                           IClaimFormService forms, IClaimFormPrinter printer)
     {
         _claims = claims;
         _reference = reference;
+        _forms = forms;
+        _printer = printer;
     }
 
     protected override void Subscribe()
@@ -251,7 +256,36 @@ public sealed class ClaimsPresenter : PresenterBase<IClaimsView>
         View.SettleRequested += (_, _) => Enqueue(OnSettleAsync);
         View.RejectRequested += (_, _) => Enqueue(OnRejectAsync);
         View.AgeAnalysisRequested += (_, _) => Enqueue(OnAgeAnalysisAsync);
+        View.ClaimFormRequested += (_, _) => Enqueue(OnClaimFormAsync);
     }
+
+    /// <summary>
+    /// Prints the claim form for the selected claim on the A4 printer:
+    /// the paper a scheme that still takes paper wants with the member's
+    /// signature on it.
+    /// </summary>
+    private Task OnClaimFormAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedClaimId is not Guid claimId)
+        {
+            View.ShowInfo("Choose a claim first.");
+            return;
+        }
+
+        var form = await _forms.BuildAsync(claimId);
+
+        if (form.IsFailure)
+        {
+            View.ShowError(form.Error.Message);
+            return;
+        }
+
+        var printed = await _printer.PrintAsync(form.Value);
+        var what = $"The claim form for {form.Value.ClaimNumber}";
+
+        if (printed.Printed) View.ShowInfo(printed.Describe(what));
+        else View.ShowError(printed.Describe(what));
+    });
 
     public override Task InitialiseAsync() => GuardAsync(async () =>
     {

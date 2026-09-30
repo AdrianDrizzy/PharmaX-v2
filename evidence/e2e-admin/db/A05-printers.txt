@@ -1,0 +1,4 @@
+-- select `Key`, Value from workstationsetting where `Key` like 'printer.%';
+Key	Value
+printer.label	Microsoft Print to PDF
+printer.receipt	Microsoft Print to PDF

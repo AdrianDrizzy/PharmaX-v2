@@ -19,13 +19,46 @@ namespace PharmaX.Tests.Integration.Finance;
 /// <remarks>
 /// Its own fixture rather than the shared one: it sells against a known
 /// empty day and then asserts on totals for that day, which another
-/// test's sales would quietly change.
+/// test's sales would quietly change. Automatic posting is off, because
+/// a day-end batch is how an installation without it gets its takings
+/// into the ledger.
 /// </remarks>
 public sealed class DayEndPostingTests : IDisposable
 {
-    private readonly PharmaXFixture _fixture = new();
+    private PharmaXFixture _fixture = PharmaXFixture.Trading(autoPost: false);
 
     public void Dispose() => _fixture.Dispose();
+
+    /// <remarks>
+    /// With automatic posting on, each sale already journalled itself.
+    /// A day-end batch on top counted the same takings twice
+    /// (ADM-DEF-19).
+    /// </remarks>
+    [Fact]
+    public async Task A_day_already_posted_as_it_traded_is_not_posted_again()
+    {
+        _fixture.Dispose();
+        _fixture = PharmaXFixture.Trading(autoPost: true);
+
+        await GivenASaleAsync("PAR0500", "Paracetamol 500mg", 115m, "Cash");
+
+        using var scope = _fixture.NewScope();
+        var posting = PharmaXFixture.Resolve<IDayEndPostingService>(scope);
+
+        var summary = await posting.SummariseAsync(Today);
+        summary.Value.PostedAsTraded.Should().BeTrue();
+
+        var prepared = await posting.PrepareAsync(Today);
+
+        prepared.IsFailure.Should().BeTrue();
+        prepared.Error.Code.Should().Be("FIN-004");
+
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+        (await db.JournalBatches.AsNoTracking()
+                .CountAsync(b => b.Source == DayEndPostingService.Source))
+            .Should().Be(0, "nothing is built for a day already journalled");
+    }
 
     [Fact]
     public async Task A_days_takings_become_a_balanced_journal()

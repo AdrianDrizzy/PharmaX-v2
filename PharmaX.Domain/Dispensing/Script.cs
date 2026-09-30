@@ -32,22 +32,25 @@ public sealed class Script : AuditableEntity
 
     public static Script Capture(string scriptNumber, Guid patientId,
         string prescriberName, DateOnly prescribedOn,
-        int repeatsAuthorised = 0, DateOnly? validUntil = null)
+        int repeatsAuthorised = 0, DateOnly? validUntil = null,
+        string? prescriberNumber = null)
     {
         if (patientId == Guid.Empty)
             throw new DomainException("A script must belong to a patient.");
 
-        if (string.IsNullOrWhiteSpace(prescriberName))
-            throw new DomainException("A script requires a prescriber.");
-
-        if (repeatsAuthorised < 0)
-            throw new DomainException("Repeats authorised cannot be negative.");
+        if (Refuse(prescriberName, prescribedOn, repeatsAuthorised,
+                validUntil) is string problem)
+            throw new DomainException(problem);
 
         return new Script
         {
             ScriptNumber = scriptNumber,
             PatientId = patientId,
-            PrescriberName = prescriberName,
+            PrescriberName = prescriberName.Trim(),
+
+            // Taken on the capture screen and then dropped: the number
+            // never reached the record it was typed for.
+            PrescriberNumber = Blank(prescriberNumber),
             PrescribedOn = prescribedOn,
             RepeatsAuthorised = repeatsAuthorised,
 
@@ -56,6 +59,93 @@ public sealed class Script : AuditableEntity
             ValidUntil = validUntil ?? prescribedOn.AddMonths(6)
         };
     }
+
+    /// <summary>
+    /// Why these particulars cannot make a script, or null where they
+    /// can. Public so a service can ask before it spends a script number
+    /// on an attempt that will be refused (ADM-DEF-13).
+    /// </summary>
+    public static string? Refuse(string? prescriberName, DateOnly prescribedOn,
+        int repeatsAuthorised, DateOnly? validUntil) =>
+        string.IsNullOrWhiteSpace(prescriberName)
+            ? "A script requires a prescriber."
+            : repeatsAuthorised < 0
+                ? "Repeats authorised cannot be negative."
+                : validUntil < prescribedOn
+                    ? "A script cannot run out before it was written."
+                    : null;
+
+    /// <summary>
+    /// Whether the script may still be corrected: captured, and nothing
+    /// yet dispensed against it.
+    /// </summary>
+    public bool IsEditable =>
+        Status == ScriptStatus.Captured && RepeatsUsed == 0;
+
+    /// <summary>
+    /// Corrects what was typed when the script was captured.
+    /// </summary>
+    /// <remarks>
+    /// Only before anything is dispensed. After that the script is the
+    /// record of what the patient was given against, and a typo is
+    /// corrected by cancelling it and capturing it again. Before it, a
+    /// wrong quantity meant exactly that anyway, under a new number
+    /// (ADM-OBS-13).
+    /// </remarks>
+    public void Amend(string prescriberName, string? prescriberNumber,
+        DateOnly prescribedOn, int repeatsAuthorised, DateOnly? validUntil,
+        IEnumerable<ScriptItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        if (!IsEditable)
+            throw new DomainException(
+                $"Script {ScriptNumber} has been dispensed against or "
+                + "cancelled, so it can no longer be changed.");
+
+        if (Refuse(prescriberName, prescribedOn, repeatsAuthorised,
+                validUntil) is string problem)
+            throw new DomainException(problem);
+
+        var replacement = items.ToList();
+
+        if (replacement.Count == 0)
+            throw new DomainException("A script with no items is not a script.");
+
+        PrescriberName = prescriberName.Trim();
+        PrescriberNumber = Blank(prescriberNumber);
+        PrescribedOn = prescribedOn;
+        RepeatsAuthorised = repeatsAuthorised;
+        ValidUntil = validUntil ?? prescribedOn.AddMonths(6);
+
+        _items.Clear();
+
+        foreach (var item in replacement)
+        {
+            item.AssignTo(Id, _items.Count + 1);
+            _items.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// Gives back the repeat a reversed dispensing used.
+    /// </summary>
+    public void UndoDispensing()
+    {
+        if (RepeatsUsed == 0)
+            throw new DomainException(
+                $"Script {ScriptNumber} has nothing dispensed to undo.");
+
+        RepeatsUsed--;
+
+        if (Status != ScriptStatus.Cancelled)
+            Status = RepeatsUsed == 0
+                ? ScriptStatus.Captured
+                : ScriptStatus.PartiallyDispensed;
+    }
+
+    private static string? Blank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     public ScriptItem AddItem(ScriptItem item)
     {

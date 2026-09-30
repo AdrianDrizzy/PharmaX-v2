@@ -101,4 +101,7 @@ public interface IClaimsView : Mvp.IView
     event EventHandler? SettleRequested;
     event EventHandler? RejectRequested;
     event EventHandler? AgeAnalysisRequested;
+
+    /// The printed claim form for the selected claim.
+    event EventHandler? ClaimFormRequested;
 }

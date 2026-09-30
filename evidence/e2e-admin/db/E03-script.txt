@@ -1,0 +1,2 @@
+-- select ScriptNumber, Status, PrescriberName, RepeatsAuthorised, RepeatsRemaining from script s join patient p on p.Id=s.PatientId where p.Surname='Ncube';
+ERROR 1054 (42S22) at line 1: Unknown column 'RepeatsRemaining' in 'field list'

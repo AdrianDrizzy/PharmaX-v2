@@ -17,6 +17,18 @@ public interface IDispenseView : Mvp.IView
     Guid? PromptScriptSearch(Guid patientId);
 
     /// <summary>
+    /// Opens the dispensary quote. The patient and the script it became
+    /// where the customer went ahead, or null.
+    /// </summary>
+    (Guid PatientId, Guid ScriptId)? PromptQuote();
+
+    /// <summary>
+    /// A script to begin on as the screen opens - one just captured from a
+    /// quote - or null to start by finding one.
+    /// </summary>
+    (Guid PatientId, Guid ScriptId)? StartWith { get; }
+
+    /// <summary>
     /// Asks for the quantity and directions, starting from what the
     /// script says. Null if cancelled.
     /// </summary>
@@ -35,6 +47,7 @@ public interface IDispenseView : Mvp.IView
 
     event EventHandler? PatientRequested;
     event EventHandler? ScriptRequested;
+    event EventHandler? QuoteRequested;
     event EventHandler<string>? ProductScanned;
     event EventHandler? IssueRequested;
     event EventHandler? LabelReprintRequested;

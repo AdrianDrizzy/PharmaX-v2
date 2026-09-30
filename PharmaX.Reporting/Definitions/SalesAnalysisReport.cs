@@ -311,17 +311,20 @@ public sealed class ReversedScriptsReport : IReportDefinition
     {
         ArgumentNullException.ThrowIfNull(r);
 
+        // When it was reversed, not when the row was last touched; a
+        // dispensing reversed before the reversal was recorded falls back
+        // to the latter.
         var query = _db.Dispensings
             .AsNoTracking()
             .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Reversed)
-            .Where(d => d.UpdatedAtUtc >= r.FromUtc
-                        && d.UpdatedAtUtc < r.ToExclusiveUtc);
+            .Where(d => (d.ReversedAtUtc ?? d.UpdatedAtUtc) >= r.FromUtc
+                        && (d.ReversedAtUtc ?? d.UpdatedAtUtc) < r.ToExclusiveUtc);
 
         if (r.Guid("pharmacist") is Guid pharmacistId)
             query = query.Where(d => d.PharmacistId == pharmacistId);
 
         var dispensings = await query
-            .OrderBy(d => d.UpdatedAtUtc)
+            .OrderBy(d => d.ReversedAtUtc ?? d.UpdatedAtUtc)
             .Select(d => new
             {
                 d.Id,
@@ -330,7 +333,9 @@ public sealed class ReversedScriptsReport : IReportDefinition
                 d.PatientId,
                 d.PharmacistId,
                 d.IssuedAtUtc,
-                ReversedAtUtc = d.UpdatedAtUtc,
+                ReversedAtUtc = d.ReversedAtUtc ?? d.UpdatedAtUtc,
+                d.ReversedBy,
+                d.ReversalReason,
                 Items = d.Lines.Count
             })
             .ToListAsync(ct)
@@ -347,7 +352,9 @@ public sealed class ReversedScriptsReport : IReportDefinition
             .Column("ReversedAt", "Reversed", "dd/MM/yyyy HH:mm")
             .Column("Document", "Dispensing")
             .Column("Script", "Script")
-            .Column("Pharmacist", "Pharmacist")
+            .Column("Pharmacist", "Issued by")
+            .Column("ReversedBy", "Reversed by")
+            .Column("Reason", "Why")
             .Column("Items", "Items", rightAlign: true)
             .Column("IssuedAt", "Originally issued", "dd/MM/yyyy HH:mm")
             .Rows(dispensings.Select(d =>
@@ -360,6 +367,10 @@ public sealed class ReversedScriptsReport : IReportDefinition
                     ["Pharmacist"] = d.PharmacistId is Guid id
                         ? r.OperatorName(id)
                         : "",
+                    ["ReversedBy"] = d.ReversedBy is Guid by
+                        ? r.OperatorName(by)
+                        : "",
+                    ["Reason"] = d.ReversalReason ?? "",
                     ["Items"] = d.Items,
                     ["IssuedAt"] = d.IssuedAtUtc?.ToLocalTime()
                 }))

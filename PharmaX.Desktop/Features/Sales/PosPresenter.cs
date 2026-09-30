@@ -25,9 +25,19 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     private Guid? _collecting;
 
     private readonly Application.Abstractions.ICurrentUser? _user;
+    private readonly IReceiptParticularsService? _particulars;
 
     /// Runtime. Resolved by the container, which picks the fullest
     /// constructor it can satisfy.
+    public PosPresenter(ISaleService sales, ICollectionService collections,
+        IPermissionService permissions, IReceiptPrinter receipts,
+        ICashDrawer drawer, ReceiptHeaderFactory headers,
+        Application.Abstractions.ICurrentUser user,
+        IReceiptParticularsService particulars)
+        : this(sales, collections, permissions, receipts, drawer, headers,
+               user) =>
+        _particulars = particulars;
+
     public PosPresenter(ISaleService sales, ICollectionService collections,
         IPermissionService permissions, IReceiptPrinter receipts,
         ICashDrawer drawer, ReceiptHeaderFactory headers,
@@ -243,8 +253,10 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     {
         if (View.SelectedLineNo is not int lineNo) return;
 
+        // Off the line before any discount, so "10%" means a tenth of
+        // what the goods are priced at rather than of what is left.
         var line = _sale!.Lines.Single(l => l.LineNo == lineNo);
-        var amount = View.PromptDiscount(line.LineTotal);
+        var amount = View.PromptDiscount(line.UnitPrice * line.Quantity);
         if (amount is null) return;
 
         Guid? authoriser = null;
@@ -443,8 +455,16 @@ public sealed class PosPresenter : PresenterBase<IPosView>
             return;
         }
 
-        var result = await _receipts.PrintAsync(sale.Value, _headers.Build());
-        var what = $"Receipt {sale.Value.DocumentNumber}";
+        // Marked as a copy, and recorded: the first one has already been
+        // handed over (ADM-DEF-08).
+        var result = await _receipts.PrintAsync(
+            await ForReceiptAsync(sale.Value),
+            _headers.Build() with { IsCopy = true });
+
+        if (result.Printed && _particulars is not null)
+            await _particulars.RecordReprintAsync(sale.Value);
+
+        var what = $"Copy of receipt {sale.Value.DocumentNumber}";
 
         if (result.Printed)
             View.ShowInfo(result.Describe(what));
@@ -576,8 +596,8 @@ public sealed class PosPresenter : PresenterBase<IPosView>
                 StringComparison.OrdinalIgnoreCase)))
             await _drawer.OpenAsync();
 
-        var printed = await _receipts.PrintAsync(final.Value,
-                                                 _headers.Build());
+        var printed = await _receipts.PrintAsync(
+            await ForReceiptAsync(final.Value), _headers.Build());
 
         // Said honestly, with the reason and the way to put it right; a
         // printer fault never undoes the sale (POS-014).
@@ -590,6 +610,12 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         else if (printed.Problem is not null)
             View.ShowInfo(printed.Describe("The receipt"));
     }
+
+    /// The sale with whose it is filled in, where anything can say.
+    private async Task<SaleDto> ForReceiptAsync(SaleDto sale) =>
+        _particulars is null
+            ? sale
+            : await _particulars.ForReceiptAsync(sale);
 
     private async Task RefreshAsync()
     {

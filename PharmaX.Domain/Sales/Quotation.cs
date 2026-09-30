@@ -7,6 +7,12 @@ namespace PharmaX.Domain.Sales;
 public enum QuotationStatus { Open, Issued, Expired, Accepted }
 
 /// <summary>
+/// Where a quotation was made and what it can become: a sale at the
+/// till, or a script at the dispensary.
+/// </summary>
+public enum QuotationKind { OverTheCounter, Dispensary }
+
+/// <summary>
 /// A priced list of items given to a customer who has not bought them.
 /// </summary>
 /// <remarks>
@@ -42,18 +48,29 @@ public sealed class Quotation : AggregateRoot
     public Guid? SaleId { get; private set; }
     public string? Notes { get; private set; }
 
+    public QuotationKind Kind { get; private set; } = QuotationKind.OverTheCounter;
+
+    /// <summary>
+    /// The script a dispensary quote became, once the customer went
+    /// ahead. What stops one quote being captured, and dispensed, twice.
+    /// </summary>
+    public Guid? ScriptId { get; private set; }
+
     public IReadOnlyList<QuotationLine> Lines => _lines;
 
     public Money Total => _lines.Aggregate(Money.Zero(),
         (sum, l) => sum + l.LineTotal);
 
-    public static Quotation Open(string quotationNumber, string customerName,
+    /// <param name="customerName">
+    /// Who it is for, where they have said. Blank is allowed: a customer
+    /// who asks what something costs has not given their name yet, and
+    /// may never.
+    /// </param>
+    public static Quotation Open(string quotationNumber, string? customerName,
         Guid operatorId, DateOnly quotedOn, int validForDays,
-        Guid? patientId = null)
+        Guid? patientId = null,
+        QuotationKind kind = QuotationKind.OverTheCounter)
     {
-        if (string.IsNullOrWhiteSpace(customerName))
-            throw new DomainException("A quotation requires a customer name.");
-
         if (validForDays < 1)
             throw new DomainException(
                 "A quotation must be valid for at least a day.");
@@ -61,16 +78,36 @@ public sealed class Quotation : AggregateRoot
         return new Quotation
         {
             QuotationNumber = quotationNumber,
-            CustomerName = customerName.Trim(),
+            CustomerName = (customerName ?? "").Trim(),
             OperatorId = operatorId,
             QuotedOn = quotedOn,
             ValidUntil = quotedOn.AddDays(validForDays),
-            PatientId = patientId
+            PatientId = patientId,
+            Kind = kind
         };
     }
 
+    /// <summary>
+    /// Who the quote is for, given once the customer says.
+    /// </summary>
+    public void AddressTo(string? customerName)
+    {
+        if (Status == QuotationStatus.Accepted)
+            throw new DomainException(
+                "This quotation has already been taken up.");
+
+        CustomerName = (customerName ?? "").Trim();
+    }
+
+    /// <param name="unitsInPack">
+    /// How many of the quantity the priced pack holds. One at the till,
+    /// where a pack is sold; the pack's tablets or millilitres at the
+    /// dispensary, where the quantity is counted in them and the price is
+    /// the pack's share, exactly as a dispensing prices it.
+    /// </param>
     public QuotationLine AddLine(Guid productId, string description,
-        decimal quantity, Money unitPrice, string taxCode)
+        decimal quantity, Money unitPrice, string taxCode,
+        decimal unitsInPack = 1m)
     {
         EnsureOpen();
 
@@ -79,7 +116,8 @@ public sealed class Quotation : AggregateRoot
                 "A quotation line needs a quantity above zero.");
 
         var line = QuotationLine.Create(_lines.Count + 1, productId,
-            description, quantity, unitPrice, taxCode);
+            description, quantity, unitPrice, taxCode,
+            unitsInPack > 0m ? unitsInPack : 1m);
 
         _lines.Add(line);
         return line;
@@ -147,6 +185,53 @@ public sealed class Quotation : AggregateRoot
         SaleId = saleId;
     }
 
+    /// <summary>
+    /// Records the script a dispensary quote became: the customer went
+    /// ahead, and the patient's details and the prescription were taken.
+    /// </summary>
+    /// <remarks>
+    /// From an open quote as well as a saved one: a customer told the
+    /// price who says yes on the spot has no reason to wait while it is
+    /// saved first. A lapsed quote is refused, because its prices are no
+    /// longer the pharmacy's offer.
+    /// </remarks>
+    public void ConvertToScript(Guid scriptId, Guid patientId, DateOnly today)
+    {
+        EnsureConvertibleToScript(today);
+
+        ScriptId = scriptId;
+        PatientId = patientId;
+        Status = QuotationStatus.Accepted;
+    }
+
+    /// <summary>
+    /// Refuses, with the reason, a quote that cannot become a script -
+    /// asked before the script is written, so a refusal costs nothing.
+    /// </summary>
+    public void EnsureConvertibleToScript(DateOnly today)
+    {
+        if (Kind != QuotationKind.Dispensary)
+            throw new DomainException(
+                "Only a dispensary quote becomes a script.");
+
+        if (ScriptId is not null || SaleId is not null)
+            throw new DomainException(
+                $"Quote {QuotationNumber} has already been taken up.");
+
+        if (Status is not (QuotationStatus.Open or QuotationStatus.Issued))
+            throw new DomainException(
+                $"Quote {QuotationNumber} is {Status.ToString().ToLowerInvariant()}"
+                + " and can no longer be taken up.");
+
+        if (HasExpiredOn(today))
+            throw new DomainException(
+                $"This quote lapsed on {ValidUntil:dd/MM/yyyy}. "
+                + "Quote again at today's prices.");
+
+        if (_lines.Count == 0)
+            throw new DomainException("A quote with nothing on it is not a script.");
+    }
+
     public void MarkExpired() => Status = QuotationStatus.Expired;
 
     public bool HasExpiredOn(DateOnly today) => today > ValidUntil;
@@ -169,13 +254,19 @@ public sealed class QuotationLine : Entity
     public Money UnitPrice { get; private set; } = Money.Zero();
     public string TaxCode { get; private set; } = "A";
 
-    public Money LineTotal => UnitPrice * Quantity;
+    /// <summary>
+    /// How many of the quantity the priced pack holds: one where the
+    /// quantity is packs, the pack's units where it is tablets.
+    /// </summary>
+    public decimal UnitsInPack { get; private set; } = 1m;
+
+    public Money LineTotal => UnitPrice * (Quantity / UnitsInPack);
 
     private QuotationLine() { }
 
     internal static QuotationLine Create(int lineNo, Guid productId,
         string description, decimal quantity, Money unitPrice,
-        string taxCode) =>
+        string taxCode, decimal unitsInPack = 1m) =>
         new()
         {
             LineNo = lineNo,
@@ -183,7 +274,8 @@ public sealed class QuotationLine : Entity
             Description = description,
             Quantity = quantity,
             UnitPrice = unitPrice,
-            TaxCode = taxCode
+            TaxCode = taxCode,
+            UnitsInPack = unitsInPack
         };
 
     internal void Renumber(int lineNo) => LineNo = lineNo;

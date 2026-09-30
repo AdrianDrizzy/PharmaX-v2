@@ -40,8 +40,15 @@ public interface ILabelReprintService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Prints them, and says plainly when there is no label printer
-    /// rather than reporting success to a machine that printed nothing.
+    /// The trailer label that follows them: the whole script on one label.
+    /// </summary>
+    Task<Result<TrailerLabelDto>> BuildTrailerAsync(Guid dispensingId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Prints them and the trailer after them, and says plainly when there
+    /// is no label printer rather than reporting success to a machine that
+    /// printed nothing.
     /// </summary>
     Task<Result<LabelRunDto>> ReprintAsync(Guid dispensingId,
         CancellationToken ct = default);
@@ -109,23 +116,13 @@ public sealed class LabelReprintService : ILabelReprintService
     public async Task<Result<IReadOnlyList<LabelDto>>> BuildAsync(
         Guid dispensingId, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ScriptDispense);
+        var issued = await IssuedAsync(dispensingId, ct);
 
-        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
-        if (dispensing is null)
-            return Result<IReadOnlyList<LabelDto>>.Fail("DSP-000",
-                "That dispensing no longer exists.");
+        if (issued.IsFailure)
+            return Result<IReadOnlyList<LabelDto>>.Fail(issued.Error.Code,
+                issued.Error.Message);
 
-        // Only an issued dispensing has labels: one still in progress
-        // has not been checked by a pharmacist, and a label is the
-        // pharmacist's instruction to the patient.
-        if (dispensing.Status != DispensingStatus.Issued)
-            return Result<IReadOnlyList<LabelDto>>.Fail("DSP-006",
-                "Labels are printed when the dispensing is issued. This "
-                + "one has not been issued.");
-
-        var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
-        var patient = await _patients.GetAsync(dispensing.PatientId, ct);
+        var (dispensing, script, patient) = issued.Value;
 
         var pharmacist = dispensing.PharmacistId is Guid id
             ? await _users.GetAsync(id, ct)
@@ -141,11 +138,63 @@ public sealed class LabelReprintService : ILabelReprintService
                 Expiry: l.BatchExpiry,
                 PharmacistName: pharmacist?.DisplayName ?? "",
                 ScriptNumber: script?.ScriptNumber ?? "",
-                DispensedOn: DateOnly.FromDateTime(
-                    (dispensing.IssuedAtUtc ?? DateTime.UtcNow).ToLocalTime()),
+                DispensedOn: issued.Value.DispensedOn,
                 Cautions: Array.Empty<string>())).ToList();
 
         return Result<IReadOnlyList<LabelDto>>.Ok(labels);
+    }
+
+    public async Task<Result<TrailerLabelDto>> BuildTrailerAsync(
+        Guid dispensingId, CancellationToken ct = default)
+    {
+        var issued = await IssuedAsync(dispensingId, ct);
+
+        if (issued.IsFailure)
+            return Result<TrailerLabelDto>.Fail(issued.Error.Code,
+                issued.Error.Message);
+
+        var (dispensing, script, patient) = issued.Value;
+
+        return Result<TrailerLabelDto>.Ok(TrailerLabels.For(dispensing,
+            script, patient, issued.Value.DispensedOn));
+    }
+
+    /// <summary>
+    /// An issued dispensing with its script and its patient.
+    /// </summary>
+    private sealed record Issued(Domain.Dispensing.Dispensing Dispensing,
+        Script? Script, Domain.Patients.Patient? Patient)
+    {
+        public DateOnly DispensedOn => DateOnly.FromDateTime(
+            (Dispensing.IssuedAtUtc ?? DateTime.UtcNow).ToLocalTime());
+    }
+
+    /// <summary>
+    /// The dispensing, its script and its patient, for an issued
+    /// dispensing only.
+    /// </summary>
+    private async Task<Result<Issued>> IssuedAsync(Guid dispensingId,
+        CancellationToken ct)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        if (dispensing is null)
+            return Result<Issued>.Fail("DSP-000",
+                "That dispensing no longer exists.");
+
+        // Only an issued dispensing has labels: one still in progress
+        // has not been checked by a pharmacist, and a label is the
+        // pharmacist's instruction to the patient.
+        if (dispensing.Status != DispensingStatus.Issued)
+            return Result<Issued>.Fail("DSP-006",
+                "Labels are printed when the dispensing is issued. This "
+                + "one has not been issued.");
+
+        var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
+        var patient = await _patients.GetAsync(dispensing.PatientId, ct);
+
+        return Result<Issued>.Ok(new Issued(dispensing, script, patient));
     }
 
     public async Task<Result<LabelRunDto>> ReprintAsync(Guid dispensingId,
@@ -169,6 +218,22 @@ public sealed class LabelReprintService : ILabelReprintService
                 return Result<LabelRunDto>.Fail("DSP-007",
                     (printed == 0 ? "" : $"{printed} label(s) printed, then ")
                     + last.Describe("The label"));
+
+            printed++;
+        }
+
+        // The trailer goes last, as it did when the script was issued.
+        var trailer = await BuildTrailerAsync(dispensingId, ct);
+
+        if (trailer.IsSuccess)
+        {
+            last = await _printer.PrintTrailerAsync(trailer.Value, ct)
+                .ConfigureAwait(false);
+
+            if (!last.Printed)
+                return Result<LabelRunDto>.Fail("DSP-007",
+                    $"{printed} label(s) printed, then "
+                    + last.Describe("The trailer label"));
 
             printed++;
         }

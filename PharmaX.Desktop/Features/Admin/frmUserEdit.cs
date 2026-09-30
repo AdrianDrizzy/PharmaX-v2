@@ -104,7 +104,7 @@ public partial class frmUserEdit : PhxFormBase, IUserEditView
             : txtRegistration.Text.Trim());
 
     public string? CollectInitialPassword() =>
-        frmTextPrompt.Ask(this, "Starting password",
+        frmPasswordPrompt.Ask(this, "Starting password",
             "Starting password for this account (at least 8 characters). "
             + "They will have to change it at their first sign-in.");
 

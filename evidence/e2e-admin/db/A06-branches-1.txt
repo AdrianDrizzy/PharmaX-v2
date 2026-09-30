@@ -1,0 +1,6 @@
+-- select * from branch order by Code;
+Id	CreatedAtUtc	CreatedBy	UpdatedAtUtc	UpdatedBy	RowVersion	Code	Name	Detail	IsActive
+425bca2b-5ec4-4e16-a7e6-c967acee6dea	2026-09-25 02:14:00.693888	51999a5e-8b42-416f-a05b-4cfe9e9ee511	2026-09-25 02:14:00.693888	51999a5e-8b42-416f-a05b-4cfe9e9ee511	m????qJ??c?u"-	BR1	Riverside Main	1 Example Street	1
+2bcc0a42-231e-4085-8bae-12d43ce84af6	2026-09-25 02:14:00.737623	51999a5e-8b42-416f-a05b-4cfe9e9ee511	2026-09-25 02:14:00.737623	51999a5e-8b42-416f-a05b-4cfe9e9ee511	?\nSK?D?z??8?
+	BR2	Riverside Mall	Shop 14, The Mall	1
+436d6c0e-beea-48c8-b9ec-2740603e0a7a	2026-09-25 02:20:48.431645	51999a5e-8b42-416f-a05b-4cfe9e9ee511	2026-09-25 02:20:48.431645	51999a5e-8b42-416f-a05b-4cfe9e9ee511	Y?????N?-)?*?I	BR3	Luveve Road	28 Woodstock Thorngrove, Bulawayo	1

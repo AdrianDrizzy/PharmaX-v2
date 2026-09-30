@@ -425,10 +425,11 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
 
         foreach (var line in order.Lines)
         {
-            lines.Add(string.Format(culture, "{0,-10} {1}", line.ProductCode,
-                line.Description.Length <= 31
-                    ? line.Description
-                    : line.Description[..31]));
+            // The whole description, over as many lines as it takes: it is
+            // what the supplier reads to know what to send (ADM-OBS-07).
+            lines.AddRange(SlipLayout.Described(
+                string.Format(culture, "{0,-10} ", line.ProductCode),
+                line.Description));
             lines.Add(string.Format(culture, "{0,14:0.###} x {1,10:N2} = {2,12:N2}",
                 line.QuantityOrdered, line.UnitCost, line.LineTotal));
         }

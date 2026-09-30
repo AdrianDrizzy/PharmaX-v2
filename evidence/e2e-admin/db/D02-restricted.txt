@@ -1,0 +1,8 @@
+-- select Code, QuantityOnHand from product where Code in ('SURGM1','AMOX50','E2ECD6') order by Code; select p.Code, b.BatchNumber, b.QuantityOnHand from batch b join product p on p.Id=b.ProductId where b.BatchNumber in ('AMOX50-WARNING','CD6-2601');
+Code	QuantityOnHand
+AMOX50	63.000
+E2ECD6	19.000
+SURGM1	-1.000
+Code	BatchNumber	QuantityOnHand
+E2ECD6	CD6-2601	19.000
+AMOX50	AMOX50-WARNING	11.000

@@ -1,4 +1,5 @@
 using PharmaX.Application.Sales;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Sales;
@@ -33,6 +34,9 @@ public partial class frmCollect : PhxFormBase, ICollectView
     private readonly System.Windows.Forms.Timer _debounce =
         new() { Interval = 200 };
 
+    /// The matches, offered under the search box as it is typed into.
+    private readonly SearchSuggestions _suggestions;
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.SaleCreate;
 
@@ -40,6 +44,10 @@ public partial class frmCollect : PhxFormBase, ICollectView
     public frmCollect()
     {
         InitializeComponent();
+
+        _suggestions = new SearchSuggestions(txtFind);
+        _suggestions.Chosen += (_, chosen) => Suggest.SelectRow(grdWaiting,
+            item => item is WaitingRow w && Equals(w.DispensingId, chosen.Value));
 
         txtFind.TextChanged += (_, _) => Restart();
         _debounce.Tick += (_, _) =>
@@ -129,6 +137,10 @@ public partial class frmCollect : PhxFormBase, ICollectView
         }
 
         btnCollect.Enabled = waiting.Count > 0;
+
+        _suggestions.Offer(waiting.Select(w => new Suggestion(w.DispensingId,
+            w.PatientName, Suggest.Details(w.ScriptNumber,
+                Format.Money(w.CoPayment)))));
     }
 
     public void ShowSummary(string summary) => lblSummary.Text = summary;

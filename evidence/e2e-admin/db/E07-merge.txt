@@ -1,0 +1,7 @@
+-- select FileNumber, FirstNames, IsActive from patient where Surname='Ncube'; select `Action`, Outcome, Reason from auditentry where `Action` like '%merge%';
+FileNumber	FirstNames	IsActive
+P-001-000007	Tendai	1
+P-001-000008	Tendai (duplicate)	0
+Action	Outcome	Reason
+pat.merged-away	Applied	Merged into P-001-000007. Duplicate file opened at the counter for the same patient
+pat.merge	Applied	P-001-000008 merged into P-001-000007: 0 scripts, 0 dispensings. Duplicate file opened at the counter for the same patient

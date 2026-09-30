@@ -49,6 +49,14 @@ public interface IJournalPoster
                          Money counted, CancellationToken ct = default);
 
     /// <summary>
+    /// One tender's cash-up difference, against the account that tender
+    /// lands in: the drawer for cash, the wallet for EcoCash.
+    /// </summary>
+    Task PostCashUpAsync(TillSession session, Domain.Sales.TenderType tender,
+                         Money expected, Money counted,
+                         CancellationToken ct = default);
+
+    /// <summary>
     /// A scheme's share of a dispensing, recognised the moment the
     /// medicine leaves.
     /// </summary>
@@ -59,6 +67,14 @@ public interface IJournalPoster
     /// caller knows which product each part of the claim came from.
     /// </param>
     Task PostClaimAsync(MedicalAidClaim claim, string schemeName,
+        IReadOnlyList<Domain.Pricing.VatSplit> splits,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// The mirror of a claim, for a dispensing reversed before the scheme
+    /// paid: the debtor and the revenue both come off.
+    /// </summary>
+    Task PostClaimReversalAsync(MedicalAidClaim claim, string schemeName,
         IReadOnlyList<Domain.Pricing.VatSplit> splits,
         CancellationToken ct = default);
 
@@ -108,7 +124,7 @@ public sealed class JournalPoster : IJournalPoster
         // One debit per tender, so the books say how the money arrived
         // and the bank reconciliation has something to work with.
         foreach (var group in sale.Payments
-                     .GroupBy(p => LedgerCode.For(p.Tender)))
+                     .GroupBy(p => _options.Accounting.CodeFor(p.Tender)))
         {
             var taken = group.Aggregate(Money.Zero(),
                 (sum, p) => sum + p.Amount);
@@ -140,7 +156,7 @@ public sealed class JournalPoster : IJournalPoster
             $"Refund {saleReturn.DocumentNumber}", ct);
 
         foreach (var group in saleReturn.Refunds
-                     .GroupBy(r => LedgerCode.For(r.Tender)))
+                     .GroupBy(r => _options.Accounting.CodeFor(r.Tender)))
         {
             var paid = group.Aggregate(Money.Zero(),
                 (sum, r) => sum + r.Amount);
@@ -180,8 +196,14 @@ public sealed class JournalPoster : IJournalPoster
         await PostAsync(batch, ct);
     }
 
-    public async Task PostCashUpAsync(TillSession session, Money expected,
-        Money counted, CancellationToken ct = default)
+    public Task PostCashUpAsync(TillSession session, Money expected,
+        Money counted, CancellationToken ct = default) =>
+        PostCashUpAsync(session, Domain.Sales.TenderType.Cash, expected,
+                        counted, ct);
+
+    public async Task PostCashUpAsync(TillSession session,
+        Domain.Sales.TenderType tender, Money expected, Money counted,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -195,23 +217,30 @@ public sealed class JournalPoster : IJournalPoster
 
         var batch = await OpenAsync("CASHUP",
             string.Format(CultureInfo.CurrentCulture,
-                "Till {0} cash-up, counted {1:0.00} against {2:0.00}",
-                session.TillNumber, counted.Amount, expected.Amount),
+                tender == Domain.Sales.TenderType.Cash
+                    ? "Till {0} cash-up, counted {1:0.00} against {2:0.00}"
+                    : "Till {0} cash-up, {3} declared {1:0.00} against {2:0.00}",
+                session.TillNumber, counted.Amount, expected.Amount,
+                tender.DisplayName()),
             ct);
 
         var amount = Money.Of(Math.Abs(variance.Amount), variance.Currency);
 
+        // The same account the takings went to, so a short EcoCash
+        // statement brings the wallet down rather than the drawer.
+        var holding = _options.Accounting.CodeFor(tender);
+
         if (variance.IsNegative)
         {
-            // Short: the drawer holds less than the sales say it should,
-            // so the loss is an expense and the cash account comes down
-            // to the truth.
+            // Short: the till holds less than the sales say it should,
+            // so the loss is an expense and the holding account comes
+            // down to the truth.
             batch.AddLine(LedgerCode.CashShortOrOver, amount, isDebit: true);
-            batch.AddLine(LedgerCode.CashOnHand, amount, isDebit: false);
+            batch.AddLine(holding, amount, isDebit: false);
         }
         else
         {
-            batch.AddLine(LedgerCode.CashOnHand, amount, isDebit: true);
+            batch.AddLine(holding, amount, isDebit: true);
             batch.AddLine(LedgerCode.CashShortOrOver, amount,
                           isDebit: false);
         }
@@ -243,6 +272,26 @@ public sealed class JournalPoster : IJournalPoster
         await PostAsync(batch, ct);
     }
 
+    public async Task PostClaimReversalAsync(MedicalAidClaim claim,
+        string schemeName, IReadOnlyList<Domain.Pricing.VatSplit> splits,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+        ArgumentNullException.ThrowIfNull(splits);
+
+        if (!Enabled || claim.Claimed.IsZero) return;
+
+        var batch = await OpenAsync("CLAIMREV",
+            $"Claim {claim.ClaimNumber} on {schemeName} withdrawn", ct);
+
+        batch.AddLine(LedgerCode.MedicalAidDebtors, claim.Claimed,
+                      isDebit: false);
+
+        AddRevenue(batch, splits, isDebit: true);
+
+        await PostAsync(batch, ct);
+    }
+
     public async Task PostAccountPaymentAsync(string accountNumber,
         Money paid, string tenderType, DateOnly receivedOn,
         string? reference, CancellationToken ct = default)
@@ -256,10 +305,11 @@ public sealed class JournalPoster : IJournalPoster
                 ? "" : $", {reference}"));
 
         // Where the money landed follows the tender, exactly as it does
-        // at a till: cash into the drawer, anything else to the bank.
+        // at a till: cash into the drawer, EcoCash into the wallet,
+        // anything else to the bank.
         var landed = Enum.TryParse<Domain.Sales.TenderType>(tenderType,
             ignoreCase: true, out var tender)
-            ? LedgerCode.For(tender)
+            ? _options.Accounting.CodeFor(tender)
             : LedgerCode.Bank;
 
         // An account settled in cash still goes through the drawer, so

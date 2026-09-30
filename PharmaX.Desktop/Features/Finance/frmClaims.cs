@@ -53,11 +53,16 @@ public partial class frmClaims : PhxFormBase, IClaimsView
 
         btnPayAll.Click += (_, _) => PayEverythingInFull();
 
+        btnPayAmount.Click += (_, _) => PaySelectedClaim();
+
         btnReject.Click += (_, _) =>
             RejectRequested?.Invoke(this, EventArgs.Empty);
 
         btnAges.Click += (_, _) =>
             AgeAnalysisRequested?.Invoke(this, EventArgs.Empty);
+
+        btnClaimForm.Click += (_, _) =>
+            ClaimFormRequested?.Invoke(this, EventArgs.Empty);
 
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
@@ -152,6 +157,52 @@ public partial class frmClaims : PhxFormBase, IClaimsView
                 claim.Outstanding.ToString("0.00",
                     CultureInfo.CurrentCulture);
         }
+
+        ShowTotals();
+    }
+
+    /// <summary>
+    /// Asks what the scheme paid on the selected claim, and whether the
+    /// rest is written off, instead of typing into the grid.
+    /// </summary>
+    /// <remarks>
+    /// The Paying cell takes typing only with the keyboard focus in it,
+    /// which a screen reader and UI Automation cannot give, so a part
+    /// payment could not be recorded without the mouse (ADM-BLK-G02).
+    /// </remarks>
+    private void PaySelectedClaim()
+    {
+        if (grdClaims.CurrentRow is not { DataBoundItem: ClaimRow claim } row)
+        {
+            ShowInfo("Choose a claim first.");
+            return;
+        }
+
+        // Starts at what is already typed against it, or else the whole
+        // amount owed, which is what most remittances pay.
+        var typed = Amount(row.Cells["Paying"].Value);
+
+        var paid = frmNumberPrompt.Ask(this, "Part payment",
+            $"What was paid on {claim.ClaimNumber}? "
+            + $"{Format.Money(claim.Outstanding)} is owed.",
+            typed > 0m ? typed : claim.Outstanding, decimals: 2);
+
+        if (paid is not decimal amount) return;
+
+        if (amount < 0m || amount > claim.Outstanding)
+        {
+            ShowError($"Between nothing and the "
+                      + $"{Format.Money(claim.Outstanding)} owed.");
+            return;
+        }
+
+        row.Cells["Paying"].Value = amount.ToString("0.00",
+            CultureInfo.CurrentCulture);
+
+        row.Cells["WriteOffRest"].Value = amount < claim.Outstanding
+            && Confirm($"Write off the other "
+                       + $"{Format.Money(claim.Outstanding - amount)}? Choose "
+                       + "No to leave it owing.");
 
         ShowTotals();
     }
@@ -322,6 +373,7 @@ public partial class frmClaims : PhxFormBase, IClaimsView
     public event EventHandler? SettleRequested;
     public event EventHandler? RejectRequested;
     public event EventHandler? AgeAnalysisRequested;
+    public event EventHandler? ClaimFormRequested;
 
     /// <summary>
     /// The grid as it stands, to a workbook the operator names.

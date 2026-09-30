@@ -22,6 +22,16 @@ public interface IPatientService
                              CancellationToken ct = default);
 
     Task<Result> DeactivateAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Files already open that may be the patient being captured: the
+    /// same names and date of birth, or the same telephone number. Asked
+    /// before a new file is created, so the counter can open the existing
+    /// one instead.
+    /// </summary>
+    Task<Result<IReadOnlyList<PatientListItemDto>>> PossibleDuplicatesAsync(
+        PatientEditDto edit, Guid? except = null,
+        CancellationToken ct = default);
 }
 
 public sealed class PatientService : IPatientService
@@ -45,6 +55,55 @@ public sealed class PatientService : IPatientService
         _outbox = outbox;
         _uow = uow;
         _clock = clock;
+    }
+
+    public async Task<Result<IReadOnlyList<PatientListItemDto>>>
+        PossibleDuplicatesAsync(PatientEditDto edit, Guid? except = null,
+            CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+
+        _permissions.Demand(PermissionCode.PatientMaintain);
+
+        // The telephone number identifies a patient at the counter as
+        // surely as the name does. Asked about, not refused: a family
+        // often shares one number.
+        var found = await _patients.LikelySameAsync(edit.Surname,
+            edit.FirstNames, edit.DateOfBirth, idNumber: null, except,
+            telephone: edit.Telephone, ct: ct);
+
+        IReadOnlyList<PatientListItemDto> items = found
+            .Select(p => PatientListItemDto.From(p, _clock.Today, false))
+            .ToList();
+
+        return Result<IReadOnlyList<PatientListItemDto>>.Ok(items);
+    }
+
+    /// <summary>
+    /// Refuses a second file for an ID number already on one.
+    /// </summary>
+    /// <remarks>
+    /// Two files for one person split their history: the allergy recorded
+    /// on one is not on the other, which is exactly how a warning is
+    /// missed at the dispensary. Nothing checked, so the same patient
+    /// could be registered twice (ADM-OBS-16). A national ID belongs to
+    /// one person, so a match is refused outright; a matching name and
+    /// birthday is only likely, and is the presenter's to ask about.
+    /// </remarks>
+    private async Task<Error?> SameIdNumberAsync(PatientEditDto edit,
+        Guid? except, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(edit.IdNumber)) return null;
+
+        var same = await _patients.LikelySameAsync("", "", null,
+            edit.IdNumber, except, ct: ct);
+
+        return same.Count == 0
+            ? null
+            : new Error("PAT-014",
+                $"ID number {edit.IdNumber.Trim()} is already on file "
+                + $"{same[0].FileNumber} for {same[0].FullName}. Open that "
+                + "file rather than starting a second one.");
     }
 
     public async Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(
@@ -92,6 +151,9 @@ public sealed class PatientService : IPatientService
         if (Validate(edit, _clock.Today) is Error problem)
             return Result<Guid>.Fail(problem.Code, problem.Message);
 
+        if (await SameIdNumberAsync(edit, except: null, ct) is Error taken)
+            return Result<Guid>.Fail(taken.Code, taken.Message);
+
         // Allocated, not typed: a file number the operator invents is a
         // number two patients eventually share.
         var fileNumber = await _numbering.NextAsync(DocumentSeries.Patient, ct);
@@ -100,6 +162,7 @@ public sealed class PatientService : IPatientService
             edit.FirstNames, edit.DateOfBirth, edit.IdNumber);
 
         patient.UpdateContact(edit.Telephone, edit.Email);
+        patient.SetAddress(edit.Address);
 
         // Who pays. Set here rather than on a screen of its own, because
         // the membership number is captured at the counter at the same
@@ -137,9 +200,14 @@ public sealed class PatientService : IPatientService
         var patient = await _patients.GetAsync(id, ct);
         if (patient is null) return Result.Fail("PAT-000", "Patient not found.");
 
+        if (await SameIdNumberAsync(edit, except: id, ct) is Error taken)
+            return Result.Fail(taken.Code, taken.Message);
+
         patient.Amend(edit.Surname, edit.FirstNames, edit.IdNumber,
                       edit.DateOfBirth);
         patient.UpdateContact(edit.Telephone, edit.Email);
+
+        if (edit.Address is not null) patient.SetAddress(edit.Address);
 
         // Who pays. Set here rather than on a screen of its own, because
         // the membership number is captured at the counter at the same

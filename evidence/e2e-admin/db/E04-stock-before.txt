@@ -1,0 +1,7 @@
+-- select Code, QuantityOnHand from product where Code in ('METF85','PAN500'); select p.Code, b.BatchNumber, b.ExpiryDate, b.QuantityOnHand from batch b join product p on p.Id=b.ProductId where p.Code in ('METF85') order by b.ExpiryDate;
+Code	QuantityOnHand
+METF85	16.000
+PAN500	112.000
+Code	BatchNumber	ExpiryDate	QuantityOnHand
+METF85	METF85-A	2027-01-25	0.000
+METF85	METF85-B	2027-11-25	16.000

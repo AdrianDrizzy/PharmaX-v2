@@ -3,11 +3,20 @@ using PharmaX.Domain.Sales;
 
 namespace PharmaX.Application.Sales.Dtos;
 
+/// <param name="VatRatePercent">
+/// The VAT rate the line was sold at, which the receipt prints beside
+/// the VAT total and marks a zero-rated line by.
+/// </param>
+/// <param name="ProductCode">
+/// The product's code, as the receipt heads each line with it. Not on
+/// the sale line itself; filled in for printing.
+/// </param>
 public sealed record SaleLineDto(
     int LineNo, Guid ProductId, string Description, decimal Quantity,
     decimal UnitPrice, decimal Discount, string TaxCode,
     decimal LineTotal, string? BatchNumber, DateOnly? Expiry,
-    bool IsRated, bool IsVoided)
+    bool IsRated, bool IsVoided, decimal VatRatePercent = 0m,
+    string? ProductCode = null)
 {
     public static SaleLineDto From(SaleLine l)
     {
@@ -17,7 +26,7 @@ public sealed record SaleLineDto(
             l.LineNo, l.ProductId, l.Description, l.Quantity,
             l.UnitPrice.Amount, l.DiscountAmount.Amount, l.TaxCode,
             l.LineTotal.Amount, l.BatchNumber, l.BatchExpiry, l.IsRated,
-            l.IsVoided);
+            l.IsVoided, l.VatRatePercent);
     }
 }
 
@@ -34,11 +43,16 @@ public sealed record SaleTotalsDto(
 /// the receipt, which has to say how the customer paid.
 /// </param>
 /// <param name="AccountId">The account the sale is on, if any.</param>
+/// <param name="Particulars">
+/// Who the receipt is for - the account, the patient, the script - where
+/// the sale was for somebody in particular. Filled in for printing.
+/// </param>
 public sealed record SaleDto(
     Guid Id, string DocumentNumber, IReadOnlyList<SaleLineDto> Lines,
     SaleTotalsDto Totals, IReadOnlyList<PaymentDto>? Payments = null,
     string Status = "Open", Guid? AccountId = null,
-    Guid? QuotationId = null, DateTime? OccurredAtUtc = null)
+    Guid? QuotationId = null, DateTime? OccurredAtUtc = null,
+    ReceiptParticularsDto? Particulars = null)
 {
     public static SaleDto From(Sale s)
     {

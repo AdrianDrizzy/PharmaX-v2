@@ -1,0 +1,2 @@
+-- select la.Code, la.Name, sum(jl.Debit) dr, sum(jl.Credit) cr from journalline jl join ledgeraccount la on la.Id=jl.LedgerAccountId group by la.Code, la.Name order by la.Code;
+ERROR 1054 (42S22) at line 1: Unknown column 'jl.Debit' in 'field list'

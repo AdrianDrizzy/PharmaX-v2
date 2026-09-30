@@ -95,6 +95,60 @@ public class ReferenceCrudTests : IClassFixture<PharmaXFixture>
     }
 
     /// <remarks>
+    /// The list screen keeps one scope open while the edit dialog saves in
+    /// another. The list kept showing the old name after Refresh, and
+    /// retiring the entry straight after the edit failed as a concurrency
+    /// conflict, because the list's context still held the row version
+    /// from before (ADM-DEF-01).
+    /// </remarks>
+    [Fact]
+    public async Task A_list_left_open_sees_an_edit_and_can_retire_after_it()
+    {
+        await SignInAsync();
+
+        Guid id;
+
+        using (var scope = _fixture.NewScope())
+        {
+            var created = await PharmaXFixture
+                .Resolve<IReferenceDataService>(scope)
+                .CreateAsync(ReferenceKind.Branch,
+                    new ReferenceEditDto("STALE1", "Luveve Road", null));
+
+            created.IsSuccess.Should().BeTrue(created.Error.Message);
+            id = created.Value;
+        }
+
+        using var list = _fixture.NewScope();
+        var screen = PharmaXFixture.Resolve<IReferenceDataService>(list);
+
+        // The list screen opens, and the operator selects the row.
+        (await screen.ListAsync(ReferenceKind.Branch)).IsSuccess.Should().BeTrue();
+        (await screen.GetAsync(ReferenceKind.Branch, id)).IsSuccess.Should().BeTrue();
+
+        // The edit dialog saves in a scope of its own.
+        using (var dialog = _fixture.NewScope())
+        {
+            var renamed = await PharmaXFixture
+                .Resolve<IReferenceDataService>(dialog)
+                .UpdateAsync(ReferenceKind.Branch, id,
+                    new ReferenceEditDto("STALE1", "Luveve Road Branch", null));
+
+            renamed.IsSuccess.Should().BeTrue(renamed.Error.Message);
+        }
+
+        var refreshed = await screen.ListAsync(ReferenceKind.Branch);
+
+        refreshed.Value.Single(i => i.Id == id).Name
+            .Should().Be("Luveve Road Branch", "Refresh shows what was saved");
+
+        var retired = await screen.SetActiveAsync(ReferenceKind.Branch, id,
+                                                  false);
+
+        retired.IsSuccess.Should().BeTrue(retired.Error.Message);
+    }
+
+    /// <remarks>
     /// A duplicate code is the one thing these screens have to refuse:
     /// the code is what a product is filed against.
     /// </remarks>

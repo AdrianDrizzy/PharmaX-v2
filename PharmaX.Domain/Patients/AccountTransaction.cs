@@ -1,6 +1,7 @@
 using PharmaX.Domain.Common;
 using PharmaX.Domain.Exceptions;
 using PharmaX.Domain.Primitives;
+using PharmaX.Domain.Sales;
 
 namespace PharmaX.Domain.Patients;
 
@@ -57,6 +58,20 @@ public sealed class AccountTransaction : AuditableEntity
 
     public string? Narration { get; private set; }
 
+    /// How a payment was made. Null on every other kind of movement.
+    public TenderType? Tender { get; private set; }
+
+    /// <summary>
+    /// The till session a payment was taken at, where it was.
+    /// </summary>
+    /// <remarks>
+    /// Cash and EcoCash paid off an account land in a till's drawer or
+    /// wallet like any sale, so the cash-up has to expect them. Left
+    /// unrecorded, every account paid in cash showed the drawer over by
+    /// exactly that amount (ADM-DEF-18).
+    /// </remarks>
+    public Guid? TillSessionId { get; private set; }
+
     /// True where this movement increases what the patient owes.
     public bool Increases => Kind is AccountEntryKind.Charge;
 
@@ -64,6 +79,33 @@ public sealed class AccountTransaction : AuditableEntity
     public Money Effect => Increases ? Amount : Money.Zero() - Amount;
 
     private AccountTransaction() { }
+
+    /// <summary>
+    /// Money received off the account, and how it came in.
+    /// </summary>
+    public static AccountTransaction RecordPayment(Guid accountId,
+        Money amount, DateOnly occurredOn, TenderType tender,
+        Guid? tillSessionId, string? reference = null,
+        string? narration = null)
+    {
+        if (tender.IsDeferred())
+            throw new DomainException(
+                $"A payment off an account cannot itself be made by "
+                + $"{tender.DisplayName()}.");
+
+        if (tender.IsCashLike() && tillSessionId is null)
+            throw new DomainException(
+                $"{tender.DisplayName()} is taken at an open till, so the "
+                + "cash-up expects it.");
+
+        var payment = Record(accountId, AccountEntryKind.Payment, amount,
+                             occurredOn, reference, narration);
+
+        payment.Tender = tender;
+        payment.TillSessionId = tillSessionId;
+
+        return payment;
+    }
 
     public static AccountTransaction Record(Guid accountId,
         AccountEntryKind kind, Money amount, DateOnly occurredOn,

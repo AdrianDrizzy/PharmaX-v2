@@ -2,10 +2,14 @@ using PharmaX.Domain.Patients;
 
 namespace PharmaX.Application.Patients.Dtos;
 
+/// <param name="Address">
+/// Where the patient lives. On the list, with the telephone number, so
+/// two patients of the same name can be told apart.
+/// </param>
 public sealed record PatientListItemDto(
     Guid Id, string FileNumber, string Surname, string FirstNames,
     string FullName, int? Age, string? Telephone, bool HasAllergies,
-    bool IsActive)
+    bool IsActive, string? Address = null)
 {
     public static PatientListItemDto From(Patient p, DateOnly today,
                                           bool hasAllergies)
@@ -14,7 +18,8 @@ public sealed record PatientListItemDto(
 
         return new PatientListItemDto(
             p.Id, p.FileNumber, p.Surname, p.FirstNames, p.FullName,
-            p.AgeOn(today), p.Telephone, hasAllergies, p.IsActive);
+            p.AgeOn(today), p.Telephone, hasAllergies, p.IsActive,
+            p.Address);
     }
 }
 
@@ -37,7 +42,7 @@ public sealed record PatientDto(
     IReadOnlyList<AllergyDto> Allergies,
     IReadOnlyList<string> ChronicConditions,
     Guid? MedicalAidSchemeId = null, string? MembershipNumber = null,
-    string? DependantCode = null)
+    string? DependantCode = null, string? Address = null)
 {
     /// True where there is a scheme to bill for what is dispensed.
     public bool IsOnMedicalAid =>
@@ -57,7 +62,8 @@ public sealed record PatientDto(
             profile?.Allergies.Select(AllergyDto.From).ToList()
                 ?? new List<AllergyDto>(),
             profile?.ChronicConditions.ToList() ?? new List<string>(),
-            p.MedicalAidSchemeId, p.MembershipNumber, p.DependantCode);
+            p.MedicalAidSchemeId, p.MembershipNumber, p.DependantCode,
+            p.Address);
     }
 }
 
@@ -76,4 +82,8 @@ public sealed record PatientEditDto(
     // Who pays. Null where the patient pays for themselves, which the
     // dispensing screen reads as "everything is a co-payment".
     Guid? MedicalAidSchemeId = null, string? MembershipNumber = null,
-    string? DependantCode = null);
+    string? DependantCode = null,
+
+    // Where they live. Null leaves it as it was, for the callers that
+    // do not edit it; blank clears it.
+    string? Address = null);

@@ -1,0 +1,11 @@
+F2 -> Dispensing
+F3 -> MSG: Open a till session before selling. + Point of Sale
+F4 -> Patients
+F5 -> Returns and credit notes
+F6 -> Products
+F7 -> Purchase orders
+F8 -> Goods receipt
+F9 -> Reports
+F11 -> Scripts to collect
+F12 -> Stock alerts
+Ctrl+T -> 

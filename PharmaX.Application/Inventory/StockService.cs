@@ -28,6 +28,13 @@ public interface IStockService
     /// Puts the restockable lines of a return back on the shelf and
     /// writes the rest off. Called inside the return's transaction.
     /// </summary>
+    /// <summary>
+    /// Puts back on the shelf exactly what a reversed dispensing took off
+    /// it, batch by batch.
+    /// </summary>
+    Task ApplyDispensingReversalAsync(Domain.Dispensing.Dispensing dispensing,
+        CancellationToken ct = default);
+
     Task ApplyReturnAsync(SaleReturn saleReturn,
                           CancellationToken ct = default);
 
@@ -116,16 +123,19 @@ public sealed class StockService : IStockService
                 ?? throw new Domain.Exceptions.DomainException(
                     $"{line.Description} is no longer in the catalogue.");
 
+            // A dispensing is counted in tablets, capsules or millilitres
+            // and the shelf in packs (ADM-DEF-15).
             if (!product.IsBatchTracked)
             {
-                var after = product.QuantityOnHand - line.Quantity;
+                var packs = product.PacksFor(line.Quantity);
+                var after = product.QuantityOnHand - packs;
                 product.SetQuantityOnHand(after);
 
                 _movements.Add(StockMovement.Record(
                     productId: product.Id,
                     batchId: null,
                     movementType: MovementType.Issue,
-                    quantity: line.Quantity,
+                    quantity: packs,
                     balanceAfter: after,
                     occurredAtUtc: _clock.UtcNow,
                     sourceDocumentType: "Dispensing",
@@ -141,15 +151,19 @@ public sealed class StockService : IStockService
 
             IReadOnlyList<Allocation> allocations;
 
+            // In the dispensing's own units, so the label's batch split
+            // reads in tablets; each batch then gives up the packs that
+            // many tablets come to.
             try
             {
                 allocations = FefoAllocator.Allocate(batches, line.Quantity,
-                                                     _clock.Today);
+                    _clock.Today, product.UnitsInPack);
             }
             catch (Domain.Exceptions.DomainException)
             {
                 var held = batches.Where(b => b.IsAvailableOn(_clock.Today))
-                                  .Sum(b => b.QuantityOnHand);
+                                  .Sum(b => b.QuantityOnHand)
+                           * product.UnitsInPack;
 
                 throw new Domain.Exceptions.DomainException(
                     $"{line.Description}: only {held:0.###} unexpired in "
@@ -168,18 +182,74 @@ public sealed class StockService : IStockService
             foreach (var allocation in allocations)
             {
                 var batch = batches.Single(b => b.Id == allocation.BatchId);
-                batch.Issue(allocation.Quantity);
 
-                balance -= allocation.Quantity;
+                // A batch emptied gives up exactly what it held, so no
+                // thousandth of a pack is left behind by the rounding.
+                var packs = allocation.Quantity
+                            >= batch.QuantityOnHand * product.UnitsInPack
+                    ? batch.QuantityOnHand
+                    : product.PacksFor(allocation.Quantity);
+
+                batch.Issue(packs);
+
+                balance -= packs;
 
                 _movements.Add(StockMovement.Record(
                     productId: product.Id,
                     batchId: batch.Id,
                     movementType: MovementType.Issue,
-                    quantity: allocation.Quantity,
+                    quantity: packs,
                     balanceAfter: balance,
                     occurredAtUtc: _clock.UtcNow,
                     sourceDocumentType: "Dispensing",
+                    sourceDocumentId: dispensing.Id));
+            }
+
+            product.SetQuantityOnHand(balance);
+        }
+    }
+
+    /// <remarks>
+    /// Read off the movements the issue wrote rather than worked out
+    /// again from the tablets, so a broken pack goes back to the
+    /// thousandth it came off at.
+    /// </remarks>
+    public async Task ApplyDispensingReversalAsync(
+        Domain.Dispensing.Dispensing dispensing, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dispensing);
+
+        var issued = await _movements.ForSourceAsync("Dispensing",
+            dispensing.Id, ct);
+
+        foreach (var group in issued
+                     .Where(m => m.MovementType == MovementType.Issue)
+                     .GroupBy(m => m.ProductId))
+        {
+            var product = await _products.GetAsync(group.Key, ct);
+            if (product is null) continue;
+
+            var balance = product.QuantityOnHand;
+
+            foreach (var movement in group)
+            {
+                var packs = Math.Abs(movement.Quantity);
+
+                if (movement.BatchId is Guid batchId
+                    && await _batches.GetAsync(batchId, ct) is { } batch)
+                    batch.Return(packs);
+
+                balance += packs;
+
+                _movements.Add(StockMovement.Record(
+                    productId: product.Id,
+                    batchId: movement.BatchId,
+                    movementType: MovementType.Return,
+                    quantity: packs,
+                    balanceAfter: balance,
+                    occurredAtUtc: _clock.UtcNow,
+                    reasonCode: "DISPENSING-REVERSED",
+                    sourceDocumentType: "DispensingReversal",
                     sourceDocumentId: dispensing.Id));
             }
 
@@ -363,4 +433,8 @@ public sealed class StockService : IStockService
 public interface IStockMovementWriter
 {
     void Add(StockMovement movement);
+
+    /// The movements one document wrote, in the order they were written.
+    Task<IReadOnlyList<StockMovement>> ForSourceAsync(string sourceType,
+        Guid sourceId, CancellationToken ct = default);
 }

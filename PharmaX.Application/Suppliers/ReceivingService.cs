@@ -360,6 +360,28 @@ public sealed class ReceivingService : IReceivingService
                 return (resolved, new Error("GRN-005",
                     $"{product.Description}: quantity must be more than zero."));
 
+            // Checked here, before anything is written, against what the
+            // order line still expects less what earlier lines of this
+            // delivery already put against it. An over-delivery went
+            // through and left the line "received" for more than was
+            // ever ordered (ADM-DEF-07).
+            if (orderLine is not null)
+            {
+                var already = resolved
+                    .Where(r => r.Item2.PurchaseOrderLineNo == orderLine.LineNo)
+                    .Sum(r => r.Item2.Quantity);
+
+                var left = orderLine.Outstanding - already;
+
+                if (line.Quantity > left)
+                    return (resolved, new Error("GRN-016",
+                        $"{product.Description}: {line.Quantity:0.###} "
+                        + $"received against order line {orderLine.LineNo}, "
+                        + $"which has only {Math.Max(left, 0m):0.###} still to "
+                        + "come. Receive the extra on a line of its own, "
+                        + "without the order line, if it is being kept."));
+            }
+
             if (line.UnitCost < 0m)
                 return (resolved, new Error("GRN-006",
                     $"{product.Description}: a unit cost cannot be negative."));

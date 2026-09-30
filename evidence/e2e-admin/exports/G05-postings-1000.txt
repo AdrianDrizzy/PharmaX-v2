@@ -1,0 +1,10 @@
+25/09/2026  J-001-000002 POS            123.90               Sale S-001-000002
+25/09/2026  J-001-000010 REMIT           23.66               Remittance from Alpha Medical Aid Society, REM-2026-0914
+25/09/2026  J-001-000014 POS             50.00               Sale S-001-000005
+25/09/2026  J-001-000017 POS             49.99               Sale S-001-000008
+25/09/2026  J-001-000018 POS              4.95               Sale S-001-000009
+25/09/2026  J-001-000023 RTN                           3.96  Refund R-001-000003
+25/09/2026  J-001-000028 REMIT           13.00               Remittance from Cimas Health Group (test), CIM-REM-0925
+
+7 posting(s).  Debits $265.50, credits $3.96.
+

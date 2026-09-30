@@ -25,6 +25,7 @@ public static class DependencyInjection
 
         services.AddScoped<IReportDefinition, TransactionsReport>();
         services.AddScoped<IReportDefinition, SalesAnalysisReport>();
+        services.AddScoped<IReportDefinition, SalesLinesReport>();
         services.AddScoped<IReportDefinition, VatReport>();
         services.AddScoped<IReportDefinition, StockOnHandReport>();
         services.AddScoped<IReportDefinition, StockByBatchReport>();

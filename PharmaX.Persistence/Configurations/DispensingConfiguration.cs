@@ -20,6 +20,7 @@ public sealed class ScriptConfiguration : IEntityTypeConfiguration<Script>
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.Ignore(x => x.RepeatsRemaining);
+        b.Ignore(x => x.IsEditable);
 
         b.HasMany(x => x.Items)
          .WithOne()
@@ -65,6 +66,7 @@ public sealed class DispensingConfiguration
 
         b.Property(x => x.DocumentNumber).HasMaxLength(30);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.ReversalReason).HasMaxLength(300);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.Ignore(x => x.TariffTotal);

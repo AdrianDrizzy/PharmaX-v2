@@ -16,7 +16,10 @@ public enum ClaimStatus
     Settled = 3,
 
     /// The scheme refused it. The money is not coming.
-    Rejected = 4
+    Rejected = 4,
+
+    /// The dispensing it was raised for was reversed, so nothing is owed.
+    Withdrawn = 5
 }
 
 /// <summary>
@@ -187,6 +190,30 @@ public sealed class MedicalAidClaim : AuditableEntity
         WrittenOff += Outstanding;
         WriteOffReason = reason.Trim();
         Status = ClaimStatus.Rejected;
+        SettledAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// Takes the claim back because the medicine it was for was never,
+    /// in the end, handed over.
+    /// </summary>
+    /// <remarks>
+    /// Only while the scheme has paid nothing: money received against it
+    /// is a remittance to be put right with the scheme, not a claim to
+    /// quietly withdraw.
+    /// </remarks>
+    public void Withdraw(string reason, DateTime nowUtc)
+    {
+        if (Status != ClaimStatus.Outstanding || !Settled.IsZero)
+            throw new DomainException(
+                $"Claim {ClaimNumber} has already been answered by the "
+                + "scheme, so it cannot be withdrawn.");
+
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new DomainException("Withdrawing a claim needs a reason.");
+
+        WriteOffReason = reason.Trim();
+        Status = ClaimStatus.Withdrawn;
         SettledAtUtc = nowUtc;
     }
 

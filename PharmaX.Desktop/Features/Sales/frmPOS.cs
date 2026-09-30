@@ -28,12 +28,17 @@ public partial class frmPOS : PhxFormBase, IPosView
 
     /// Runtime. Resolved by the container.
     public frmPOS(PosPresenter presenter, IAuthenticationService auth,
-                  ViewFactory views)
+                  ViewFactory views,
+                  Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
         _presenter = presenter;
         _auth = auth;
         _views = views;
+
+        // Typing a name offers the matching products under the scan bar,
+        // so an item is rung up from its first few letters.
+        scanBar.SuggestFrom(Suggest.Products(scopes, overTheCounter: true));
         _presenter.Attach(this);
     }
 
@@ -46,6 +51,9 @@ public partial class frmPOS : PhxFormBase, IPosView
     // Escape voids the current line here, so the screen must not also
     // treat it as "back out".
     protected override bool ClosesOnEscape => false;
+
+    /// The till's own map (PosKeyMap), which cashiers already know.
+    protected override bool AssignsFunctionKeys => false;
 
     /// <summary>
     /// One handler for the whole function bar. The keys themselves live
@@ -319,8 +327,9 @@ public partial class frmPOS : PhxFormBase, IPosView
                             current, decimals: 3);
 
     public decimal? PromptDiscount(decimal lineTotal) =>
-        frmNumberPrompt.Ask(this, "Discount",
-            $"How much off {Format.Money(lineTotal)}?", 0m, decimals: 2);
+        frmNumberPrompt.AskAmountOrPercent(this, "Discount",
+            $"How much off {Format.Money(lineTotal)}? An amount, or 10%",
+            lineTotal);
 
     public Guid? PromptSupervisor(string reason)
     {

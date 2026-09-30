@@ -20,6 +20,16 @@ public static class LedgerCode
 {
     public const string Bank = "1000";
     public const string CashOnHand = "1010";
+
+    /// <summary>
+    /// The pharmacy's EcoCash merchant wallet.
+    /// </summary>
+    /// <remarks>
+    /// Its own account rather than Cash on Hand: the money is in the
+    /// wallet, not the drawer, and a cash-up that counted it as cash
+    /// would never match the notes and coins.
+    /// </remarks>
+    public const string EcoCashWallet = "1020";
     public const string TradeDebtors = "1100";
 
     /// <summary>
@@ -95,6 +105,7 @@ public static class LedgerCode
     {
         (Bank, "Bank", LedgerAccountType.Asset),
         (CashOnHand, "Cash on Hand", LedgerAccountType.Asset),
+        (EcoCashWallet, "EcoCash Wallet", LedgerAccountType.Asset),
         (TradeDebtors, "Trade Debtors", LedgerAccountType.Asset),
         (MedicalAidDebtors, "Medical Aid Debtors", LedgerAccountType.Asset),
         (StockOnHand, "Stock on Hand", LedgerAccountType.Asset),
@@ -119,15 +130,21 @@ public static class LedgerCode
     /// Where the money from one tender type lands.
     /// </summary>
     /// <remarks>
-    /// Card, EFT and voucher all reach the bank rather than the drawer,
-    /// which is why cash-up counts only cash. Account and medical aid
-    /// are money the pharmacy is owed rather than money it has, so they
-    /// go to debtors and stay there until somebody settles.
+    /// Card and EFT reach the bank, EcoCash its wallet and vouchers the
+    /// voucher account until the issuer honours them, which is why the
+    /// cash-up counts only cash. Account and medical aid are money the
+    /// pharmacy is owed rather than money it has, so they go to their
+    /// debtors - patients and schemes apart - and stay there until
+    /// somebody settles. The day-end journal and the journals posted as
+    /// trading happens both read this, so they cannot disagree.
     /// </remarks>
     public static string For(TenderType tender) => tender switch
     {
         TenderType.Cash => CashOnHand,
-        TenderType.Account or TenderType.MedicalAid => TradeDebtors,
+        TenderType.EcoCash => EcoCashWallet,
+        TenderType.Account => TradeDebtors,
+        TenderType.MedicalAid => MedicalAidDebtors,
+        TenderType.Voucher => VouchersRedeemed,
         _ => Bank
     };
 }

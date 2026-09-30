@@ -85,6 +85,7 @@ public sealed class AccountService : IAccountService
     private readonly IAccountRepository _accounts;
     private readonly IPatientRepository _patients;
     private readonly IJournalPoster _journals;
+    private readonly ICurrentUser _user;
     private readonly IDocumentNumbering _numbering;
     private readonly IPermissionService _permissions;
     private readonly IAuditWriter _audit;
@@ -93,12 +94,14 @@ public sealed class AccountService : IAccountService
 
     public AccountService(IAccountRepository accounts,
         IPatientRepository patients, IJournalPoster journals,
+        ICurrentUser user,
         IDocumentNumbering numbering, IPermissionService permissions,
         IAuditWriter audit, IUnitOfWork uow, IClock clock)
     {
         _accounts = accounts;
         _patients = patients;
         _journals = journals;
+        _user = user;
         _numbering = numbering;
         _permissions = permissions;
         _audit = audit;
@@ -288,10 +291,29 @@ public sealed class AccountService : IAccountService
             return Result<AccountDto>.Fail("ACC-005",
                 "A payment must be for more than nothing.");
 
+        if (!Enum.TryParse<TenderType>(tenderType, ignoreCase: true,
+                out var tender)
+            || !Enum.IsDefined(tender) || tender.IsDeferred()
+            || tender == TenderType.Voucher)
+            return Result<AccountDto>.Fail("ACC-006",
+                "An account is paid in cash, EcoCash, by card or by EFT.");
+
         var account = await _accounts.GetAsync(accountId, ct);
 
         if (account is null)
             return Result<AccountDto>.Fail("ACC-000", "Account not found.");
+
+        // Cash and EcoCash go into a till's drawer or wallet, so they are
+        // taken where a session is open and its cash-up can expect them.
+        // A card or EFT settles through the bank and may be taken from
+        // the back office, but is still tied to the till where one is.
+        var till = _user.TillSessionId;
+
+        if (tender.IsCashLike() && till is null)
+            return Result<AccountDto>.Fail("ACC-007",
+                $"{tender.DisplayName()} is taken at a till with an open "
+                + "session, so the cash-up expects it. Open a session on "
+                + "this workstation, or take the payment at the till.");
 
         var paid = Money.Of(amount);
 
@@ -300,18 +322,20 @@ public sealed class AccountService : IAccountService
         // a script they then do not collect.
         account.Credit(paid);
 
-        await _accounts.AddTransactionAsync(AccountTransaction.Record(
-            account.Id, AccountEntryKind.Payment, paid, receivedOn,
-            reference, $"Payment by {tenderType}"), ct);
+        await _accounts.AddTransactionAsync(AccountTransaction.RecordPayment(
+            account.Id, paid, receivedOn, tender,
+            till,
+            reference, $"Payment by {tender.DisplayName()}"), ct);
 
         // Money in, debtor down. The same entry a till takes, from the
         // other direction.
         await _journals.PostAccountPaymentAsync(account.AccountNumber, paid,
-            tenderType, receivedOn, reference, ct);
+            tender.ToString(), receivedOn, reference, ct);
 
         _audit.Applied("acc.payment.take", "Account", accountId,
             string.Format(CultureInfo.CurrentCulture,
-                "{0:0.00} by {1}. {2}", amount, tenderType, reference));
+                "{0:0.00} by {1}. {2}", amount, tender.DisplayName(),
+                reference));
 
         await _uow.SaveChangesAsync(ct);
 

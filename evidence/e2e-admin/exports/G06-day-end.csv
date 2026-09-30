@@ -1,0 +1,9 @@
+﻿Date,Batch,Account,AccountName,Debit,Credit,Narration
+2026-09-25,"J-001-000031","1100","Trade Debtors",186.75,0.00,"Account takings"
+2026-09-25,"J-001-000031","1000","Bank",173.90,0.00,"Card takings"
+2026-09-25,"J-001-000031","1010","Cash on Hand",592.99,0.00,"Cash takings"
+2026-09-25,"J-001-000031","1000","Bank",49.99,0.00,"Eft takings"
+2026-09-25,"J-001-000031","1150","Medical Aid Debtors",34.95,0.00,"MedicalAid takings"
+2026-09-25,"J-001-000031","1250","Vouchers Redeemed",4.95,0.00,"Voucher takings"
+2026-09-25,"J-001-000031","4000","Sales",0.00,912.35,"Sales excluding VAT"
+2026-09-25,"J-001-000031","2100","VAT Control",0.00,131.18,"VAT collected on sales"

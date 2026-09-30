@@ -75,6 +75,7 @@ public static class DependencyInjection
         s.AddTransient<frmDispense>();
         s.AddTransient<DispensePresenter>();
         s.AddTransient<frmScriptList>();
+        s.AddTransient<frmDispensaryQuote>();
         s.AddTransient<ScriptListPresenter>();
         s.AddTransient<frmLabels>();
         s.AddTransient<frmScriptEdit>();
@@ -88,6 +89,7 @@ public static class DependencyInjection
         s.AddTransient<frmStocktakeList>();
         s.AddTransient<StocktakeListPresenter>();
         s.AddTransient<frmStocktakeCapture>();
+        s.AddTransient<frmStockAdjustment>();
         s.AddTransient<StocktakeCapturePresenter>();
 
         // Tills

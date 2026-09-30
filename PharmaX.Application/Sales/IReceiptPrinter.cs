@@ -93,10 +93,23 @@ public interface IDocumentPrinter
 /// than an image so that the record stays a plain data carrier and the
 /// adapter, which already owns the drawing surface, does the loading.
 /// </param>
+/// <param name="IsCopy">
+/// True where the document has already been handed over once and this
+/// is it printed again, which the paper has to say (ADM-DEF-08).
+/// </param>
+/// <param name="TillNumber">
+/// This till's number on its own, as the receipt prints it. Falls back to
+/// <paramref name="BranchAndTill"/> where it is not given.
+/// </param>
+/// <param name="CurrencyCode">
+/// The ISO code the pharmacy trades in, which the receipt writes beside
+/// the VAT, the total and each tender - "TOTAL-USD", "Cash USD".
+/// </param>
 public sealed record ReceiptHeaderDto(string TradingName,
     string RegisteredName, string Address, string VatNumber,
     string LicenceNumber, string BranchAndTill, string OperatorName,
-    DateTime PrintedAtLocal, string? LogoPath = null);
+    DateTime PrintedAtLocal, string? LogoPath = null, bool IsCopy = false,
+    string? TillNumber = null, string? CurrencyCode = null);
 
 /// <summary>
 /// Prints a till receipt. Returns an outcome rather than throwing,

@@ -33,6 +33,13 @@ public sealed class MoneyTextBox : TextBox
         set => Text = value?.ToString("N2", CultureInfo.CurrentCulture) ?? "";
     }
 
+    /// <summary>
+    /// Whether a trailing % may be typed, for a box that takes either an
+    /// amount or a percentage of one - a discount.
+    /// </summary>
+    [DefaultValue(false)]
+    public bool AllowsPercent { get; set; }
+
     protected override void OnKeyPress(KeyPressEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -51,7 +58,10 @@ public sealed class MoneyTextBox : TextBox
             (e.KeyChar == separator
              && !Text.Contains(separator, StringComparison.Ordinal))
             || (e.KeyChar == '-' && SelectionStart == 0
-                && !Text.Contains('-', StringComparison.Ordinal));
+                && !Text.Contains('-', StringComparison.Ordinal))
+            || (AllowsPercent && e.KeyChar == '%'
+                && SelectionStart == Text.Length
+                && !Text.Contains('%', StringComparison.Ordinal));
 
         e.Handled = !allowed;
         base.OnKeyPress(e);
@@ -60,7 +70,8 @@ public sealed class MoneyTextBox : TextBox
     protected override void OnLeave(EventArgs e)
     {
         // Normalise on the way out, so 5 becomes 5.00 and the column of
-        // amounts on screen lines up the way it will on the receipt.
+        // amounts on screen lines up the way it will on the receipt. A
+        // percentage is left as typed.
         if (Amount is decimal value) Amount = value;
 
         base.OnLeave(e);

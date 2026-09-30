@@ -5,24 +5,29 @@ using PharmaX.Desktop.Mvp;
 namespace PharmaX.Desktop.Features.Admin;
 
 /// <summary>
-/// Which printer this till uses for receipts and which for dispensing
-/// labels. A per-workstation choice, so it lives in the workstation's
-/// own settings rather than in a file the installer rewrites.
+/// Which printer this till uses for receipts, which for dispensing
+/// labels, and which for A4 documents such as the medical aid claim form.
+/// A per-workstation choice, so it lives in the workstation's own
+/// settings rather than in a file the installer rewrites.
 /// </summary>
 public sealed class frmPrinterSetup : PhxFormBase
 {
     private readonly IWorkstationSettings _settings;
+    private readonly PharmacyProfile _pharmacy;
 
     private readonly ComboBox _receipt = new();
     private readonly ComboBox _label = new();
+    private readonly ComboBox _document = new();
     private readonly Label _status = new();
     private readonly Button _save = new();
     private readonly Button _cancel = new();
     private readonly Button _testReceipt = new();
 
-    public frmPrinterSetup(IWorkstationSettings settings)
+    public frmPrinterSetup(IWorkstationSettings settings,
+                           PharmacyProfile pharmacy)
     {
         _settings = settings;
+        _pharmacy = pharmacy;
 
         var header = PhxTheme.HeaderBand(64);
 
@@ -46,24 +51,25 @@ public sealed class frmPrinterSetup : PhxFormBase
 
         Field("&Receipt printer", _receipt, 0);
         Field("&Label printer", _label, 1);
+        Field("&Claim forms (A4)", _document, 2);
 
         _status.AutoSize = false;
         _status.ForeColor = PhxTheme.Muted;
-        _status.Location = new Point(24, 96 + 2 * PhxTheme.RowHeight);
+        _status.Location = new Point(24, 96 + 3 * PhxTheme.RowHeight);
         _status.Size = new Size(520, 40);
 
-        _testReceipt.Location = new Point(24, 146 + 2 * PhxTheme.RowHeight);
+        _testReceipt.Location = new Point(24, 146 + 3 * PhxTheme.RowHeight);
         _testReceipt.Size = new Size(150, 32);
         _testReceipt.Text = "&Test page";
         _testReceipt.Click += (_, _) => PrintTestPage();
 
-        _save.Location = new Point(378, 146 + 2 * PhxTheme.RowHeight);
+        _save.Location = new Point(378, 146 + 3 * PhxTheme.RowHeight);
         _save.Size = new Size(80, 32);
         _save.Text = "&Save";
         _save.Click += async (_, _) => await SaveAsync();
 
         _cancel.DialogResult = DialogResult.Cancel;
-        _cancel.Location = new Point(464, 146 + 2 * PhxTheme.RowHeight);
+        _cancel.Location = new Point(464, 146 + 3 * PhxTheme.RowHeight);
         _cancel.Size = new Size(80, 32);
         _cancel.Text = "Cancel";
 
@@ -73,7 +79,7 @@ public sealed class frmPrinterSetup : PhxFormBase
 
         AcceptButton = _save;
         CancelButton = _cancel;
-        ClientSize = new Size(568, 196 + 2 * PhxTheme.RowHeight);
+        ClientSize = new Size(568, 196 + 3 * PhxTheme.RowHeight);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -99,12 +105,13 @@ public sealed class frmPrinterSetup : PhxFormBase
 
             _receipt.Enabled = false;
             _label.Enabled = false;
+            _document.Enabled = false;
             _save.Enabled = false;
             _testReceipt.Enabled = false;
             return;
         }
 
-        foreach (var combo in new[] { _receipt, _label })
+        foreach (var combo in new[] { _receipt, _label, _document })
         {
             // A blank entry means "whatever Windows calls the default",
             // which is the right answer on a till with one printer.
@@ -115,6 +122,7 @@ public sealed class frmPrinterSetup : PhxFormBase
 
         await SelectAsync(_receipt, WorkstationSettingKey.ReceiptPrinter);
         await SelectAsync(_label, WorkstationSettingKey.LabelPrinter);
+        await SelectAsync(_document, WorkstationSettingKey.DocumentPrinter);
 
         _status.Text = $"{installed.Length} printer(s) installed. The "
                        + "default is "
@@ -147,8 +155,11 @@ public sealed class frmPrinterSetup : PhxFormBase
         await _settings.SetAsync(WorkstationSettingKey.LabelPrinter,
                                  Chosen(_label));
 
-        ShowInfo("Saved. Receipts and labels will use these printers from "
-                 + "the next one printed.");
+        await _settings.SetAsync(WorkstationSettingKey.DocumentPrinter,
+                                 Chosen(_document));
+
+        ShowInfo("Saved. Receipts, labels and claim forms will use these "
+                 + "printers from the next one printed.");
 
         CloseView(true);
     }
@@ -174,8 +185,11 @@ public sealed class frmPrinterSetup : PhxFormBase
             {
                 using var font = new Font("Consolas", 9f);
 
+                // Headed as the receipts are, with the pharmacy's own
+                // name: a till set up for the pharmacy should not print
+                // the software's (ADM-OBS-01).
                 e.Graphics!.DrawString(
-                    "PharmaX test page\n"
+                    $"{_pharmacy.TradingName} - printer test page\n"
                     + $"{Format.DateTimeShort(DateTime.Now)}\n"
                     + $"Printer: {document.PrinterSettings.PrinterName}\n"
                     + "If you can read this, receipts will print.",
@@ -212,6 +226,12 @@ public sealed class frmPrinterSetup : PhxFormBase
 
         if (input is ComboBox combo)
             combo.DropDownStyle = ComboBoxStyle.DropDownList;
+
+        // Named after its caption, so a screen reader announces which
+        // printer the list chooses and automation can find it.
+        var name = caption.Replace("&", "", StringComparison.Ordinal);
+        input.AccessibleName = name;
+        input.Name = "cbo" + new string(name.Where(char.IsLetter).ToArray());
 
         input.Location = new Point(160, y);
         input.Size = new Size(384, 24);
