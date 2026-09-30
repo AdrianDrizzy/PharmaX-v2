@@ -11,6 +11,7 @@ partial class frmProductEdit
     private TextBox txtTaxCode = null!;
     private TextBox txtPackSize = null!;
     private MoneyTextBox txtUnitsPerPack = null!;
+    private TextBox txtBarcodes = null!;
     private MoneyTextBox txtRetail = null!;
     private MoneyTextBox txtCost = null!;
     private MoneyTextBox txtVatRate = null!;
@@ -20,8 +21,12 @@ partial class frmProductEdit
     private ComboBox cboCategory = null!;
     private ComboBox cboManufacturer = null!;
     private CheckBox chkBatchTracked = null!;
-    private Label lblOnHand = null!;
-    private Label lblOnHandValue = null!;
+    private CheckBox chkActive = null!;
+    private MoneyTextBox txtOnHand = null!;
+    private Label lblOnHandNote = null!;
+    private Label lblBatches = null!;
+    private PhxGrid grdBatches = null!;
+    private Label lblBatchHint = null!;
     private Button btnSave = null!;
     private Button btnCancel = null!;
 
@@ -46,6 +51,8 @@ partial class frmProductEdit
         txtPackSize.Name = "txtPackSize";
         txtUnitsPerPack = new MoneyTextBox();
         txtUnitsPerPack.Name = "txtUnitsPerPack";
+        txtBarcodes = new TextBox();
+        txtBarcodes.Name = "txtBarcodes";
         txtRetail = new MoneyTextBox();
         txtRetail.Name = "txtRetail";
         txtCost = new MoneyTextBox();
@@ -62,8 +69,13 @@ partial class frmProductEdit
         cboManufacturer = new ComboBox();
         cboManufacturer.Name = "cboManufacturer";
         chkBatchTracked = new CheckBox();
-        lblOnHand = new Label();
-        lblOnHandValue = new Label();
+        chkActive = new CheckBox();
+        txtOnHand = new MoneyTextBox();
+        txtOnHand.Name = "txtOnHand";
+        lblOnHandNote = new Label();
+        lblBatches = new Label();
+        grdBatches = new PhxGrid();
+        lblBatchHint = new Label();
         btnSave = new Button();
         btnCancel = new Button();
         ((System.ComponentModel.ISupportInitialize)numSchedule).BeginInit();
@@ -89,9 +101,10 @@ partial class frmProductEdit
             Location = new Point(310, 24 + 9 * 34),
             Text = "U&nits per pack"
         });
+        txtUnitsPerPack.AccessibleName = "Units per pack";
         txtUnitsPerPack.Location = new Point(410, 20 + 9 * 34);
         txtUnitsPerPack.Size = new Size(100, 23);
-        txtUnitsPerPack.TabIndex = 9;
+        txtUnitsPerPack.TabIndex = 9 * 2 + 1;
         Controls.Add(txtUnitsPerPack);
 
         // Where the product is filed. Three lists the pharmacy
@@ -103,6 +116,19 @@ partial class frmProductEdit
         foreach (var combo in new[]
                  { cboDepartment, cboCategory, cboManufacturer })
             combo.DropDownStyle = ComboBoxStyle.DropDownList;
+
+        // What the till and the dispensary scan. Several, because the
+        // same product comes in from more than one supplier's packing.
+        // Two lines tall and taking a return, so a scanner that ends
+        // each code with Enter adds a line rather than saving the form.
+        Field("Barcod&es", txtBarcodes, 13, 380);
+        txtBarcodes.AcceptsReturn = true;
+        txtBarcodes.MaxLength = 500;
+        txtBarcodes.Multiline = true;
+        txtBarcodes.PlaceholderText =
+            "Scan or type; one per line, or separated by commas";
+        txtBarcodes.ScrollBars = ScrollBars.Vertical;
+        txtBarcodes.Size = new Size(380, 57);
 
         txtCode.MaxLength = 30;
         txtDescription.MaxLength = 200;
@@ -116,43 +142,98 @@ partial class frmProductEdit
         numSchedule.Name = "numSchedule";
 
         chkBatchTracked.AutoSize = true;
-        chkBatchTracked.Location = new Point(150, 20 + 13 * 34);
+        chkBatchTracked.Location = new Point(150, 20 + 15 * 34);
         chkBatchTracked.Name = "chkBatchTracked";
         chkBatchTracked.Size = new Size(180, 19);
-        chkBatchTracked.TabIndex = 13;
+        chkBatchTracked.TabIndex = 15 * 2;
         chkBatchTracked.Text = "&Batch tracked (FEFO applies)";
         chkBatchTracked.UseVisualStyleBackColor = true;
 
-        // Read-only on purpose: stock moves through receipts, sales and
-        // adjustments, never by typing a new figure into a form.
-        lblOnHand.AutoSize = true;
-        lblOnHand.Location = new Point(20, 24 + 14 * 34);
-        lblOnHand.Text = "On hand";
+        // Beside batch tracking: unticked is the product discontinued,
+        // kept for the history it already has.
+        chkActive.AutoSize = true;
+        chkActive.Checked = true;
+        chkActive.Location = new Point(360, 20 + 15 * 34);
+        chkActive.Name = "chkActive";
+        chkActive.Size = new Size(160, 19);
+        chkActive.TabIndex = 15 * 2 + 1;
+        chkActive.Text = "Act&ive (offered for sale)";
+        chkActive.UseVisualStyleBackColor = true;
 
-        lblOnHandValue.AutoSize = false;
-        lblOnHandValue.Font = new Font("Consolas", 10F);
-        lblOnHandValue.Location = new Point(150, 24 + 14 * 34);
-        lblOnHandValue.Name = "lblOnHandValue";
-        lblOnHandValue.Size = new Size(140, 20);
-        lblOnHandValue.Text = "0.000";
+        // A count, typed as one. Saving a changed figure posts the
+        // difference as a stock adjustment, the same as the list's cell
+        // does, so the movement report still explains the shelf. Once
+        // the stock is on batches this box is their total, and the
+        // counting is done a batch at a time on the right.
+        Field("&On hand", txtOnHand, 16, 140);
 
-        btnSave.Location = new Point(388, 40 + 15 * 34);
+        lblOnHandNote.AutoSize = false;
+        lblOnHandNote.ForeColor = SystemColors.GrayText;
+        lblOnHandNote.Location = new Point(300, 24 + 16 * 34);
+        lblOnHandNote.Name = "lblOnHandNote";
+        lblOnHandNote.Size = new Size(250, 20);
+
+        // The same shelf a batch at a time, as the list's batch view
+        // shows it, and corrected the same way: the number on the pack,
+        // the date on it (or the days it has left), and how many are
+        // there. Typing on the last row adds a batch.
+        lblBatches.AutoSize = true;
+        lblBatches.Location = new Point(570, 24);
+        lblBatches.TabIndex = 16 * 2 + 1;
+        lblBatches.Text = "Batches and e&xpiry";
+
+        grdBatches.AccessibleName = "Batches and expiry";
+        grdBatches.Location = new Point(570, 48);
+        grdBatches.Name = "grdBatches";
+        grdBatches.Size = new Size(390, 20 + 15 * 34 - 48);
+        grdBatches.TabIndex = 16 * 2 + 1;
+
+        var batchNumber = grdBatches.AddColumn("BatchNumber", "Batch", 110);
+        batchNumber.MaxInputLength = 50;
+        grdBatches.AddColumn("Expiry", "Expires", 90);
+        grdBatches.AddColumn("DaysLeft", "Days left", 70, rightAlign: true);
+        grdBatches.AddColumn("QuantityOnHand", "On hand", 80,
+            rightAlign: true);
+
+        // A small form of its own rather than a list: typed into, a cell
+        // at a time, and Tab moves along the row. The permissions close
+        // it again for whoever may not change it.
+        grdBatches.ReadOnly = false;
+        grdBatches.AllowUserToAddRows = true;
+        grdBatches.AllowUserToDeleteRows = true;
+        grdBatches.EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2;
+        grdBatches.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        grdBatches.StandardTab = false;
+
+        lblBatchHint.AutoSize = false;
+        lblBatchHint.ForeColor = SystemColors.GrayText;
+        lblBatchHint.Location = new Point(570, 24 + 15 * 34);
+        lblBatchHint.Name = "lblBatchHint";
+        lblBatchHint.Size = new Size(390, 54);
+        lblBatchHint.Text =
+            "Type on the last row to add a batch. Days left moves the "
+            + "expiry date. Set a batch's On hand to 0 to write it off.";
+
+        btnSave.Location = new Point(794, 40 + 17 * 34);
         btnSave.Name = "btnSave";
         btnSave.Size = new Size(80, 30);
-        btnSave.TabIndex = 14;
+        btnSave.TabIndex = 17 * 2;
         btnSave.Text = "&Save";
         btnSave.UseVisualStyleBackColor = true;
 
-        btnCancel.Location = new Point(474, 40 + 15 * 34);
+        btnCancel.Location = new Point(880, 40 + 17 * 34);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(80, 30);
-        btnCancel.TabIndex = 15;
+        btnCancel.TabIndex = 17 * 2 + 1;
         btnCancel.Text = "Cancel";
         btnCancel.UseVisualStyleBackColor = true;
 
         Controls.Add(chkBatchTracked);
-        Controls.Add(lblOnHand);
-        Controls.Add(lblOnHandValue);
+        Controls.Add(chkActive);
+        Controls.Add(lblOnHandNote);
+        Controls.Add(lblBatches);
+        Controls.Add(grdBatches);
+        Controls.Add(lblBatchHint);
         Controls.Add(btnSave);
         Controls.Add(btnCancel);
 
@@ -160,7 +241,7 @@ partial class frmProductEdit
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(574, 90 + 15 * 34);
+        ClientSize = new Size(980, 90 + 17 * 34);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -176,6 +257,14 @@ partial class frmProductEdit
     /// One labelled field on a fixed grid. A helper rather than sixty
     /// lines of Location arithmetic that nobody will keep aligned.
     /// </summary>
+    /// <remarks>
+    /// The input is named after its own caption. Left to work it out,
+    /// assistive technology took the label before each box in tab order,
+    /// and the units-per-pack box sharing a tab stop pushed every list
+    /// below it one caption out - Department was announced as "Units per
+    /// pack" (ADM-OBS-05). Tab stops go up in twos so that a field beside
+    /// another can sit between them.
+    /// </remarks>
     private void Field(string caption, Control input, int row, int width)
     {
         var y = 20 + row * 34;
@@ -184,12 +273,15 @@ partial class frmProductEdit
         {
             AutoSize = true,
             Location = new Point(20, y + 4),
+            TabIndex = row * 2,
             Text = caption
         });
 
+        input.AccessibleName =
+            caption.Replace("&", "", StringComparison.Ordinal);
         input.Location = new Point(150, y);
         input.Size = new Size(width, 23);
-        input.TabIndex = row;
+        input.TabIndex = row * 2;
         Controls.Add(input);
     }
 }

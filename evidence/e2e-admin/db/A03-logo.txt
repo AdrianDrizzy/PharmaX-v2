@@ -1,0 +1,3 @@
+-- select WorkstationCode, `Key`, Value from workstationsetting where `Key` like 'pharmacy.logo%' or `Key` like 'pharmacy.currency%';
+WorkstationCode	Key	Value
+1	pharmacy.logo	C:\\ProgramData\\PharmaX\\branding\\logo.png

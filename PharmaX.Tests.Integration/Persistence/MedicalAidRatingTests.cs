@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Claims;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
 using PharmaX.Application.Patients;
@@ -158,7 +159,222 @@ public class MedicalAidRatingTests : IClassFixture<PharmaXFixture>
         line.SchemeContribution.Amount.Should().Be(0m);
     }
 
+    /// <remarks>
+    /// The paper the member signs: everything on it comes from the claim,
+    /// the dispensing behind it, the script and the patient file.
+    /// </remarks>
+    [Fact]
+    public async Task The_claim_form_carries_the_member_the_script_and_the_medicine()
+    {
+        await SignInAsync();
+
+        var schemeId = await GivenASocietyAsync("FORM1", "Form Society");
+        var code = await GivenAProductAsync("FORMED1", "Form item", 200m);
+
+        await GivenATariffAsync(schemeId, code, 150m, 30m);
+
+        var patientId = await GivenAPatientAsync("Chirwa", "Grace Tariro",
+            schemeId, "MEM-0004");
+
+        var line = await DispenseAsync(patientId, code);
+
+        using var scope = _fixture.NewScope();
+        var forms = PharmaXFixture.Resolve<IClaimFormService>(scope);
+
+        var built = await forms.ForDispensingAsync(line.DispensingId);
+        built.IsSuccess.Should().BeTrue(built.Error.Message);
+
+        var form = built.Value;
+
+        _lastIssue!.ClaimNumber.Should().NotBeNullOrEmpty()
+            .And.Be(form.ClaimNumber, "the issue names the claim it raised");
+
+        form.SchemeName.Should().Be("Form Society");
+        form.PatientName.Should().Be("Grace Tariro Chirwa");
+        form.MemberSurname.Should().Be("Chirwa");
+        form.MemberInitials.Should().Be("G T");
+        form.MembershipNumber.Should().Be("MEM-0004");
+        form.DependantCode.Should().Be("00");
+        form.DateOfBirth.Should().Be(new DateOnly(1985, 4, 12));
+        form.DoctorName.Should().Be("Dr Adams");
+        form.DoctorNumber.Should().Be("MP123456");
+        form.ScriptNumber.Should().Be(_lastIssue.ScriptNumber);
+        form.DispensingNumber.Should().Be(_lastIssue.DocumentNumber);
+        form.IsRepeat.Should().BeFalse("it is the script's first issue");
+
+        var medicine = form.Lines.Should().ContainSingle().Subject;
+        medicine.PriceCode.Should().Be("FORMED1");
+        medicine.Quantity.Should().Be(20m);
+        medicine.Charge.Should().Be(180m);
+        medicine.Claimed.Should().Be(150m);
+        medicine.Directions.Should().Be("Two tablets twice daily");
+
+        form.Gross.Should().Be(180m);
+        form.Claimed.Should().Be(150m);
+        form.CoPayment.Should().Be(30m);
+
+        (await forms.BuildAsync((await ClaimIdAsync(line.DispensingId))))
+            .Value.Should().BeEquivalentTo(form,
+                "the Claims screen prints the same form");
+    }
+
+    /// <remarks>
+    /// The pharmacy the scheme pays is the one on the shop front, as set
+    /// at the System Console - not the product's name the installation
+    /// starts with.
+    /// </remarks>
+    [Fact]
+    public async Task The_claim_form_is_headed_with_the_trading_name()
+    {
+        await SignInAsync();
+
+        var schemeId = await GivenASocietyAsync("FORM2", "Named Society");
+        var code = await GivenAProductAsync("FORMED2", "Named item", 200m);
+
+        await GivenATariffAsync(schemeId, code, 150m, 30m);
+
+        var patientId = await GivenAPatientAsync("Sibanda", "Rudo",
+            schemeId, "MEM-0005");
+
+        var line = await DispenseAsync(patientId, code);
+
+        // One profile for the whole process: the scope only lends it.
+        using var any = _fixture.NewScope();
+        var profile = PharmaXFixture.Resolve<PharmacyProfile>(any);
+        var installed = profile.Current;
+
+        try
+        {
+            profile.Use(installed with { TradingName = "BethRapha Pharmacy" });
+
+            using var scope = _fixture.NewScope();
+            var forms = PharmaXFixture.Resolve<IClaimFormService>(scope);
+
+            var form = await forms.ForDispensingAsync(line.DispensingId);
+
+            form.Value.PharmacyName.Should().Be("BethRapha Pharmacy");
+        }
+        finally
+        {
+            profile.Use(installed);
+        }
+    }
+
+    /// <remarks>
+    /// The trailer follows the item labels at the issue, and a reprint
+    /// from Dispensary > Labels prints the same one after them.
+    /// </remarks>
+    [Fact]
+    public async Task Issuing_a_script_gives_it_a_trailer_label()
+    {
+        await SignInAsync();
+
+        var code = await GivenAProductAsync("TRAIL1", "Trailer item", 200m);
+        var patientId = await GivenAPatientAsync("Nyakunhuwa", "Josephat");
+
+        var line = await DispenseAsync(patientId, code);
+
+        var trailer = _lastIssue!.Trailer;
+
+        trailer.Should().NotBeNull();
+        trailer!.ScriptNumber.Should().Be(_lastIssue.ScriptNumber);
+        trailer.PatientName.Should().Be("Josephat Nyakunhuwa");
+        trailer.FillNumber.Should().Be(1, "it is the script's first issue");
+        trailer.PrescriberName.Should().Be("Dr Adams");
+
+        var item = trailer.Items.Should().ContainSingle().Subject;
+        item.Description.Should().Be("Trailer item");
+        item.Quantity.Should().Be(20m);
+
+        // No printers in this fixture, so the reprint is handed one that
+        // writes down what it was asked to print.
+        using var scope = _fixture.NewScope();
+        var printer = new RecordingLabelPrinter();
+
+        var reprints = new LabelReprintService(
+            PharmaXFixture.Resolve<IDispensingRepository>(scope),
+            PharmaXFixture.Resolve<IScriptRepository>(scope),
+            PharmaXFixture.Resolve<IPatientRepository>(scope),
+            PharmaXFixture.Resolve<IUserRepository>(scope),
+            printer,
+            PharmaXFixture.Resolve<IPermissionService>(scope),
+            PharmaXFixture.Resolve<IAuditWriter>(scope),
+            PharmaXFixture.Resolve<IUnitOfWork>(scope));
+
+        var rebuilt = await reprints.BuildTrailerAsync(line.DispensingId);
+
+        rebuilt.IsSuccess.Should().BeTrue(rebuilt.Error.Message);
+        rebuilt.Value.Should().BeEquivalentTo(trailer);
+
+        var run = await reprints.ReprintAsync(line.DispensingId);
+
+        run.IsSuccess.Should().BeTrue(run.Error.Message);
+        run.Value.Printed.Should().Be(2, "the item label, then the trailer");
+        printer.Labels.Should().ContainSingle();
+        printer.Trailers.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(trailer);
+    }
+
+    private sealed class RecordingLabelPrinter : ILabelPrinter
+    {
+        public List<LabelDto> Labels { get; } = new();
+        public List<TrailerLabelDto> Trailers { get; } = new();
+
+        public bool IsAvailable => true;
+
+        public Task<Application.Sales.PrintResult> PrintAsync(LabelDto label,
+            CancellationToken ct = default)
+        {
+            Labels.Add(label);
+            return Task.FromResult(
+                Application.Sales.PrintResult.Ok("Test label printer"));
+        }
+
+        public Task<Application.Sales.PrintResult> PrintTrailerAsync(
+            TrailerLabelDto trailer, CancellationToken ct = default)
+        {
+            Trailers.Add(trailer);
+            return Task.FromResult(
+                Application.Sales.PrintResult.Ok("Test label printer"));
+        }
+    }
+
+    [Fact]
+    public async Task A_self_payer_has_no_claim_form_to_print()
+    {
+        await SignInAsync();
+
+        var code = await GivenAProductAsync("UNRATED2", "Unrated item", 200m);
+        var patientId = await GivenAPatientAsync("Dube", "Nomsa");
+
+        var line = await DispenseAsync(patientId, code);
+
+        _lastIssue!.ClaimNumber.Should().BeNull();
+
+        using var scope = _fixture.NewScope();
+        var forms = PharmaXFixture.Resolve<IClaimFormService>(scope);
+
+        var built = await forms.ForDispensingAsync(line.DispensingId);
+
+        built.IsFailure.Should().BeTrue();
+        built.Error.Code.Should().Be("CLM-010");
+    }
+
     // ---- Steps -----------------------------------------------------------
+
+    /// The last issue DispenseAsync made, as the dispensary was told of it.
+    private IssueResultDto? _lastIssue;
+
+    private async Task<Guid> ClaimIdAsync(Guid dispensingId)
+    {
+        using var scope = _fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+        return await db.MedicalAidClaims.AsNoTracking()
+            .Where(c => c.DispensingId == dispensingId)
+            .Select(c => c.Id)
+            .SingleAsync();
+    }
 
     private async Task SignInAsync()
     {
@@ -216,6 +432,7 @@ public class MedicalAidRatingTests : IClassFixture<PharmaXFixture>
 
             var issued = await dispensing.IssueAsync(dispensingId, admin!.Id);
             issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+            _lastIssue = issued.Value;
         }
 
         using var check = _fixture.NewScope();

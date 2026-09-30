@@ -49,6 +49,11 @@ public static class ScreenAccess
                 p.Has(PermissionCode.ScriptDispense)
                 && p.Has(PermissionCode.PatientMaintain),
             ["labels"] = p => p.Has(PermissionCode.ScriptDispense),
+
+            // Priced by whoever captures or dispenses scripts.
+            ["dispensary-quote"] = p =>
+                p.HasAny(PermissionCode.ScriptCapture,
+                         PermissionCode.ScriptDispense),
             ["tariffs"] = p => p.Has(PermissionCode.PriceChange),
             ["merge-patients"] = p =>
                 p.Has(PermissionCode.ScriptAuthorise)
@@ -82,6 +87,7 @@ public static class ScreenAccess
             // Menu entries that open a report preset carry that preset's
             // permission (PresetCatalogue).
             ["stock"] = p => p.Has(PermissionCode.ReportOperational),
+            ["stock-adjust"] = p => p.Has(PermissionCode.StockTakePost),
             ["transfers"] = p => p.Has(PermissionCode.ReportOperational),
             ["breakages"] = p => p.Has(PermissionCode.ReportOperational),
             ["expired-stock"] = p => p.Has(PermissionCode.ReportOperational),

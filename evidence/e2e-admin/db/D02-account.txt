@@ -1,0 +1,3 @@
+-- select AccountNumber, Balance from account where AccountNumber='A-001-000002';
+AccountNumber	Balance
+A-001-000002	81.90

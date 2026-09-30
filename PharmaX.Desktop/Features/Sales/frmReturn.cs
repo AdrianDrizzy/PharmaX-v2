@@ -39,6 +39,14 @@ public partial class frmReturn : PhxFormBase, IReturnView
         grdLines.CellEndEdit += (_, _) =>
             LinesChanged?.Invoke(this, EventArgs.Empty);
 
+        grdLines.CellValidating += OnReturningValidating;
+
+        // Leaving, or looking up another sale, is never held up by a
+        // figure on this one.
+        btnClose.CausesValidation = false;
+        btnFind.CausesValidation = false;
+        txtDocumentNumber.CausesValidation = false;
+
         // A credit note credits value without goods coming back, so
         // nothing on one can be restocked. The grid says so rather than
         // letting the operator tick a box the service will ignore.
@@ -210,6 +218,47 @@ public partial class frmReturn : PhxFormBase, IReturnView
 
         return dialog.ShowDialog(this) == DialogResult.OK
             ? dialog.Payments
+            : null;
+    }
+
+    /// <summary>
+    /// Holds the Returning figure to what can come back, as it is typed.
+    /// </summary>
+    /// <remarks>
+    /// Four against three sold was taken, priced, a reason and a refund
+    /// collected, and only then refused (ADM-OBS-10). The cell now says
+    /// what the limit is and stays open until it is met. The service
+    /// still checks, because a screen is not the only way in.
+    /// </remarks>
+    private void OnReturningValidating(object? sender,
+                                       DataGridViewCellValidatingEventArgs e)
+    {
+        if (e.RowIndex < 0
+            || grdLines.Columns[e.ColumnIndex].Name != "Return") return;
+
+        var row = grdLines.Rows[e.RowIndex];
+        var typed = e.FormattedValue?.ToString()?.Trim() ?? "";
+
+        row.ErrorText = ReturningProblem(typed,
+            ToDecimal(row.Cells["Returnable"].Value)) ?? "";
+
+        e.Cancel = row.ErrorText.Length > 0;
+    }
+
+    /// Why a Returning figure cannot stand, or null where it can.
+    internal static string? ReturningProblem(string typed, decimal returnable)
+    {
+        if (typed.Length == 0) return null;
+
+        if (!decimal.TryParse(typed, NumberStyles.Number,
+                CultureInfo.CurrentCulture, out var quantity))
+            return "Type how many are coming back.";
+
+        if (quantity < 0m) return "A return cannot be less than none.";
+
+        return quantity > returnable
+            ? string.Format(CultureInfo.CurrentCulture,
+                "Only {0:0.###} can come back on this line.", returnable)
             : null;
     }
 

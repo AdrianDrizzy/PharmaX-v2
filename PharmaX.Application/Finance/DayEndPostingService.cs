@@ -19,9 +19,14 @@ public sealed record DayEndJournalBatchDto(Guid Id, string BatchNumber,
 /// <summary>
 /// What a day's trading came to, before it is turned into journals.
 /// </summary>
+/// <param name="PostedAsTraded">
+/// True where automatic posting is on, so every sale wrote its own
+/// journal as it was made and there is nothing left for a day-end batch
+/// to do.
+/// </param>
 public sealed record DaySummaryDto(DateOnly Day, int Sales, decimal Gross,
     decimal Vat, decimal Net, IReadOnlyDictionary<string, decimal> ByTender,
-    bool AlreadyPosted);
+    bool AlreadyPosted, bool PostedAsTraded = false);
 
 public interface IJournalRepository
 {
@@ -131,20 +136,32 @@ public sealed class DayEndPostingService : IDayEndPostingService
 
         foreach (var payment in sales.SelectMany(s => s.Payments))
         {
-            var key = payment.Tender.ToString();
+            var key = payment.Tender.DisplayName();
             byTender[key] = byTender.GetValueOrDefault(key)
                             + payment.Amount.Amount;
         }
 
         return Result<DaySummaryDto>.Ok(new DaySummaryDto(day, sales.Count,
             gross.Amount, vat.Amount, gross.Amount - vat.Amount, byTender,
-            existing is not null));
+            existing is not null, _options.Accounting.AutoPost));
     }
 
     public async Task<Result<DayEndJournalBatchDto>> PrepareAsync(DateOnly day,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ReportFinancial);
+
+        // With automatic posting on, every sale journalled itself as it
+        // was made. A day-end batch on top put the same takings through
+        // the ledger a second time - cash, sales and VAT all doubled -
+        // and nothing stopped it, because the check below only looks for
+        // an earlier day-end batch (ADM-DEF-19).
+        if (_options.Accounting.AutoPost)
+            return Result<DayEndJournalBatchDto>.Fail("FIN-004",
+                $"{day:dd/MM/yyyy} is already in the ledger: automatic "
+                + "posting is on, so each sale wrote its own journal as it "
+                + "was made. A day-end journal as well would count the "
+                + "takings twice.");
 
         // A day posted twice is a day counted twice. The check is on the
         // batch rather than a flag on the sales, so a batch deleted by

@@ -291,6 +291,16 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<int>("RepeatNumber")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ReversalReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReversedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReversedBy")
+                        .HasColumnType("TEXT");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1201,6 +1211,13 @@ namespace PharmaX.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("BLOB");
 
+                    b.Property<string>("Tender")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TillSessionId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -1222,6 +1239,8 @@ namespace PharmaX.Persistence.Migrations
                         });
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TillSessionId");
 
                     b.HasIndex("AccountId", "OccurredOn");
 
@@ -1315,6 +1334,10 @@ namespace PharmaX.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("AccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(250)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ClinicalProfileId")
@@ -1782,6 +1805,11 @@ namespace PharmaX.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
@@ -1806,6 +1834,9 @@ namespace PharmaX.Persistence.Migrations
                         .HasColumnType("BLOB");
 
                     b.Property<Guid?>("SaleId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ScriptId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Status")
@@ -1856,6 +1887,10 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<string>("TaxCode")
                         .IsRequired()
                         .HasMaxLength(5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("UnitsInPack")
+                        .HasPrecision(18, 3)
                         .HasColumnType("TEXT");
 
                     b.ComplexProperty<Dictionary<string, object>>("UnitPrice", "PharmaX.Domain.Sales.QuotationLine.UnitPrice#Money", b1 =>

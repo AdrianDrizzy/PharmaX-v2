@@ -1,0 +1,6 @@
+-- select ScriptNumber, Status, PrescriberName, CreatedAtUtc from script order by ScriptNumber;
+ScriptNumber	Status	PrescriberName	CreatedAtUtc
+SC-001-000001	PartiallyDispensed	Dr M Chikwanda	2026-09-25 02:14:03.660062
+SC-001-000002	PartiallyDispensed	Dr M Chikwanda	2026-09-25 02:14:04.526087
+SC-001-000003	Cancelled	Dr T. Moyo	2026-09-25 03:42:21.697064
+SC-001-000005	Captured	Dr T. Moyo	2026-09-25 03:43:54.313834

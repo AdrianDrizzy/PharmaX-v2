@@ -12,8 +12,10 @@ partial class frmScriptList
     private PhxGrid grdScripts = null!;
     private Button btnCapture = null!;
     private Button btnCancelScript = null!;
+    private Button btnEditScript = null!;
     private Button btnRefresh = null!;
     private Button btnChoose = null!;
+    private Button btnQuote = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -34,10 +36,14 @@ partial class frmScriptList
         btnCapture.Name = "btnCapture";
         btnCancelScript = new Button();
         btnCancelScript.Name = "btnCancelScript";
+        btnEditScript = new Button();
+        btnEditScript.Name = "btnEditScript";
         btnRefresh = new Button();
         btnRefresh.Name = "btnRefresh";
         btnChoose = new Button();
         btnChoose.Name = "btnChoose";
+        btnQuote = new Button();
+        btnQuote.Name = "btnQuote";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -75,8 +81,9 @@ partial class frmScriptList
         var x = 12;
         foreach (var (button, text) in new[]
         {
-            (btnCapture, "&Capture new"), (btnCancelScript, "Cance&l script"),
-            (btnRefresh, "&Refresh")
+            (btnCapture, "&Capture new"), (btnEditScript, "&Edit script"),
+            (btnCancelScript, "Cance&l script"), (btnRefresh, "&Refresh"),
+            (btnQuote, "&Quote")
         })
         {
             button.Location = new Point(x, 8);
@@ -95,7 +102,7 @@ partial class frmScriptList
         pnlBottom.Controls.Add(btnChoose);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(660, 8);
+        btnClose.Location = new Point(790, 8);
         btnClose.Size = new Size(110, 30);
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
@@ -108,7 +115,7 @@ partial class frmScriptList
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(790, 460);
+        ClientSize = new Size(920, 460);
         Controls.Add(grdScripts);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

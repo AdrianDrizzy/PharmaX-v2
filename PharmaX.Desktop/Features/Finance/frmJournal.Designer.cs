@@ -18,6 +18,8 @@ partial class frmJournal
     private DataGridViewComboBoxColumn colAccount = null!;
     private Button btnPost = null!;
     private Button btnClear = null!;
+    private Button btnAddLine = null!;
+    private Button btnRemoveLine = null!;
     private Button btnExport = null!;
     private Button btnClose = null!;
 
@@ -42,6 +44,8 @@ partial class frmJournal
         btnPost = new Button();
         btnPost.Name = "btnPost";
         btnClear = new Button();
+        btnAddLine = new Button();
+        btnRemoveLine = new Button();
         btnClear.Name = "btnClear";
         btnExport = new Button();
         btnExport.Name = "btnExport";
@@ -141,6 +145,22 @@ partial class frmJournal
         btnClear.Text = "C&lear";
         btnClear.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnClear);
+
+        // A line keyed through a dialog, for the keyboard and for a screen
+        // reader, beside the grid that takes typing.
+        btnAddLine.Location = new Point(288, 8);
+        btnAddLine.Name = "btnAddLine";
+        btnAddLine.Size = new Size(110, 34);
+        btnAddLine.Text = "&Add line...";
+        btnAddLine.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnAddLine);
+
+        btnRemoveLine.Location = new Point(406, 8);
+        btnRemoveLine.Name = "btnRemoveLine";
+        btnRemoveLine.Size = new Size(88, 34);
+        btnRemoveLine.Text = "Re&move";
+        btnRemoveLine.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnRemoveLine);
 
         btnExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnExport.Location = new Point(502, 8);

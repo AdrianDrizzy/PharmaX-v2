@@ -1,0 +1,6 @@
+-- select Code, QuantityOnHand from product where Code='E2EOTC'; select OrderNumber, Status from purchaseorder where OrderNumber='PO-001-000003'; select ReceiptNumber, InvoiceNumber, InvoiceTotal from goodsreceipt order by ReceiptNumber;
+Code	QuantityOnHand
+E2EOTC	50.000
+OrderNumber	Status
+PO-001-000003	Received
+ERROR 1054 (42S22) at line 1: Unknown column 'InvoiceNumber' in 'field list'

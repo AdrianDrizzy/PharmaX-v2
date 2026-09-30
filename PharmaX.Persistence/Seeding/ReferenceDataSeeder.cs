@@ -3,6 +3,7 @@ using PharmaX.Application.Abstractions;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Security;
 using PharmaX.Domain.Primitives;
+using PharmaX.Domain.Reference;
 using PharmaX.Domain.Tills;
 using PharmaX.Persistence.Numbering;
 
@@ -36,8 +37,31 @@ public sealed class ReferenceDataSeeder
         await SeedDenominationsAsync(ct);
         await SeedFirstNumberBlockAsync(ct);
         await SeedChartOfAccountsAsync(ct);
+        await SeedMedicalAidSocietiesAsync(ct);
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The medical aid societies a Zimbabwean pharmacy bills, so that a
+    /// patient's membership can be recorded on the first day.
+    /// </summary>
+    /// <remarks>
+    /// Adds only codes that are missing, as the chart does: a society
+    /// the pharmacy has renamed or retired is its decision to keep.
+    /// </remarks>
+    private async Task SeedMedicalAidSocietiesAsync(CancellationToken ct)
+    {
+        var existing = await _db.MedicalAidSchemes
+            .Select(s => s.Code)
+            .ToListAsync(ct);
+
+        foreach (var (code, name, detail) in ZimbabweMedicalAidSocieties.All)
+        {
+            if (existing.Contains(code, StringComparer.OrdinalIgnoreCase)) continue;
+
+            _db.MedicalAidSchemes.Add(MedicalAidScheme.Create(code, name, detail));
+        }
     }
 
     /// <summary>

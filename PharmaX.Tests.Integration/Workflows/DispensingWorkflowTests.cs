@@ -101,11 +101,18 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
     }
 
     /// <summary>
-    /// DEF-0009 and DEF-0008 together: 30 needed, 10 in the earliest batch
-    /// and 20 in the next. Both batches are drawn on, earliest first; the
-    /// product's own on-hand falls by the same 30; and there is a stock
-    /// movement for every batch touched.
+    /// DEF-0009 and DEF-0008 together: 45 capsules needed from packs of
+    /// 30, one pack in the earliest batch and two in the next. Both
+    /// batches are drawn on, earliest first; the product's own on-hand
+    /// falls by the same pack and a half; and there is a stock movement
+    /// for every batch touched.
     /// </summary>
+    /// <remarks>
+    /// This test used to dispense 30 capsules against batches of 10 and
+    /// 20 packs and expect all thirty packs to go - the tablets-as-packs
+    /// mistake itself (ADM-DEF-15). Thirty capsules of a thirty-capsule
+    /// pack is one pack.
+    /// </remarks>
     [Fact]
     public async Task Dispensing_allocates_FEFO_across_batches_and_keeps_stock_consistent()
     {
@@ -113,13 +120,13 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
 
         var productId = await _steps.ProductAsync("WFFEFO", "Fefo caps 30s",
             60m, schedule: 4, unitsPerPack: 30m,
-            batches: new[] { ("FEFO-LATE", 12, 20m), ("FEFO-EARLY", 2, 10m) });
+            batches: new[] { ("FEFO-LATE", 12, 2m), ("FEFO-EARLY", 2, 1m) });
 
         await _steps.SignInAsync("wf.pharm2", Role.Standard.Pharmacist);
 
         var patientId = await _steps.PatientAsync("Fefo", "Pat");
         var scriptId = await _steps.ScriptAsync(patientId,
-            ("WFFEFO", 30m, "One capsule daily"));
+            ("WFFEFO", 45m, "One capsule daily"));
 
         Guid dispensingId;
 
@@ -132,7 +139,8 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
 
             var added = await dispensing.AddScriptItemsAsync(dispensingId);
             added.Value.State.Items.Single().BatchNumber
-                .Should().Be("FEFO-EARLY x10, FEFO-LATE x20");
+                .Should().Be("FEFO-EARLY x30, FEFO-LATE x15",
+                    "the split is in capsules, as the label reads");
 
             var issued = await dispensing.IssueAsync(dispensingId);
             issued.IsSuccess.Should().BeTrue(issued.Error.Message);
@@ -143,8 +151,8 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
         }
 
         var (onHand, inBatches) = await _steps.StockOfAsync(productId);
-        onHand.Should().Be(0m);
-        inBatches.Should().Be(0m);
+        onHand.Should().Be(1.5m, "three packs less one and a half");
+        inBatches.Should().Be(1.5m);
 
         using var check = _steps.Fixture.NewScope();
         var db = PharmaXFixture.Resolve<PharmaXDbContext>(check);
@@ -156,13 +164,91 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
         movements.Should().HaveCount(2);
         movements.Should().OnlyContain(m => m.MovementType == MovementType.Issue
                                             && m.SourceDocumentType == "Dispensing");
-        movements.Sum(m => m.Quantity).Should().Be(-30m);
+        movements.Sum(m => m.Quantity).Should().Be(-1.5m,
+            "the shelf is counted in packs");
 
         var allocations = await db.Set<DispensingLineBatch>().AsNoTracking()
             .ToListAsync();
         allocations.Where(a => a.BatchNumber.StartsWith("FEFO", StringComparison.Ordinal))
             .Select(a => (a.BatchNumber, a.Quantity))
-            .Should().BeEquivalentTo(new[] { ("FEFO-EARLY", 10m), ("FEFO-LATE", 20m) });
+            .Should().BeEquivalentTo(new[] { ("FEFO-EARLY", 30m), ("FEFO-LATE", 15m) });
+    }
+
+    /// <summary>
+    /// A script is counted in tablets; the shelf in packs.
+    /// </summary>
+    /// <remarks>
+    /// Sixty tablets of a sixty-tablet pack against sixteen packs was
+    /// refused as "16 unexpired in stock, so 60 cannot be dispensed", and
+    /// would have taken sixty packs had it gone through (ADM-DEF-15).
+    /// Priced as the one pack it is.
+    /// </remarks>
+    [Fact]
+    public async Task A_script_in_tablets_takes_packs_off_the_shelf()
+    {
+        await _steps.OpenTillAsync();
+
+        var productId = await _steps.ProductAsync("WFMETF",
+            "Metformin 850mg tablets 60s", 150m, schedule: 4,
+            unitsPerPack: 60m, batches: new[] { ("METF-A", 12, 16m) });
+
+        await _steps.SignInAsync("wf.pharm3", Role.Standard.Pharmacist);
+
+        var patientId = await _steps.PatientAsync("Units", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFMETF", 60m, "One tablet twice daily"));
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+            var begun = await dispensing.BeginAsync(scriptId);
+            var added = await dispensing.AddScriptItemsAsync(begun.Value.Id);
+            added.IsSuccess.Should().BeTrue(added.Error.Message);
+
+            var issued = await dispensing.IssueAsync(begun.Value.Id);
+            issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+            issued.Value.CoPayment.Should().Be(150m, "sixty tablets is one pack");
+        }
+
+        var (onHand, inBatches) = await _steps.StockOfAsync(productId);
+        onHand.Should().Be(15m);
+        inBatches.Should().Be(15m);
+    }
+
+    /// <remarks>
+    /// Twenty tablets from packs of twenty, off an untracked shelf: one
+    /// pack priced, one pack gone (ADM-DEF-14).
+    /// </remarks>
+    [Fact]
+    public async Task An_untracked_product_is_dispensed_by_the_pack_it_holds()
+    {
+        await _steps.OpenTillAsync();
+
+        var productId = await _steps.ProductAsync("WFPAN",
+            "Panado 500mg tablets 20s", 13m, schedule: 3, unitsPerPack: 20m,
+            quantity: 5m);
+
+        await _steps.SignInAsync("wf.pharm4", Role.Standard.Pharmacist);
+
+        var patientId = await _steps.PatientAsync("Untracked", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("WFPAN", 20m, "Two tablets when needed"));
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+            var begun = await dispensing.BeginAsync(scriptId);
+            (await dispensing.AddScriptItemsAsync(begun.Value.Id))
+                .IsSuccess.Should().BeTrue();
+
+            var issued = await dispensing.IssueAsync(begun.Value.Id);
+            issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+            issued.Value.CoPayment.Should().Be(13m);
+        }
+
+        (await _steps.StockOfAsync(productId)).Product.Should().Be(4m);
     }
 
     /// <summary>

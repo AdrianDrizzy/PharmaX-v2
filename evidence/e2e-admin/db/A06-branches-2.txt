@@ -1,0 +1,5 @@
+-- select Code, Name, IsActive from branch order by Code;
+Code	Name	IsActive
+BR1	Riverside Main	1
+BR2	Riverside Mall	1
+BR3	Luveve Road Branch	0

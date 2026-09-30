@@ -47,6 +47,10 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     {
         BuildLayout();
 
+        _suggestions = new SearchSuggestions(_search);
+        _suggestions.Chosen += (_, chosen) => Suggest.SelectRow(_grid, item =>
+            item is AccountRow r && Equals(r.Source.Id, chosen.Value));
+
         _search.TextChanged += (_, _) =>
         {
             _debounce.Stop();
@@ -91,6 +95,9 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     }
 
     /// Runtime. Resolved by the container.
+    /// The matching accounts, offered under the search box.
+    private readonly SearchSuggestions _suggestions;
+
     public frmAccounts(AccountsPresenter presenter,
                        IWorkbookWriter workbooks, ICurrentUser user)
         : this()
@@ -134,6 +141,8 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             else if (account.Available <= 0m)
                 PhxTheme.Flag(row, PhxTheme.Attention);
         }
+
+        _suggestions.Offer(accounts.Select(Suggest.Account));
 
         var owed = accounts.Sum(a => a.Balance);
 
@@ -182,6 +191,7 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             "How was it paid?", new[]
             {
                 ("Cash", Domain.Sales.TenderType.Cash),
+                ("EcoCash", Domain.Sales.TenderType.EcoCash),
                 ("Card", Domain.Sales.TenderType.Card),
                 ("EFT", Domain.Sales.TenderType.Eft)
             });
@@ -208,7 +218,8 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             "Why? The cashier who has to refuse the customer will be "
             + "asked.");
 
-    public void ShowStatement(StatementDto statement)
+    public void ShowStatement(StatementDto statement, Action? print = null,
+                              Action? saveAs = null)
     {
         ArgumentNullException.ThrowIfNull(statement);
 
@@ -253,8 +264,13 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
         if (statement.Lines.Count == 0)
             text.AppendLine().AppendLine("Nothing moved in this period.");
 
+        var actions = new List<(string Text, Action Run)>();
+        if (print is not null) actions.Add(("&Print", print));
+        if (saveAs is not null) actions.Add(("&Export to Excel", saveAs));
+
         frmTextViewer.Show(this,
-            $"Statement - {statement.Account.Name}", text.ToString());
+            $"Statement - {statement.Account.Name}", text.ToString(),
+            actions);
     }
 
     private static string Trim(string text, int width) =>

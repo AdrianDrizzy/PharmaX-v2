@@ -1,0 +1,6 @@
+-- select `Action`, Outcome, Reason from auditentry where EntityType='User' order by OccurredAtUtc desc limit 4;
+Action	Outcome	Reason
+User.update	Applied	NULL
+adm.user.password.reset	Applied	Reset by test.admin
+User.update	Applied	NULL
+adm.user.role.assign	Applied	Roles: Cashier

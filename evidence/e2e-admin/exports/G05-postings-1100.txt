@@ -1,0 +1,8 @@
+25/09/2026  J-001-000003 POS            104.85               Sale S-001-000003
+25/09/2026  J-001-000004 ACCPAY                       50.00  Payment on account A-001-000001, Counter payment
+25/09/2026  J-001-000016 POS             81.90               Sale S-001-000007
+25/09/2026  J-001-000019 POS             34.95               Sale S-001-000010
+25/09/2026  J-001-000027 ACCPAY                       50.00  Payment on account A-001-000002, RCPT-ACC-0001
+
+5 posting(s).  Debits $221.70, credits $100.00.
+

@@ -145,9 +145,8 @@ public sealed class AuthenticationService : IAuthenticationService
         if (user is null || !_hasher.Verify(currentPassword, user.Credential))
             return Result.Fail("SEC-001", "Your current password is incorrect.");
 
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
-            return Result.Fail("SEC-004",
-                "A password must be at least eight characters.");
+        if (PasswordPolicy.Refuse(newPassword, user.Username) is Error weak)
+            return Result.Fail(weak.Code, weak.Message);
 
         if (_hasher.Verify(newPassword, user.Credential))
             return Result.Fail("SEC-005",

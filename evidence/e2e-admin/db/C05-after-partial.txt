@@ -1,0 +1,17 @@
+-- select Code, QuantityOnHand from product where Code in ('E2EOTC','E2ECD6','AMOX50') order by Code; select p.Code, b.BatchNumber, b.ExpiryDate, b.QuantityOnHand from batch b join product p on p.Id=b.ProductId where p.Code in ('AMOX50','E2ECD6') order by p.Code, b.ExpiryDate; select OrderNumber, Status from purchaseorder where OrderNumber='PO-001-000003'; select l.QuantityOrdered, l.QuantityReceived, p.Code from purchaseorderline l join product p on p.Id=l.ProductId join purchaseorder o on o.Id=l.PurchaseOrderId where o.OrderNumber='PO-001-000003';
+Code	QuantityOnHand
+AMOX50	64.000
+E2ECD6	20.000
+E2EOTC	30.000
+Code	BatchNumber	ExpiryDate	QuantityOnHand
+AMOX50	AMOX50-WARNING	2026-11-26	12.000
+AMOX50	AMOX50-A	2027-01-25	4.000
+AMOX50	AMOX50-B	2027-11-25	24.000
+AMOX50	AMX-2609	2028-06-30	24.000
+E2ECD6	CD6-2601	2028-03-31	20.000
+OrderNumber	Status
+PO-001-000003	PartiallyReceived
+QuantityOrdered	QuantityReceived	Code
+50.000	30.000	E2EOTC
+20.000	20.000	E2ECD6
+24.000	24.000	AMOX50

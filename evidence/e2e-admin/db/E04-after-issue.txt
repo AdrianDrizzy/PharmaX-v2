@@ -1,0 +1,8 @@
+-- select Code, QuantityOnHand from product where Code in ('PAN500'); select d.DocumentNumber, d.Status from dispensing d order by d.CreatedAtUtc desc limit 2; select ScriptNumber, Status, RepeatsUsed from script where ScriptNumber='SC-001-000006';
+Code	QuantityOnHand
+PAN500	92.000
+DocumentNumber	Status
+D-001-000003	Issued
+	InProgress
+ScriptNumber	Status	RepeatsUsed
+SC-001-000006	PartiallyDispensed	1

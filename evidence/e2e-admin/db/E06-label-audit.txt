@@ -1,0 +1,3 @@
+-- select `Action`, Outcome, Reason from auditentry where `Action` like '%label%' order by OccurredAtUtc desc limit 3;
+Action	Outcome	Reason
+dsp.label.reprint	Applied	1 label(s) reprinted on Microsoft Print to PDF.

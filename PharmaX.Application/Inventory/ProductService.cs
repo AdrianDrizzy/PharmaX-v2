@@ -3,6 +3,7 @@ using PharmaX.Application.Inventory.Dtos;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
+using PharmaX.Domain.Batches;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Security;
@@ -30,12 +31,23 @@ public interface IProductService
                              CancellationToken ct = default);
 
     Task<Result> DeactivateAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Commits one cell of the product list. Catalogue columns need
+    /// inv.product.maintain, the selling price also needs
+    /// inv.price.change, and the quantity on hand also needs
+    /// inv.stocktake.post. Schedule 3 and above needs
+    /// inv.product.dispensary.
+    /// </summary>
+    Task<Result> ApplyCellEditAsync(ProductCellEditDto edit,
+                                     CancellationToken ct = default);
 }
 
-public sealed class ProductService : IProductService
+public sealed partial class ProductService : IProductService
 {
     private readonly IProductRepository _products;
     private readonly IBatchRepository _batches;
+    private readonly IStockMovementWriter _movements;
     private readonly IPermissionService _permissions;
     private readonly IAuditWriter _audit;
     private readonly IOutbox _outbox;
@@ -43,11 +55,13 @@ public sealed class ProductService : IProductService
     private readonly IClock _clock;
 
     public ProductService(IProductRepository products,
-        IBatchRepository batches, IPermissionService permissions,
-        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow, IClock clock)
+        IBatchRepository batches, IStockMovementWriter movements,
+        IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
+        IUnitOfWork uow, IClock clock)
     {
         _products = products;
         _batches = batches;
+        _movements = movements;
         _permissions = permissions;
         _audit = audit;
         _outbox = outbox;
@@ -109,7 +123,7 @@ public sealed class ProductService : IProductService
                     product.Id, product.Code, product.Description,
                     BatchNumber: null, Expiry: null, DaysToExpiry: null,
                     product.QuantityOnHand, product.IsBatchTracked,
-                    product.IsActive));
+                    product.IsActive, BatchId: null));
 
                 continue;
             }
@@ -121,7 +135,7 @@ public sealed class ProductService : IProductService
                     batch.BatchNumber, batch.ExpiryDate,
                     batch.ExpiryDate.DayNumber - today.DayNumber,
                     batch.QuantityOnHand, product.IsBatchTracked,
-                    product.IsActive));
+                    product.IsActive, batch.Id));
             }
         }
 
@@ -138,9 +152,25 @@ public sealed class ProductService : IProductService
 
         // Out of scope reads exactly like absent: saying "you may not see
         // that one" confirms it exists.
-        return product is null || !InScope(product)
-            ? Result<ProductDto>.Fail("INV-000", "Product not found.")
-            : Result<ProductDto>.Ok(ProductDto.From(product));
+        if (product is null || !InScope(product))
+            return Result<ProductDto>.Fail("INV-000", "Product not found.");
+
+        // The batches still on the shelf, so the editor can show and
+        // correct them alongside the rest of the product.
+        var batches = await _batches.ForProductAsync(product.Id, ct);
+        var today = _clock.Today;
+
+        IReadOnlyList<ProductBatchDto> held = batches
+            .Where(b => b.QuantityOnHand > 0m)
+            .OrderBy(b => b.ExpiryDate)
+            .ThenBy(b => b.BatchNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(b => new ProductBatchDto(b.Id, b.BatchNumber,
+                b.ExpiryDate, b.ExpiryDate.DayNumber - today.DayNumber,
+                b.QuantityOnHand))
+            .ToList();
+
+        return Result<ProductDto>.Ok(
+            ProductDto.From(product) with { Batches = held });
     }
 
     private bool InScope(Product product) =>
@@ -167,6 +197,17 @@ public sealed class ProductService : IProductService
             return Result<Guid>.Fail("INV-002",
                 $"Product code {edit.Code} is already in use.");
 
+        // Opening stock, where the form was given some. It is a count onto
+        // a product that had none, so it needs the stocktake permission
+        // like any other count.
+        var stock = PlanStock(0m, Array.Empty<Batch>(), edit);
+
+        if (stock.IsFailure)
+            return Result<Guid>.Fail(stock.Error.Code, stock.Error.Message);
+
+        if (stock.Value.MovesStock)
+            _permissions.Demand(PermissionCode.StockTakePost);
+
         var product = Product.Create(
             code: edit.Code,
             description: edit.Description,
@@ -187,9 +228,22 @@ public sealed class ProductService : IProductService
         product.Classify(edit.DepartmentId, edit.CategoryId,
                          edit.ManufacturerId);
 
+        if (await ApplyBarcodesAsync(product, edit.Barcodes, ct)
+                is Error barcode)
+            return Result<Guid>.Fail(barcode.Code, barcode.Message);
+
         await _products.AddAsync(product, ct);
 
         _audit.Applied("inv.product.create", "Product", product.Id);
+
+        if (edit.IsActive == false)
+        {
+            product.Deactivate();
+            _audit.Applied("inv.product.deactivate", "Product", product.Id);
+        }
+
+        await ApplyStockAsync(product, stock.Value, ct);
+
         await _uow.SaveChangesAsync(ct);
 
         return Result<Guid>.Ok(product.Id);
@@ -209,6 +263,54 @@ public sealed class ProductService : IProductService
         // product - a cashier - could rename it or change its cost.
         _permissions.Demand(PermissionCode.ProductMaintain);
 
+        // The code the shelf and the till know it by. A sale keeps the
+        // product's id, so a new code does not rewrite printed receipts,
+        // but it still has to be one no other product answers to.
+        var code = (edit.Code ?? "").Trim().ToUpperInvariant();
+
+        if (code != product.Code)
+        {
+            if (code.Length is < 1 or > 30)
+                return Result.Fail("INV-030",
+                    "A product code is 1 to 30 characters.");
+
+            var other = await _products.FindByCodeOrBarcodeAsync(code,
+                ct: ct);
+
+            if (other is not null && other.Id != product.Id)
+                return Result.Fail("INV-002",
+                    $"Product code {code} is already in use.");
+        }
+
+        if (edit.Schedule is < 0 or > 8)
+            return Result.Fail("INV-035",
+                "Schedule must be between 0 and 8.");
+
+        if (edit.Schedule != product.Schedule && edit.Schedule >= 3
+            && _permissions.Check(PermissionCode.ProductDispensary)
+                != PermissionOutcome.Granted)
+            return Result.Fail("INV-037",
+                "Schedule 3 and above needs the dispensary permission.");
+
+        // The stock is checked in full before anything is changed, so a
+        // refused batch row does not leave the rest of the edit applied.
+        var batches = await _batches.ForProductAsync(product.Id, ct);
+        var stock = PlanStock(product.QuantityOnHand, batches, edit);
+
+        if (stock.IsFailure)
+            return Result.Fail(stock.Error.Code, stock.Error.Message);
+
+        // Judged on the shelf as it will be once this edit is applied, so
+        // counting the last batch down to nothing and switching tracking
+        // off can be done in one save.
+        if (!edit.IsBatchTracked && product.IsBatchTracked
+            && stock.Value.LeavesStockOnABatch)
+            return Result.Fail("INV-036",
+                "Stock is still on a batch, so batch tracking has to stay on.");
+
+        if (stock.Value.MovesStock)
+            _permissions.Demand(PermissionCode.StockTakePost);
+
         // Only a price change needs the price permission on top.
         if (product.RetailPrice.Amount != edit.RetailPrice)
         {
@@ -222,7 +324,16 @@ public sealed class ProductService : IProductService
                 $"{{\"productId\":\"{product.Id}\",\"retail\":{edit.RetailPrice}}}");
         }
 
+        if (code != product.Code)
+        {
+            product.ChangeCode(code);
+            _audit.Applied("inv.product.maintain", "Product", product.Id,
+                $"Code {code}");
+        }
+
         product.Rename(edit.Description);
+        product.SetSchedule(edit.Schedule);
+        product.SetBatchTracked(edit.IsBatchTracked);
         product.ChangeCostPrice(Money.Of(edit.CostPrice));
         product.SetReorderLevel(edit.ReorderLevel);
         product.SetGenericName(edit.GenericName);
@@ -234,10 +345,68 @@ public sealed class ProductService : IProductService
         product.Classify(edit.DepartmentId, edit.CategoryId,
                          edit.ManufacturerId);
 
+        if (await ApplyBarcodesAsync(product, edit.Barcodes, ct)
+                is Error barcode)
+            return Result.Fail(barcode.Code, barcode.Message);
+
+        // Discontinued, never deleted, as DeactivateAsync does it.
+        if (edit.IsActive is bool active && active != product.IsActive)
+        {
+            if (active) product.Reactivate();
+            else product.Deactivate();
+
+            _audit.Applied(
+                active ? "inv.product.reactivate" : "inv.product.deactivate",
+                "Product", product.Id);
+        }
+
+        // Last, after everything that can still refuse the edit.
+        await ApplyStockAsync(product, stock.Value, ct);
+
         _audit.Applied("inv.product.maintain", "Product", product.Id);
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// Sets the barcodes the form sent, where it sent any.
+    /// </summary>
+    /// <remarks>
+    /// No screen could add a barcode, so a product created in PharmaX
+    /// could not be scanned at the till or the dispensary however it was
+    /// packed (ADM-DEF-04). A barcode another product already answers to
+    /// is refused, because the scanner would then ring up whichever one
+    /// the query found first.
+    /// </remarks>
+    private async Task<Error?> ApplyBarcodesAsync(Product product,
+        IReadOnlyList<string>? barcodes, CancellationToken ct)
+    {
+        if (barcodes is null) return null;
+
+        foreach (var barcode in barcodes
+                     .Where(b => !string.IsNullOrWhiteSpace(b))
+                     .Select(b => b.Trim()))
+        {
+            var other = await _products.FindByCodeOrBarcodeAsync(barcode,
+                ct: ct);
+
+            if (other is not null && other.Id != product.Id)
+                return new Error("INV-010",
+                    $"Barcode {barcode} already belongs to {other.Code} "
+                    + $"{other.Description}.");
+        }
+
+        try
+        {
+            product.ReplaceBarcodes(barcodes);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            return new Error("INV-011", ex.Message);
+        }
+
+        return null;
     }
 
     public async Task<Result> DeactivateAsync(Guid id,

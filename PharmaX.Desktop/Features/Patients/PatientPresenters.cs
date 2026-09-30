@@ -162,6 +162,24 @@ public sealed class PatientEditPresenter : PresenterBase<IPatientEditView>
     {
         var edit = View.Collect();
 
+        // Somebody with these names and this birthday already has a file.
+        // Asked, not refused: two people can share both.
+        if (View.PatientId is null)
+        {
+            var same = await _patients.PossibleDuplicatesAsync(edit);
+
+            if (same.IsSuccess && same.Value.Count > 0
+                && !View.Confirm(
+                    "This may be a patient already on file - the same name "
+                    + "and date of birth, or the same telephone number:\n\n"
+                    + string.Join("\n", same.Value.Select(p =>
+                        $"  {p.FileNumber}   {p.Surname}, {p.FirstNames}"
+                        + (p.Telephone is null ? "" : $"   {p.Telephone}")
+                        + (p.Address is null ? "" : $"   {p.Address}")))
+                    + "\n\nOpen a new file for them anyway?"))
+                return;
+        }
+
         var result = View.PatientId is Guid id
             ? await _patients.UpdateAsync(id, edit)
             : (await _patients.CreateAsync(edit)) as Application.Results.Result;
@@ -186,7 +204,11 @@ public interface IAccountsView : IView
     AccountDto? Selected { get; }
 
     void ShowAccounts(IReadOnlyList<AccountDto> accounts);
-    void ShowStatement(StatementDto statement);
+
+    /// <param name="print">Prints the statement, where it can be.</param>
+    /// <param name="saveAs">Exports it to a workbook, where it can be.</param>
+    void ShowStatement(StatementDto statement, Action? print = null,
+                       Action? saveAs = null);
 
     (decimal Amount, string Tender, string? Reference)? PromptPayment(
         AccountDto account);
@@ -208,6 +230,27 @@ public sealed class AccountsPresenter : PresenterBase<IAccountsView>
     private readonly IPatientService _patients;
     private readonly ViewFactory _views;
     private readonly Application.Abstractions.IClock _clock;
+    private readonly Application.Sales.IDocumentPrinter? _printer;
+    private readonly Features.Sales.ReceiptHeaderFactory? _headers;
+    private readonly Application.Reporting.IWorkbookWriter? _workbooks;
+    private readonly Application.Abstractions.ICurrentUser? _user;
+
+    /// Runtime. Resolved by the container, which picks the fullest
+    /// constructor it can satisfy.
+    public AccountsPresenter(IAccountService accounts,
+        IPatientService patients, ViewFactory views,
+        Application.Abstractions.IClock clock,
+        Application.Sales.IDocumentPrinter printer,
+        Features.Sales.ReceiptHeaderFactory headers,
+        Application.Reporting.IWorkbookWriter workbooks,
+        Application.Abstractions.ICurrentUser user)
+        : this(accounts, patients, views, clock)
+    {
+        _printer = printer;
+        _headers = headers;
+        _workbooks = workbooks;
+        _user = user;
+    }
 
     public AccountsPresenter(IAccountService accounts,
         IPatientService patients, ViewFactory views,
@@ -300,12 +343,35 @@ public sealed class AccountsPresenter : PresenterBase<IAccountsView>
             return;
         }
 
+        // The customer's receipt for it. A payment off an account printed
+        // nothing, so the one who settled in cash had no proof of it
+        // (ADM-OBS-17).
+        var printed = await PrintAsync(AccountDocuments.PaymentReceipt(
+            result.Value, amount, Describe(tender), reference, _clock.Today));
+
         View.ShowInfo($"{Format.Money(amount)} received. "
                       + account.Name + " now owes "
-                      + Format.Money(result.Value.Balance) + ".");
+                      + Format.Money(result.Value.Balance) + "."
+                      + (printed is null ? "" : "\n\n" + printed));
 
         await LoadAsync();
     });
+
+    private static string Describe(string tender) =>
+        Enum.TryParse<Domain.Sales.TenderType>(tender, out var t)
+            ? Domain.Sales.TenderTypeExtensions.DisplayName(t)
+            : tender;
+
+    /// Prints on the receipt printer and says what happened, or null
+    /// where this screen has no printer to hand.
+    private async Task<string?> PrintAsync(
+        Application.Sales.PrintableDocument document)
+    {
+        if (_printer is null || _headers is null) return null;
+
+        var result = await _printer.PrintAsync(document, _headers.Build());
+        return result.Describe(document.Title);
+    }
 
     private Task OnStatementAsync() => GuardAsync(async () =>
     {
@@ -322,8 +388,51 @@ public sealed class AccountsPresenter : PresenterBase<IAccountsView>
             return;
         }
 
-        View.ShowStatement(result.Value);
+        var statement = result.Value;
+
+        // Run straight from the viewer's buttons rather than queued: the
+        // statement is still on screen, and a queued print would wait for
+        // it to close.
+        View.ShowStatement(statement,
+            print: _printer is null ? null : () => _ = PrintStatementAsync(statement),
+            saveAs: _workbooks is null || _user is null ? null : () =>
+                ExportStatement(statement));
     });
+
+    private async Task PrintStatementAsync(StatementDto statement)
+    {
+        try
+        {
+            var printed = await PrintAsync(AccountDocuments.Statement(statement));
+            if (printed is not null) View.ShowInfo(printed);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            View.ShowError(ex.Message);
+        }
+    }
+
+    private void ExportStatement(StatementDto statement)
+    {
+        if (_workbooks is null || _user is null) return;
+
+        using var save = new SaveFileDialog
+        {
+            DefaultExt = "xlsx",
+            FileName = $"Statement {statement.Account.AccountNumber} "
+                       + $"{_clock.Today:yyyy-MM-dd}.xlsx",
+            Filter = "Excel workbook (*.xlsx)|*.xlsx",
+            OverwritePrompt = true,
+            Title = "Export statement"
+        };
+
+        if (save.ShowDialog((Form)View) != DialogResult.OK) return;
+
+        _workbooks.WriteTo(AccountDocuments.StatementWorkbook(statement,
+            _user.Username, DateTime.Now), save.FileName);
+
+        View.ShowInfo($"Exported to {save.FileName}");
+    }
 
     private Task OnCreditLimitAsync() => GuardAsync(async () =>
     {

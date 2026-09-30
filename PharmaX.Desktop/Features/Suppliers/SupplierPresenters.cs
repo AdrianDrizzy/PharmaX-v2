@@ -7,6 +7,11 @@ namespace PharmaX.Desktop.Features.Suppliers;
 public interface ISupplierListView : IView
 {
     Guid? SelectedId { get; }
+
+    /// Whether the selected supplier is active, so the one button can
+    /// deactivate it or bring it back.
+    bool SelectedIsActive { get; }
+
     bool IncludeInactive { get; }
 
     void ShowSuppliers(IReadOnlyList<SupplierListItemDto> suppliers);
@@ -18,7 +23,7 @@ public interface ISupplierListView : IView
     event EventHandler? RefreshRequested;
     event EventHandler? AddRequested;
     event EventHandler? EditRequested;
-    event EventHandler? DeactivateRequested;
+    event EventHandler? ToggleActiveRequested;
     event EventHandler? ChooseRequested;
 }
 
@@ -50,7 +55,7 @@ public sealed class SupplierListPresenter : PresenterBase<ISupplierListView>
         View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
         View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
-        View.DeactivateRequested += (_, _) => Enqueue(DeactivateAsync);
+        View.ToggleActiveRequested += (_, _) => Enqueue(ToggleActiveAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -83,7 +88,7 @@ public sealed class SupplierListPresenter : PresenterBase<ISupplierListView>
             await LoadAsync();
     });
 
-    private Task DeactivateAsync() => GuardAsync(async () =>
+    private Task ToggleActiveAsync() => GuardAsync(async () =>
     {
         if (View.SelectedId is not Guid id)
         {
@@ -91,13 +96,19 @@ public sealed class SupplierListPresenter : PresenterBase<ISupplierListView>
             return;
         }
 
-        if (!View.Confirm(
-                "Deactivate this supplier? Their goods receipts and the "
-                + "batches taken in from them are kept; they simply stop "
-                + "appearing when receiving stock."))
+        var reactivating = !View.SelectedIsActive;
+
+        if (!View.Confirm(reactivating
+                ? "Reactivate this supplier? They will be offered again "
+                  + "when ordering and receiving stock."
+                : "Deactivate this supplier? Their goods receipts and the "
+                  + "batches taken in from them are kept; they simply stop "
+                  + "appearing when receiving stock."))
             return;
 
-        var result = await _suppliers.DeactivateAsync(id);
+        var result = reactivating
+            ? await _suppliers.ReactivateAsync(id)
+            : await _suppliers.DeactivateAsync(id);
 
         if (result.IsFailure) View.ShowError(result.Error.Message);
         await LoadAsync();

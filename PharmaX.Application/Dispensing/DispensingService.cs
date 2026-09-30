@@ -81,6 +81,21 @@ public interface IDispensingService
     /// </param>
     Task<Result<IssueResultDto>> IssueAsync(Guid dispensingId,
         Guid? authorisedBy = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes back an issued dispensing that has not been collected: the
+    /// stock goes back to its batches, the repeat back to the script, and
+    /// any claim on the scheme is withdrawn.
+    /// </summary>
+    Task<Result> ReverseAsync(Guid dispensingId, string reason,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets aside a dispensing begun and not issued, for a screen closed
+    /// on it. Nothing to do for one already issued.
+    /// </summary>
+    Task<Result> AbandonAsync(Guid dispensingId,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -103,6 +118,13 @@ public interface ILabelPrinter
     /// </remarks>
     Task<Sales.PrintResult> PrintAsync(LabelDto label,
                                        CancellationToken ct = default);
+
+    /// <summary>
+    /// Prints the trailer label that follows a script's own labels, on
+    /// the same printer, and says whether it did.
+    /// </summary>
+    Task<Sales.PrintResult> PrintTrailerAsync(TrailerLabelDto trailer,
+                                              CancellationToken ct = default);
 
     bool IsAvailable { get; }
 }
@@ -361,6 +383,11 @@ public sealed class DispensingService : IDispensingService
         // stock as it is then.
         IReadOnlyList<BatchAllocation>? allocation = null;
 
+        // Counted in the script's units - tablets, capsules, millilitres -
+        // against a shelf counted in packs, each pack holding the
+        // product's units per pack (ADM-DEF-15).
+        var perPack = product.UnitsInPack;
+
         if (product.IsBatchTracked)
         {
             var batches = await _batches.ForProductAsync(product.Id, ct);
@@ -372,7 +399,8 @@ public sealed class DispensingService : IDispensingService
 
             var available = batches
                 .Where(b => b.IsAvailableOn(_clock.Today))
-                .Sum(b => b.QuantityOnHand - claimed.GetValueOrDefault(b.Id));
+                .Sum(b => b.QuantityOnHand * perPack
+                          - claimed.GetValueOrDefault(b.Id));
 
             if (available < directions.Quantity)
                 return new Error("DSP-012",
@@ -380,7 +408,24 @@ public sealed class DispensingService : IDispensingService
                     + $"stock, so {directions.Quantity:0.###} cannot be "
                     + "dispensed.");
 
-            allocation = Allocate(batches, claimed, directions.Quantity);
+            allocation = Allocate(batches, claimed, directions.Quantity,
+                                  perPack);
+        }
+        else
+        {
+            // Untracked stock is held to the shelf as well, the same rule
+            // the till keeps (ADM-DEF-12).
+            var claimed = dispensing.Lines
+                .Where(l => l.ProductId == product.Id)
+                .Sum(l => l.Quantity);
+
+            var available = product.QuantityOnHand * perPack - claimed;
+
+            if (available < directions.Quantity)
+                return new Error("DSP-012",
+                    $"{product.Description}: {Math.Max(available, 0m):0.###} "
+                    + $"in stock, so {directions.Quantity:0.###} cannot be "
+                    + "dispensed.");
         }
 
         // What the society has agreed to pay for this product today.
@@ -435,9 +480,13 @@ public sealed class DispensingService : IDispensingService
         return null;
     }
 
+    /// <remarks>
+    /// In the dispensing's units: a batch of so many packs holds so many
+    /// tablets, less what earlier lines have claimed from it.
+    /// </remarks>
     private List<BatchAllocation> Allocate(
         IReadOnlyList<Batch> batches, IReadOnlyDictionary<Guid, decimal> claimed,
-        decimal quantity)
+        decimal quantity, decimal perPack)
     {
         var remaining = quantity;
         var result = new List<BatchAllocation>();
@@ -449,7 +498,8 @@ public sealed class DispensingService : IDispensingService
         {
             if (remaining <= 0m) break;
 
-            var free = batch.QuantityOnHand - claimed.GetValueOrDefault(batch.Id);
+            var free = batch.QuantityOnHand * perPack
+                       - claimed.GetValueOrDefault(batch.Id);
             if (free <= 0m) continue;
 
             var take = Math.Min(free, remaining);
@@ -657,7 +707,7 @@ public sealed class DispensingService : IDispensingService
         // whenever somebody remembers to submit a batch. Inside the issue
         // transaction, so a dispensing that fails to save takes its claim
         // with it.
-        await RaiseClaimAsync(dispensing, patient, ct);
+        var claimNumber = await RaiseClaimAsync(dispensing, patient, ct);
 
         _outbox.Append("Dispensing", dispensing.Id,
             $"{{\"id\":\"{dispensing.Id}\",\"script\":\"{script.ScriptNumber}\"}}");
@@ -671,7 +721,95 @@ public sealed class DispensingService : IDispensingService
 
         return Result<IssueResultDto>.Ok(new IssueResultDto(
             script.ScriptNumber, dispensing.DocumentNumber,
-            dispensing.CoPaymentTotal.Amount, labels));
+            dispensing.CoPaymentTotal.Amount, labels, claimNumber,
+            TrailerLabels.For(dispensing, script, patient, _clock.Today)));
+    }
+
+    /// <remarks>
+    /// The domain could reverse a dispensing and nothing called it, so a
+    /// medicine issued to the wrong patient could not be taken back and
+    /// the Reversed Scripts report was always empty (ADM-DEF-22).
+    /// </remarks>
+    public async Task<Result> ReverseAsync(Guid dispensingId, string reason,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptReverse);
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Fail("DSP-034", "A reversal needs a reason.");
+
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        if (dispensing is null)
+            return Result.Fail("DSP-000", "Dispensing not found.");
+
+        var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
+        var claim = await _claims.ForDispensingAsync(dispensing.Id, ct);
+
+        try
+        {
+            dispensing.Reverse(reason, _user.Id, _clock.UtcNow);
+            script?.UndoDispensing();
+            claim?.Withdraw($"{dispensing.DocumentNumber} reversed: {reason}",
+                            _clock.UtcNow);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            return Result.Fail("DSP-035", ex.Message);
+        }
+
+        // The packs that left, back to the batches they left from.
+        await _stock.ApplyDispensingReversalAsync(dispensing, ct);
+
+        // The scheme's revenue and debt come off the books with the claim.
+        if (claim is not null)
+        {
+            var patient = await _patients.GetAsync(dispensing.PatientId, ct);
+
+            var scheme = await _reference.GetAsync(
+                ReferenceKind.MedicalAidScheme, claim.SchemeId, ct);
+
+            var rates = new Dictionary<Guid, decimal>();
+
+            foreach (var line in dispensing.Lines)
+            {
+                if (rates.ContainsKey(line.ProductId)) continue;
+
+                var product = await _products.GetAsync(line.ProductId, ct);
+                rates[line.ProductId] = product?.VatRatePercent ?? 0m;
+            }
+
+            await _journals.PostClaimReversalAsync(claim,
+                scheme?.Name ?? patient?.FullName ?? "scheme",
+                ClaimService.SplitOf(dispensing, rates), ct);
+        }
+
+        _audit.Applied("dsp.dispensing.reverse", "Dispensing", dispensing.Id,
+            reason.Trim());
+
+        await _uow.SaveChangesAsync(ct);
+        await tx.DisposeAsync();
+
+        return Result.Ok();
+    }
+
+    public async Task<Result> AbandonAsync(Guid dispensingId,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        if (dispensing is null
+            || dispensing.Status != DispensingStatus.InProgress)
+            return Result.Ok();
+
+        dispensing.Abandon();
+
+        _audit.Applied("dsp.dispensing.abandon", "Dispensing", dispensing.Id);
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
     }
 
     /// <summary>
@@ -746,22 +884,26 @@ public sealed class DispensingService : IDispensingService
     /// second one, and refusing to issue medicine over a duplicate
     /// claim would be the wrong way round.
     /// </remarks>
-    private async Task RaiseClaimAsync(
+    /// <returns>
+    /// The claim's number, so the dispensary can print the claim form
+    /// for it; null where nothing is claimed.
+    /// </returns>
+    private async Task<string?> RaiseClaimAsync(
         Domain.Dispensing.Dispensing dispensing,
         Domain.Patients.Patient? patient, CancellationToken ct)
     {
-        if (patient is null || !patient.IsOnMedicalAid) return;
-        if (dispensing.ContributionTotal.IsZero) return;
+        if (patient is null || !patient.IsOnMedicalAid) return null;
+        if (dispensing.ContributionTotal.IsZero) return null;
 
-        if (await _claims.ForDispensingAsync(dispensing.Id, ct) is not null)
-            return;
+        if (await _claims.ForDispensingAsync(dispensing.Id, ct) is { } raised)
+            return raised.ClaimNumber;
 
         var number = await _numbering.NextAsync(DocumentSeries.Claim, ct);
 
         var claim = ClaimService.Build(number, patient, dispensing,
                                        _clock.Today);
 
-        if (claim is null) return;
+        if (claim is null) return null;
 
         await _claims.AddAsync(claim, ct);
 
@@ -787,6 +929,8 @@ public sealed class DispensingService : IDispensingService
 
         await _journals.PostClaimAsync(claim, scheme?.Name ?? "scheme",
             ClaimService.SplitOf(dispensing, rates), ct);
+
+        return claim.ClaimNumber;
     }
 }
 

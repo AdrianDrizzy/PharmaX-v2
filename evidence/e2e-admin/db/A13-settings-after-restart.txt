@@ -1,0 +1,10 @@
+-- select `Key`, Value from workstationsetting order by WorkstationCode, `Key`;
+Key	Value
+pharmacy.logo	C:\\ProgramData\\PharmaX\\branding\\logo.png
+printer.label	Microsoft Print to PDF
+printer.receipt	Microsoft Print to PDF
+pharmacy.address	28 Woodstock Thorngrove
+\nBulawayo (Along Luveve Road)
+pharmacy.registered-name	BethRapha Pharmacy (Pvt) Ltd
+pharmacy.trading-name	BethRapha Pharmacy
+pharmacy.vat-number	TEST-0001

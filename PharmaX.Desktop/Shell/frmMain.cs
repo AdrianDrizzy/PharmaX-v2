@@ -11,6 +11,9 @@ public partial class frmMain : PhxFormBase, IMainView
     // shell is the one window that is never closed.
     protected override bool ShowsOfflineBanner => false;
 
+    /// The menu carries the shell's keys.
+    protected override bool AssignsFunctionKeys => false;
+
     /// Designer only. Never called at runtime.
     public frmMain()
     {

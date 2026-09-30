@@ -9,6 +9,14 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
     private readonly IPresetCatalogue _presets;
     private readonly IReportLookups _lookups;
     private readonly Application.Security.IPermissionService _permissions;
+    private readonly IWorkbookWriter? _workbooks;
+
+    public ReportsPresenter(IReportRunner runner, IPresetCatalogue presets,
+                            IReportLookups lookups,
+                            Application.Security.IPermissionService permissions,
+                            IWorkbookWriter workbooks)
+        : this(runner, presets, lookups, permissions) =>
+        _workbooks = workbooks;
 
     public ReportsPresenter(IReportRunner runner, IPresetCatalogue presets,
                             IReportLookups lookups,
@@ -63,6 +71,9 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
     /// </remarks>
     private Task ShowSlicersForPresetAsync() => GuardAsync(async () =>
     {
+        // Another report chosen: the last one's rows are not this one's.
+        View.ClearPreview("");
+
         if (View.SelectedPresetKey is null)
         {
             // A group heading rather than a report: it has no slicers,
@@ -104,7 +115,12 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
 
         if (result.RowCount == 0)
         {
-            // RPT-011: say so, do not print an empty form.
+            // RPT-011: say so, do not print an empty form. And empty the
+            // grid: the previous report's rows stayed under this one's
+            // heading, so a screenshot or an export was mislabelled
+            // (ADM-DEF-21).
+            View.ClearPreview($"{result.Title}  |  no rows for "
+                              + result.Provenance.ParameterSummary);
             View.ShowInfo("No data for the selected period and filters.");
             return;
         }
@@ -112,11 +128,37 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
         View.ShowPreview(result);
     });
 
+    /// <remarks>
+    /// The operator chooses where it goes, as every other export in
+    /// PharmaX asks. It was written straight into Documents without a
+    /// word about where (ADM-OBS-06).
+    /// </remarks>
     private Task ExportAsync() => GuardAsync(async () =>
     {
         if (BuildRequest() is not ReportRequest request) return;
 
-        var path = await _runner.ExportAsync(request, ExportFormat.Excel);
+        if (_workbooks is null)
+        {
+            var written = await _runner.ExportAsync(request, ExportFormat.Excel);
+            View.ShowInfo("Exported to " + written);
+            return;
+        }
+
+        var result = await _runner.RunAsync(request);
+
+        if (result.RowCount == 0)
+        {
+            View.ShowInfo("No data for the selected period and filters, so "
+                          + "there is nothing to export.");
+            return;
+        }
+
+        var path = View.PromptExportPath(
+            Reporting.Exporters.ExcelExporter.FileName(result, "xlsx"));
+
+        if (path is null) return;
+
+        _workbooks.WriteTo(result, path);
         View.ShowInfo("Exported to " + path);
     });
 

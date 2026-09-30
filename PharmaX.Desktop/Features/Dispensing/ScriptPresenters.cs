@@ -14,22 +14,36 @@ public interface IScriptListView : IView
     void ShowScripts(IReadOnlyList<ScriptDto> scripts);
     string? PromptCancelReason();
 
+    /// Moves the list onto one script, where it is there.
+    void SelectScript(Guid scriptId);
+
     /// True where the screen was opened to pick a script for dispensing
     /// rather than to maintain the list.
     bool IsPickerMode { get; }
 
     event EventHandler? RefreshRequested;
     event EventHandler? CaptureRequested;
+    event EventHandler? EditScriptRequested;
     event EventHandler? CancelScriptRequested;
     event EventHandler? ChooseRequested;
+    event EventHandler? QuoteRequested;
 }
 
 public interface IScriptEditView : IView
 {
     Guid PatientId { get; }
 
+    /// The script being corrected, or null for a new one.
+    Guid? ScriptId { get; }
+
     ScriptEditDto Collect();
     void ShowPatient(string description);
+
+    /// Fills the form with a captured script for correcting.
+    void ShowScript(ScriptDetailDto script);
+
+    /// The new script, once it is captured.
+    void ScriptCaptured(Guid scriptId);
 
     event EventHandler? SaveRequested;
     event EventHandler? CancelRequested;
@@ -53,7 +67,9 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
     {
         View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.CaptureRequested += (_, _) => Enqueue(CaptureAsync);
+        View.EditScriptRequested += (_, _) => Enqueue(EditAsync);
         View.CancelScriptRequested += (_, _) => Enqueue(CancelAsync);
+        View.QuoteRequested += (_, _) => Enqueue(QuoteAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -91,6 +107,61 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
 
         using var editor = _views.Create<frmScriptEdit>();
         editor.LoadForPatient(patientId);
+
+        if (editor.ShowDialog((Form)View) == DialogResult.OK)
+            await LoadAsync();
+    });
+
+    /// <summary>
+    /// Prices what the patient asked about, and captures the script from
+    /// it if they go ahead. The new script is left chosen, so a picker
+    /// opened from dispensing needs only Choose.
+    /// </summary>
+    private Task QuoteAsync() => GuardAsync(async () =>
+    {
+        if (View.PatientId is not Guid patientId) return;
+
+        using var quote = _views.Create<frmDispensaryQuote>();
+        quote.ForPatient(patientId);
+
+        if (quote.ShowDialog((Form)View) != DialogResult.OK) return;
+
+        await LoadAsync();
+
+        if (quote.CreatedScriptId is Guid scriptId) View.SelectScript(scriptId);
+    });
+
+    /// <summary>
+    /// Opens a captured script for correcting, where it can still be.
+    /// </summary>
+    private Task EditAsync() => GuardAsync(async () =>
+    {
+        if (View.PatientId is not Guid patientId) return;
+
+        if (View.SelectedScriptId is not Guid id)
+        {
+            View.ShowInfo("Choose a script first.");
+            return;
+        }
+
+        var script = await _scripts.GetAsync(id);
+
+        if (script.IsFailure)
+        {
+            View.ShowError(script.Error.Message);
+            return;
+        }
+
+        if (!script.Value.IsEditable)
+        {
+            View.ShowInfo($"Script {script.Value.Script.ScriptNumber} has "
+                + "been dispensed against or cancelled, so it can no longer "
+                + "be changed. Cancel it and capture it again.");
+            return;
+        }
+
+        using var editor = _views.Create<frmScriptEdit>();
+        editor.LoadScript(patientId, id);
 
         if (editor.ShowDialog((Form)View) == DialogResult.OK)
             await LoadAsync();
@@ -145,18 +216,46 @@ public sealed class ScriptEditPresenter : PresenterBase<IScriptEditView>
 
         View.ShowPatient(
             $"{patient.Value.FullNameOrFile()}  ({patient.Value.FileNumber})");
+
+        if (View.ScriptId is not Guid scriptId) return;
+
+        var script = await _scripts.GetAsync(scriptId);
+
+        if (script.IsFailure)
+        {
+            View.ShowError(script.Error.Message);
+            View.CloseView(false);
+            return;
+        }
+
+        View.ShowScript(script.Value);
     });
 
     private Task SaveAsync() => GuardAsync(async () =>
     {
-        var result = await _scripts.CaptureAsync(View.Collect());
-
-        if (result.IsFailure)
+        if (View.ScriptId is Guid id)
         {
-            View.ShowError(result.Error.Message);
+            var updated = await _scripts.UpdateAsync(id, View.Collect());
+
+            if (updated.IsFailure)
+            {
+                View.ShowError(updated.Error.Message);
+                return;
+            }
+
+            View.CloseView(true);
             return;
         }
 
+        var captured = await _scripts.CaptureAsync(View.Collect());
+
+        if (captured.IsFailure)
+        {
+            View.ShowError(captured.Error.Message);
+            return;
+        }
+
+        View.ScriptCaptured(captured.Value);
         View.CloseView(true);
     });
 }

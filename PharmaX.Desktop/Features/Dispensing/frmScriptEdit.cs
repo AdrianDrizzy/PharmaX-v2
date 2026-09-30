@@ -44,7 +44,76 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 
     public Guid PatientId { get; private set; }
 
+    public Guid? ScriptId { get; private set; }
+
     public void LoadForPatient(Guid patientId) => PatientId = patientId;
+
+    /// The dispensary quote the script is being captured from, if any.
+    private Guid? _quotationId;
+
+    /// <summary>
+    /// The script captured, once it is saved: read by the quote that
+    /// opened this screen, to hand on to dispensing.
+    /// </summary>
+    public Guid? CapturedScriptId { get; private set; }
+
+    public void ScriptCaptured(Guid scriptId) => CapturedScriptId = scriptId;
+
+    /// <summary>
+    /// Captures the script a dispensary quote became: its items and
+    /// quantities already on, so only the prescriber and the directions
+    /// are left to take down. Called before ShowDialog.
+    /// </summary>
+    public void LoadFromQuote(Guid patientId,
+        Application.Sales.QuotationDto quote)
+    {
+        ArgumentNullException.ThrowIfNull(quote);
+
+        PatientId = patientId;
+        _quotationId = quote.Id;
+        Text = $"PharmaX - Capture script from quote {quote.QuotationNumber}";
+
+        grdItems.Rows.Clear();
+
+        foreach (var line in quote.Lines)
+            grdItems.Rows.Add(line.ProductCode ?? "", line.Quantity, "", true);
+    }
+
+    /// <summary>
+    /// Opens a captured script for correcting. Called before ShowDialog.
+    /// </summary>
+    public void LoadScript(Guid patientId, Guid scriptId)
+    {
+        PatientId = patientId;
+        ScriptId = scriptId;
+        Text = "PharmaX - Correct script";
+    }
+
+    public void ShowScript(ScriptDetailDto script)
+    {
+        ArgumentNullException.ThrowIfNull(script);
+
+        Text = $"PharmaX - Correct script {script.Script.ScriptNumber}";
+
+        txtPrescriber.Text = script.Script.PrescriberName;
+        txtPrescriberNumber.Text = script.PrescriberNumber ?? "";
+        dtpPrescribedOn.Value = script.Script.PrescribedOn
+            .ToDateTime(TimeOnly.MinValue);
+
+        chkHasValidUntil.Checked = script.Script.ValidUntil is not null;
+
+        if (script.Script.ValidUntil is DateOnly until)
+            dtpValidUntil.Value = until.ToDateTime(TimeOnly.MinValue);
+
+        numRepeats.Value = Math.Min(numRepeats.Maximum,
+            Math.Max(numRepeats.Minimum, script.Script.RepeatsAuthorised));
+
+        grdItems.Rows.Clear();
+
+        foreach (var item in script.Items)
+            grdItems.Rows.Add(item.ProductCode ?? "", item.Quantity,
+                              item.Directions, item.AllowSubstitution);
+    }
 
     protected override async void OnLoad(EventArgs e)
     {
@@ -70,7 +139,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             ? DateOnly.FromDateTime(dtpValidUntil.Value.Date)
             : null,
         RepeatsAuthorised: (int)numRepeats.Value,
-        Items: CollectItems());
+        Items: CollectItems(),
+        QuotationId: _quotationId);
 
     private IReadOnlyList<ScriptItemEditDto> CollectItems()
     {

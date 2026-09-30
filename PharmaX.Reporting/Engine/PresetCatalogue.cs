@@ -59,6 +59,21 @@ public sealed class PresetCatalogue : IPresetCatalogue
             new[] { "department", "category" },
             PermissionCode.ReportManagement),
 
+        // The same days and months, transaction by transaction and line
+        // by line, with a total for each day and month. Held to the same
+        // permission as the totals they add up to.
+        new("pos.sales.daily.lines", "Daily Sales (Line Items)",
+            "SalesLines",
+            new Dictionary<string, string?> { ["groupBy"] = "day" },
+            new[] { "operator", "tender", "department", "category" },
+            PermissionCode.ReportManagement),
+
+        new("pos.sales.monthly.lines", "Monthly Sales (Line Items)",
+            "SalesLines",
+            new Dictionary<string, string?> { ["groupBy"] = "month" },
+            new[] { "operator", "tender", "department", "category" },
+            PermissionCode.ReportManagement),
+
         new("pos.sales.summary.by-markup", "Sales Summary (By Markup %)",
             "SalesAnalysis",
             new Dictionary<string, string?>

@@ -18,8 +18,14 @@ public interface ICashUpService
     /// only the Z-read at close does that, and only once.
     Task<XReadDto> XReadAsync(CancellationToken ct = default);
 
+    /// <param name="countedDenominations">The drawer, note by note.</param>
+    /// <param name="statements">
+    /// What each tender declared off a statement - EcoCash - shows was
+    /// received. A tender missing here is declared as nothing received.
+    /// </param>
     Task<DeclarationDto> DeclareAsync(
         IReadOnlyDictionary<string, int> countedDenominations,
+        IReadOnlyDictionary<TenderType, decimal>? statements = null,
         CancellationToken ct = default);
 
     Task<Result> CloseAsync(string? varianceReason,
@@ -34,6 +40,7 @@ public sealed class CashUpService : ICashUpService
     private readonly ITillSessionRepository _sessions;
     private readonly ISaleRepository _sales;
     private readonly IReturnRepository _returns;
+    private readonly IAccountRepository _accounts;
     private readonly IJournalPoster _journals;
     private readonly ISessionContext _context;
     private readonly IAuditWriter _audit;
@@ -44,6 +51,7 @@ public sealed class CashUpService : ICashUpService
 
     public CashUpService(ITillSessionRepository sessions,
         ISaleRepository sales, IReturnRepository returns,
+        IAccountRepository accounts,
         IJournalPoster journals, ISessionContext context,
         IAuditWriter audit, IOutbox outbox, IUnitOfWork uow,
         ICurrentUser user, IClock clock)
@@ -51,6 +59,7 @@ public sealed class CashUpService : ICashUpService
         _sessions = sessions;
         _sales = sales;
         _returns = returns;
+        _accounts = accounts;
         _journals = journals;
         _context = context;
         _audit = audit;
@@ -87,9 +96,15 @@ public sealed class CashUpService : ICashUpService
 
     public async Task<DeclarationDto> DeclareAsync(
         IReadOnlyDictionary<string, int> countedDenominations,
+        IReadOnlyDictionary<TenderType, decimal>? statements = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(countedDenominations);
+
+        if (statements?.Values.Any(v => v < 0m) == true)
+            throw new ArgumentException(
+                "A statement cannot show less than nothing received.",
+                nameof(statements));
 
         var session = await RequireSessionAsync(ct);
         var expectations = await ExpectationsAsync(session, ct);
@@ -119,19 +134,23 @@ public sealed class CashUpService : ICashUpService
 
         foreach (var expectation in expectations)
         {
-            // Only cash is counted in the drawer. Every other tender is
-            // reconciled against its own slip, so it declares as expected.
-            var declared =
-                expectation.TenderType == nameof(TenderType.Cash)
-                    ? cashDeclared
-                    : Money.Of(expectation.Expected);
-
+            var tender = Enum.Parse<TenderType>(expectation.TenderType);
             var expected = Money.Of(expectation.Expected);
+
+            // Cash is counted in the drawer and EcoCash declared off its
+            // merchant statement: both are money the till holds for the
+            // pharmacy, and both can come up short. Card and EFT settle
+            // through the bank against their own slips, so they declare
+            // as expected.
+            var declared = tender.AffectsDrawer()
+                ? cashDeclared
+                : tender.IsDeclaredAgainstStatement()
+                    ? Money.Of(statements?.GetValueOrDefault(tender) ?? 0m)
+                    : expected;
+
             var variance = declared - expected;
 
-            declaration.AddLine(
-                Enum.Parse<TenderType>(expectation.TenderType), expected,
-                declared);
+            declaration.AddLine(tender, expected, declared);
 
             variances.Add(new VarianceLineDto(
                 expectation.TenderType, expected.Amount, declared.Amount,
@@ -168,17 +187,44 @@ public sealed class CashUpService : ICashUpService
         var declaration = await _sessions.LatestDeclarationAsync(
             session.Id, ct);
 
+        // Tender by tender, because a short drawer and a short EcoCash
+        // statement come off different ledger accounts. A tender that
+        // was not declared - or took money after the declaration - has
+        // nothing better to record than what was expected of it.
+        var lines = expectations
+            .Select(e =>
+            {
+                var tender = Enum.Parse<TenderType>(e.TenderType);
+                var line = declaration?.Lines
+                    .FirstOrDefault(l => l.Tender == tender);
+
+                var declared = line is not null
+                               && (tender.AffectsDrawer()
+                                   || tender.IsDeclaredAgainstStatement())
+                    ? line.Declared
+                    : Money.Of(e.Expected);
+
+                return (Tender: tender, Expected: Money.Of(e.Expected),
+                        Declared: declared);
+            })
+            .ToList();
+
         // A session closed without a count has nothing better to record
         // than the expectation, and says so through the reason.
-        var counted = declaration?.TotalDeclared ?? expected;
+        var counted = declaration is null
+            ? expected
+            : lines.Aggregate(Money.Zero(), (sum, l) => sum + l.Declared);
 
         session.Close(_user.Id, counted, _clock.UtcNow,
             declaration is null
                 ? varianceReason ?? "Closed without a cash declaration."
                 : varianceReason);
 
-        // The drawer against the books. Posts only where they differ.
-        await _journals.PostCashUpAsync(session, expected, counted, ct);
+        // The drawer and the EcoCash wallet against the books. Posts
+        // only where they differ.
+        foreach (var line in lines.Where(l => l.Declared != l.Expected))
+            await _journals.PostCashUpAsync(session, line.Tender,
+                line.Expected, line.Declared, ct);
 
         _context.AttachTillSession(null);
 
@@ -219,7 +265,17 @@ public sealed class CashUpService : ICashUpService
             .SelectMany(r => r.Refunds)
             .Select(p => (p.Tender, Amount: -p.Amount.Amount, Count: 1));
 
-        var byTender = taken.Concat(refunded)
+        // Money off a patient's account taken at this till is in its
+        // drawer or wallet like any sale. Left out, every account paid
+        // in cash showed as the drawer being over by exactly that much
+        // (ADM-DEF-18).
+        var accountPayments = (await _accounts.PaymentsForSessionAsync(
+                session.Id, ct))
+            .Where(t => t.Tender is not null)
+            .Select(t => (Tender: t.Tender!.Value, Amount: t.Amount.Amount,
+                          Count: 1));
+
+        var byTender = taken.Concat(refunded).Concat(accountPayments)
             .GroupBy(p => p.Tender)
             .Select(g => new TenderExpectationDto(
                 g.Key.ToString(),

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using PharmaX.Application.Claims;
 using PharmaX.Application.Dispensing;
 using PharmaX.Desktop.Features.Patients;
 using PharmaX.Desktop.Mvp;
@@ -20,6 +21,11 @@ public partial class frmLabels : PhxFormBase
 {
     private readonly ILabelReprintService? _labels;
     private readonly ViewFactory? _views;
+    private readonly IDispensingService? _dispensing;
+    private readonly Application.Security.IPermissionService? _permissions;
+    private readonly IClaimFormService? _claimForms;
+    private readonly IClaimFormPrinter? _claimFormPrinter;
+    private readonly string? _pharmacy;
 
     private Guid? _patientId;
 
@@ -34,16 +40,33 @@ public partial class frmLabels : PhxFormBase
         btnChoosePatient.Click += (_, _) => ChoosePatient();
         btnPreview.Click += (_, _) => Operations.Enqueue(PreviewAsync);
         btnReprint.Click += (_, _) => Operations.Enqueue(ReprintAsync);
+        btnReverse.Click += (_, _) => Operations.Enqueue(ReverseAsync);
+        btnClaimForm.Click += (_, _) => Operations.Enqueue(PrintClaimFormAsync);
         btnClose.Click += (_, _) => CloseView(true);
 
         grdDispensings.DoubleClick += (_, _) => Operations.Enqueue(PreviewAsync);
     }
 
     /// Runtime. Resolved by the container.
-    public frmLabels(ILabelReprintService labels, ViewFactory views) : this()
+    public frmLabels(ILabelReprintService labels, ViewFactory views,
+                     IDispensingService dispensing,
+                     Application.Security.IPermissionService permissions,
+                     IClaimFormService claimForms,
+                     IClaimFormPrinter claimFormPrinter,
+                     Application.Abstractions.PharmacyProfile pharmacy)
+        : this()
     {
+        _pharmacy = Adapters.Printing.LabelDocument.DispensedBy(
+            pharmacy.TradingName, pharmacy.Address);
         _labels = labels;
         _views = views;
+        _dispensing = dispensing;
+        _permissions = permissions;
+        _claimForms = claimForms;
+        _claimFormPrinter = claimFormPrinter;
+
+        btnReverse.Visible = Application.Security.PermissionServiceExtensions
+            .Has(permissions, Domain.Security.PermissionCode.ScriptReverse);
     }
 
     private void ChoosePatient()
@@ -124,6 +147,18 @@ public partial class frmLabels : PhxFormBase
             text.AppendLine();
         }
 
+        // Then the trailer, exactly as it will print.
+        var trailer = await _labels.BuildTrailerAsync(id);
+
+        if (trailer.IsSuccess)
+        {
+            text.AppendLine("Trailer label:");
+
+            foreach (var line in Adapters.Printing.TrailerLabelDocument
+                         .Lines(trailer.Value, _pharmacy))
+                text.AppendLine("  " + line);
+        }
+
         ShowInfo(text.ToString().TrimEnd());
     });
 
@@ -147,6 +182,72 @@ public partial class frmLabels : PhxFormBase
             "{0:N0} label(s) printed on {1}.{2}", result.Value.Printed,
             result.Value.PrinterName ?? "the label printer",
             result.Value.Note is null ? "" : "\n" + result.Value.Note));
+    });
+
+    /// <summary>
+    /// Prints the medical aid claim form for the selected dispensing.
+    /// </summary>
+    /// <remarks>
+    /// Here as well as on the Claims screen, which is the claims office's:
+    /// the dispensary is where the member signs, and it cannot open that
+    /// screen.
+    /// </remarks>
+    private Task PrintClaimFormAsync() => GuardAsync(async () =>
+    {
+        if (_claimForms is null || _claimFormPrinter is null
+            || Selected() is not Guid id) return;
+
+        var form = await _claimForms.ForDispensingAsync(id);
+
+        if (form.IsFailure)
+        {
+            ShowInfo(form.Error.Message);
+            return;
+        }
+
+        var printed = await _claimFormPrinter.PrintAsync(form.Value);
+        var what = $"The claim form for {form.Value.ClaimNumber}";
+
+        if (printed.Printed) ShowInfo(printed.Describe(what));
+        else ShowError(printed.Describe(what));
+    });
+
+    /// <summary>
+    /// Takes back an issued dispensing that has not been collected.
+    /// </summary>
+    /// <remarks>
+    /// There was no way to: the domain could reverse a dispensing and no
+    /// screen or service asked it to (ADM-DEF-22).
+    /// </remarks>
+    private Task ReverseAsync() => GuardAsync(async () =>
+    {
+        if (_dispensing is null || Selected() is not Guid id) return;
+
+        var row = grdDispensings.CurrentRow?.DataBoundItem as DispensedItemDto;
+
+        var reason = PharmaX.Desktop.Controls.frmTextPrompt.Ask(this,
+            "Reverse dispensing",
+            $"Why is {row?.DocumentNumber} being reversed? The medicine goes "
+            + "back into stock, the repeat back to the script, and any "
+            + "claim on the medical aid is withdrawn.");
+
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        if (!Confirm($"Reverse {row?.DocumentNumber}? This cannot be undone."))
+            return;
+
+        var result = await _dispensing.ReverseAsync(id, reason);
+
+        if (result.IsFailure)
+        {
+            ShowError(result.Error.Message);
+            return;
+        }
+
+        ShowInfo($"{row?.DocumentNumber} reversed. The stock is back on the "
+               + "shelf.");
+
+        await LoadAsync();
     });
 
     private Guid? Selected()

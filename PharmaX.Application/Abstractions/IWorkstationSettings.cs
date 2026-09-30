@@ -29,6 +29,10 @@ public static class WorkstationSettingKey
     public const string LabelPrinter = "printer.label";
     public const string CashDrawerPrinter = "printer.cashdrawer";
 
+    /// The A4 printer for full-page documents - the medical aid claim
+    /// form - which a receipt roll cannot print.
+    public const string DocumentPrinter = "printer.document";
+
     /// <summary>
     /// The trading currency, as an ISO 4217 code.
     /// </summary>

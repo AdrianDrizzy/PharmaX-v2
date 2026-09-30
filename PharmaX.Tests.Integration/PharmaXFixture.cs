@@ -21,7 +21,20 @@ public sealed class PharmaXFixture : IDisposable
     private readonly string _databasePath;
     private readonly ServiceProvider _provider;
 
-    public PharmaXFixture()
+    /// The fixture xUnit shares, trading as a real installation does.
+    public PharmaXFixture() : this(autoPost: true) { }
+
+    /// <param name="autoPost">
+    /// Whether trading journals itself as it happens - on, as on a real
+    /// installation - or waits for a day-end batch.
+    /// </param>
+    /// <remarks>
+    /// A factory rather than a second public constructor, which xUnit
+    /// refuses on a class fixture.
+    /// </remarks>
+    public static PharmaXFixture Trading(bool autoPost) => new(autoPost);
+
+    private PharmaXFixture(bool autoPost)
     {
         _databasePath = Path.Combine(Path.GetTempPath(),
             $"pharmax-test-{Guid.NewGuid():N}.db");
@@ -39,7 +52,8 @@ public sealed class PharmaXFixture : IDisposable
             {
                 LocalConnection = $"Data Source={_databasePath}",
                 HostConnection = ""      // standalone: no host to reach
-            }
+            },
+            Accounting = new AccountingOptions { AutoPost = autoPost }
         };
 
         var services = new ServiceCollection();

@@ -1,0 +1,7 @@
+-- select Code, QuantityOnHand from product where Code='PAN500'; select c.ClaimNumber, s.Code scheme, c.MembershipNumber, c.Claimed, c.Status from medicalaidclaim c join medicalaidscheme s on s.Id=c.SchemeId order by c.ClaimNumber;
+Code	QuantityOnHand
+PAN500	92.000
+ClaimNumber	scheme	MembershipNumber	Claimed	Status
+C-001-000001	ALPHA	AM-4417291	26.29	Settled
+C-001-000002	BONWELL	BW-220041	26.29	Outstanding
+C-001-000003	E2EMAS	CIM-771020	13.00	Outstanding

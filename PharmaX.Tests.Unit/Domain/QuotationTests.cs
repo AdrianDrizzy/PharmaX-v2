@@ -27,13 +27,75 @@ public class QuotationTests
         return quotation;
     }
 
+    /// <remarks>
+    /// A customer who asks what something costs has not given a name, and
+    /// may never. The price is quoted first; the name comes if they go
+    /// ahead.
+    /// </remarks>
     [Fact]
-    public void A_quotation_needs_a_customer_to_be_addressed_to()
+    public void A_price_can_be_quoted_before_the_customer_gives_a_name()
     {
-        var open = () => Quotation.Open("Q-1", "  ", Operator, Today, 30);
+        var quotation = Quotation.Open("Q-1", "  ", Operator, Today, 30);
 
-        open.Should().Throw<DomainException>()
-            .WithMessage("*customer name*");
+        quotation.CustomerName.Should().BeEmpty();
+
+        quotation.AddressTo("Mrs Khumalo");
+        quotation.CustomerName.Should().Be("Mrs Khumalo");
+    }
+
+    /// <remarks>
+    /// The dispensary counts tablets and prices the pack's share, as a
+    /// dispensing does: 21 of a 60-tablet pack at 120.00 is 42.00.
+    /// </remarks>
+    [Fact]
+    public void A_dispensary_line_is_priced_as_the_packs_share()
+    {
+        var quotation = Quotation.Open("Q-2", null, Operator, Today, 30,
+            kind: QuotationKind.Dispensary);
+
+        var line = quotation.AddLine(Guid.NewGuid(), "Metformin 850mg 60s",
+            21m, Money.Of(120m), "A", unitsInPack: 60m);
+
+        line.LineTotal.Amount.Should().Be(42m);
+        quotation.Total.Amount.Should().Be(42m);
+    }
+
+    [Fact]
+    public void A_dispensary_quote_becomes_one_script_once()
+    {
+        var quotation = Quotation.Open("Q-3", null, Operator, Today, 30,
+            kind: QuotationKind.Dispensary);
+        quotation.AddLine(Guid.NewGuid(), "Amoxicillin 500mg 21s", 21m,
+                          Money.Of(94.72m), "A", unitsInPack: 21m);
+
+        var script = Guid.NewGuid();
+        var patient = Guid.NewGuid();
+
+        quotation.ConvertToScript(script, patient, Today);
+
+        quotation.ScriptId.Should().Be(script);
+        quotation.PatientId.Should().Be(patient);
+        quotation.Status.Should().Be(QuotationStatus.Accepted);
+
+        var again = () => quotation.ConvertToScript(Guid.NewGuid(), patient,
+                                                    Today);
+        again.Should().Throw<DomainException>().WithMessage("*already*");
+    }
+
+    [Fact]
+    public void A_lapsed_or_counter_quote_does_not_become_a_script()
+    {
+        var lapsed = Quotation.Open("Q-4", null, Operator, Today, 7,
+            kind: QuotationKind.Dispensary);
+        lapsed.AddLine(Guid.NewGuid(), "Item", 1m, Money.Of(1m), "A");
+
+        var late = () => lapsed.ConvertToScript(Guid.NewGuid(),
+            Guid.NewGuid(), Today.AddDays(8));
+        late.Should().Throw<DomainException>().WithMessage("*lapsed*");
+
+        var counter = () => Open().ConvertToScript(Guid.NewGuid(),
+            Guid.NewGuid(), Today);
+        counter.Should().Throw<DomainException>().WithMessage("*dispensary*");
     }
 
     [Fact]

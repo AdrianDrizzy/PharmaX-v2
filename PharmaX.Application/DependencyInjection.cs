@@ -26,10 +26,12 @@ public static class DependencyInjection
         s.AddScoped<IUserService, UserService>();
         s.AddScoped<ISaleService, SaleService>();
         s.AddScoped<ICollectionService, CollectionService>();
+        s.AddScoped<IReceiptParticularsService, ReceiptParticularsService>();
         s.AddScoped<Alerts.IStockAlertService, Alerts.StockAlertService>();
         s.AddScoped<Finance.ILedgerService, Finance.LedgerService>();
         s.AddScoped<Finance.IJournalPoster, Finance.JournalPoster>();
         s.AddScoped<Claims.IClaimService, Claims.ClaimService>();
+        s.AddScoped<Claims.IClaimFormService, Claims.ClaimFormService>();
         s.AddScoped<Patients.IAccountService, Patients.AccountService>();
         s.AddScoped<IReturnService, ReturnService>();
         s.AddScoped<IDispensingService, DispensingService>();
@@ -48,6 +50,7 @@ public static class DependencyInjection
         s.AddScoped<IPatientService, PatientService>();
         s.AddScoped<Patients.IAttachmentService, Patients.AttachmentService>();
         s.AddScoped<IStockService, StockService>();
+        s.AddScoped<IStockAdjustmentService, StockAdjustmentService>();
         s.AddScoped<IStocktakeService, StocktakeService>();
         s.AddScoped<ITillSessionService, TillSessionService>();
         s.AddScoped<ICashUpService, CashUpService>();

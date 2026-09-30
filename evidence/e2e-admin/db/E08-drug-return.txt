@@ -1,0 +1,5 @@
+-- select Code, QuantityOnHand from product where Code='PAN500'; select DocumentNumber, Kind, OriginalDocumentNumber from salereturn order by DocumentNumber desc limit 1;
+Code	QuantityOnHand
+PAN500	93.000
+DocumentNumber	Kind	OriginalDocumentNumber
+R-001-000004	GoodsReturn	S-001-000013

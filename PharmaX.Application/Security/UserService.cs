@@ -175,12 +175,11 @@ public sealed class UserService : IUserService
     {
         _permissions.Demand(PermissionCode.UserRoleAssign);
 
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
-            return Result.Fail("SEC-004",
-                "A password must be at least eight characters.");
-
         var user = await _users.GetAsync(id, ct);
         if (user is null) return Result.Fail("SEC-020", "User not found.");
+
+        if (PasswordPolicy.Refuse(newPassword, user.Username) is Error weak)
+            return Result.Fail(weak.Code, weak.Message);
 
         user.ChangeCredential(_hasher.Hash(newPassword), _clock.UtcNow);
         user.RequirePasswordChange();
@@ -301,10 +300,9 @@ public sealed class UserService : IUserService
                 + "on every label they dispense.");
 
         if (initialPassword is not null
-            && (string.IsNullOrWhiteSpace(initialPassword)
-                || initialPassword.Length < 8))
-            return new Error("SEC-004",
-                "A password must be at least eight characters.");
+            && PasswordPolicy.Refuse(initialPassword, edit.Username)
+                is Error weak)
+            return weak;
 
         return null;
     }

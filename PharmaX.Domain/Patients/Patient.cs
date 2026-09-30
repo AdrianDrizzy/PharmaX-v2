@@ -18,6 +18,16 @@ public sealed class Patient : AuditableEntity
     public DateOnly? DateOfBirth { get; private set; }
     public string? Telephone { get; private set; }
     public string? Email { get; private set; }
+
+    /// <summary>
+    /// Where the patient lives, as they give it at the counter.
+    /// </summary>
+    /// <remarks>
+    /// With the telephone number, what tells two patients of the same
+    /// name apart when the list is searched, and what a delivery or a
+    /// claim form is addressed to.
+    /// </remarks>
+    public string? Address { get; private set; }
     public Guid? AccountId { get; private set; }
     public Guid? ClinicalProfileId { get; private set; }
     public bool IsActive { get; private set; } = true;
@@ -134,6 +144,10 @@ public sealed class Patient : AuditableEntity
         Telephone = telephone;
         Email = email;
     }
+
+    /// Blank clears it; the address is kept as typed otherwise.
+    public void SetAddress(string? address) =>
+        Address = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
 
     public void LinkAccount(Guid accountId) => AccountId = accountId;
     public void LinkClinicalProfile(Guid profileId) => ClinicalProfileId = profileId;

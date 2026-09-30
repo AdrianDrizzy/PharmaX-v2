@@ -1,0 +1,4 @@
+-- select QuotationNumber, CustomerName, Status, ValidUntil from quotation order by QuotationNumber;
+QuotationNumber	CustomerName	Status	ValidUntil
+Q-001-000001	Riverside Primary School	Issued	2026-10-25
+Q-001-000002	Mrs N. Sibanda (walk-in)	Issued	2026-10-25

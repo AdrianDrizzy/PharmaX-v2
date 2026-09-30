@@ -23,6 +23,9 @@ public interface ISupplierService
         CancellationToken ct = default);
 
     Task<Result> DeactivateAsync(Guid id, CancellationToken ct = default);
+
+    /// Brings a deactivated supplier back to the receiving screen.
+    Task<Result> ReactivateAsync(Guid id, CancellationToken ct = default);
 }
 
 public sealed class SupplierService : ISupplierService
@@ -141,6 +144,31 @@ public sealed class SupplierService : ISupplierService
         return Result.Ok();
     }
 
+    /// <remarks>
+    /// Deactivating was a one-way door: the list showed a deactivated
+    /// supplier but offered only to deactivate it again, so a supplier
+    /// switched off by mistake - or one the pharmacy starts buying from
+    /// again - could not be received from (ADM-DEF-03).
+    /// </remarks>
+    public async Task<Result> ReactivateAsync(Guid id,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.SupplierMaintain);
+
+        var supplier = await _suppliers.GetAsync(id, ct);
+        if (supplier is null)
+            return Result.Fail("SUP-000", "Supplier not found.");
+
+        if (supplier.IsActive) return Result.Ok();
+
+        supplier.Reactivate();
+
+        _audit.Applied("inv.supplier.reactivate", "Supplier", supplier.Id);
+        await _uow.SaveChangesAsync(ct);
+
+        return Result.Ok();
+    }
+
     private static Error? Validate(SupplierEditDto edit)
     {
         if (string.IsNullOrWhiteSpace(edit.Code))
@@ -159,6 +187,28 @@ public sealed class SupplierService : ISupplierService
             return new Error("SUP-006",
                 "A lead time must be between 0 and 365 days.");
 
+        // Where orders are sent. "not-an-email" was saved as typed and
+        // would have been found out the day an order went nowhere
+        // (ADM-OBS-04).
+        if (!string.IsNullOrWhiteSpace(edit.Email)
+            && !IsEmailAddress(edit.Email.Trim()))
+            return new Error("SUP-007",
+                $"\"{edit.Email.Trim()}\" is not an email address.");
+
         return null;
     }
+
+    /// <summary>
+    /// One mailbox, written the way a mail client would accept it.
+    /// </summary>
+    /// <remarks>
+    /// MailAddress alone accepts a display name and angle brackets, so
+    /// the parsed address has to be all that was typed.
+    /// </remarks>
+    internal static bool IsEmailAddress(string value) =>
+        value.Contains('@', StringComparison.Ordinal)
+        && !value.Contains(' ', StringComparison.Ordinal)
+        && System.Net.Mail.MailAddress.TryCreate(value, out var parsed)
+        && string.Equals(parsed.Address, value, StringComparison.OrdinalIgnoreCase)
+        && parsed.Host.Contains('.', StringComparison.Ordinal);
 }

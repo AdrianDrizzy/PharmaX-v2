@@ -1,0 +1,5 @@
+-- select `Action`, Outcome, OccurredAtUtc from auditentry where `Action`='auth.password.change' order by OccurredAtUtc;
+Action	Outcome	OccurredAtUtc
+auth.password.change	Applied	2026-09-25 02:29:33.754096
+auth.password.change	Applied	2026-09-25 02:30:57.691327
+auth.password.change	Applied	2026-09-25 02:31:28.885986

@@ -203,20 +203,20 @@ public class RoleAssignmentTests
 
         var pharmacist = await users.CreateAsync(new UserEditDto("new.pharm",
             "New Pharmacist", new[] { Role.Standard.Pharmacist }, 0m,
-            "P12345"), "Password#1");
+            "P12345"), "Starting#1");
 
         pharmacist.IsFailure.Should().BeTrue();
         pharmacist.Error.Code.Should().Be("SEC-030");
 
         var admin = await users.CreateAsync(new UserEditDto("new.admin",
             "New Admin", new[] { Role.Standard.Administrator }, 0m, null),
-            "Password#1");
+            "Starting#1");
 
         admin.IsFailure.Should().BeTrue();
 
         var cashier = await users.CreateAsync(new UserEditDto("new.cashier",
             "New Cashier", new[] { Role.Standard.Cashier }, 5m, null),
-            "Password#1");
+            "Starting#1");
 
         cashier.IsSuccess.Should().BeTrue(cashier.Error.Message);
     }

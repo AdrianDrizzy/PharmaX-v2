@@ -28,6 +28,33 @@ public class StartUpTests : IClassFixture<PharmaXFixture>
         db.Database.GetPendingMigrations().Should().BeEmpty();
     }
 
+    /// <remarks>
+    /// Seeded by code and only where missing, so running the seeder at
+    /// every start-up adds nothing the second time.
+    /// </remarks>
+    [Fact]
+    public async Task The_Zimbabwean_medical_aid_societies_are_seeded_once()
+    {
+        using var scope = _fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+        var codes = await db.MedicalAidSchemes.Select(s => s.Code)
+                                              .ToListAsync();
+
+        codes.Should().Contain(PharmaX.Persistence.Seeding
+            .ZimbabweMedicalAidSocieties.All.Select(s => s.Code));
+
+        codes.Should().Contain("CIMAS").And.Contain("PSMAS")
+            .And.Contain("FMH");
+        codes.Should().OnlyHaveUniqueItems();
+
+        await PharmaXFixture
+            .Resolve<PharmaX.Persistence.Seeding.ReferenceDataSeeder>(scope)
+            .SeedAsync();
+
+        (await db.MedicalAidSchemes.CountAsync()).Should().Be(codes.Count);
+    }
+
     [Fact]
     public async Task Every_permission_and_role_is_seeded()
     {

@@ -19,8 +19,10 @@ partial class frmClaims
     private PhxGrid grdClaims = null!;
     private Button btnSettle = null!;
     private Button btnPayAll = null!;
+    private Button btnPayAmount = null!;
     private Button btnReject = null!;
     private Button btnAges = null!;
+    private Button btnClaimForm = null!;
     private Button btnRefresh = null!;
     private Button btnExport = null!;
     private Button btnClose = null!;
@@ -49,10 +51,14 @@ partial class frmClaims
         btnSettle.Name = "btnSettle";
         btnPayAll = new Button();
         btnPayAll.Name = "btnPayAll";
+        btnPayAmount = new Button();
+        btnPayAmount.Name = "btnPayAmount";
         btnReject = new Button();
         btnReject.Name = "btnReject";
         btnAges = new Button();
         btnAges.Name = "btnAges";
+        btnClaimForm = new Button();
+        btnClaimForm.Name = "btnClaimForm";
         btnRefresh = new Button();
         btnRefresh.Name = "btnRefresh";
         btnExport = new Button();
@@ -159,10 +165,12 @@ partial class frmClaims
         var x = 12;
         foreach (var (button, text, width) in new[]
         {
-            (btnSettle, "Record &Remittance", 170),
-            (btnPayAll, "Pay in &Full", 110),
-            (btnReject, "Re&ject", 100),
-            (btnAges, "&Age Analysis", 130)
+            (btnSettle, "Record &Remittance", 160),
+            (btnPayAll, "Pay in &Full", 95),
+            (btnPayAmount, "Pay a&mount...", 110),
+            (btnReject, "Re&ject", 75),
+            (btnAges, "&Age Analysis", 110),
+            (btnClaimForm, "Claim F&orm", 100)
         })
         {
             button.Location = new Point(x, 8);
@@ -176,20 +184,20 @@ partial class frmClaims
         PhxTheme.MakePrimary(btnSettle);
 
         btnRefresh.Location = new Point(x, 8);
-        btnRefresh.Size = new Size(100, 34);
+        btnRefresh.Size = new Size(88, 34);
         btnRefresh.Text = "Re&fresh";
         btnRefresh.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnRefresh);
 
         btnExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnExport.Location = new Point(702, 8);
+        btnExport.Location = new Point(812, 8);
         btnExport.Size = new Size(150, 34);
         btnExport.Text = "&Export to Excel";
         btnExport.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnExport);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(860, 8);
+        btnClose.Location = new Point(970, 8);
         btnClose.Size = new Size(100, 34);
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
@@ -202,7 +210,7 @@ partial class frmClaims
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(980, 600);
+        ClientSize = new Size(1090, 600);
         Controls.Add(grdClaims);
         Controls.Add(pnlTop);
         Controls.Add(pnlTotals);

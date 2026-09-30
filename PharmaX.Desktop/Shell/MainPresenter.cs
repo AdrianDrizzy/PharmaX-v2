@@ -245,6 +245,12 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "stock":
                 ShowReport("inv.stock.on-hand");
                 break;
+
+            // Breakages, expired stock and transfers recorded, not only
+            // reported on (ADM-DEF-05).
+            case "stock-adjust":
+                _views.ShowDialog<frmStockAdjustment>((Form)View);
+                break;
             case "trial-balance":
                 _views.ShowDialog<frmTrialBalance>((Form)View);
                 break;
@@ -311,6 +317,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "quotation":
                 _views.ShowDialog<frmQuotation>((Form)View);
                 break;
+            case "dispensary-quote":
+                ShowDispensaryQuote();
+                break;
 
             // What this till is set to, and what it is doing. Two views
             // of the same read-only list.
@@ -326,9 +335,12 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 ShowSystemInfo(SystemInfoMode.SystemConsole);
                 break;
 
-            // A reprint starts where the pharmacist starts: the person.
+            // A reprint starts where the pharmacist starts: the person,
+            // then which of their scripts - and then it prints. It used to
+            // stop at the list, the same one Script Maintenance opens
+            // (ADM-DEF-17).
             case "reprint-script":
-                ShowScriptsForChosenPatient();
+                await ReprintChosenScriptAsync();
                 break;
 
             // Stock coming back from a patient is credited on the same
@@ -474,6 +486,33 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         list.ShowDialog((Form)View);
     }
 
+    /// <summary>
+    /// The dispensary quote off the menu. A script it became is offered
+    /// straight to dispensing, to whoever may dispense it.
+    /// </summary>
+    private void ShowDispensaryQuote()
+    {
+        Guid? patientId, scriptId;
+
+        using (var quote = _views.Create<Features.Dispensing.frmDispensaryQuote>())
+        {
+            if (quote.ShowDialog((Form)View) != DialogResult.OK) return;
+
+            patientId = quote.CreatedForPatientId;
+            scriptId = quote.CreatedScriptId;
+        }
+
+        if (patientId is not Guid patient || scriptId is not Guid script) return;
+        if (!ScreenAccess.CanOpen("dispensing", _permissions)) return;
+
+        if (!View.Confirm("The script has been captured. Dispense it now?"))
+            return;
+
+        using var dispense = _views.Create<frmDispense>();
+        dispense.BeginOn(patient, script);
+        dispense.ShowDialog((Form)View);
+    }
+
     private void ShowScriptsForChosenPatient()
     {
         using var picker = _views.Create<frmPatientList>();
@@ -485,6 +524,48 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         using var scripts = _views.Create<frmScriptList>();
         scripts.LoadForPatient(patientId);
         scripts.ShowDialog((Form)View);
+    }
+
+    private async Task ReprintChosenScriptAsync()
+    {
+        using var picker = _views.Create<frmPatientList>();
+        picker.UseAsPicker();
+
+        if (picker.ShowDialog((Form)View) != DialogResult.OK) return;
+        if (picker.SelectedId is not Guid patientId) return;
+
+        using var scripts = _views.Create<frmScriptList>();
+        scripts.LoadForPatient(patientId, asPicker: true);
+
+        if (scripts.ShowDialog((Form)View) != DialogResult.OK) return;
+        if (scripts.SelectedScriptId is not Guid scriptId) return;
+
+        using var scope = _scopes.CreateScope();
+
+        var service = scope.ServiceProvider
+            .GetRequiredService<Application.Dispensing.IScriptService>();
+
+        var printout = await service.PrintoutAsync(scriptId);
+
+        if (printout.IsFailure)
+        {
+            View.ShowError(printout.Error.Message);
+            return;
+        }
+
+        var printer = scope.ServiceProvider
+            .GetRequiredService<Application.Sales.IDocumentPrinter>();
+
+        var headers = scope.ServiceProvider
+            .GetRequiredService<Features.Sales.ReceiptHeaderFactory>();
+
+        var printed = await printer.PrintAsync(printout.Value,
+            headers.Build() with { IsCopy = true });
+
+        var what = $"The copy of {printout.Value.Title.ToLowerInvariant()}";
+
+        if (printed.Printed) View.ShowInfo(printed.Describe(what));
+        else View.ShowError(printed.Describe(what));
     }
 
     private static string Describe(ConnectivityState state) => state switch

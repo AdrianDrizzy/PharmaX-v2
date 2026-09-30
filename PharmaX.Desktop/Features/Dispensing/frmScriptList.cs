@@ -31,17 +31,23 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
 
         btnCapture.Click += (_, _) =>
             CaptureRequested?.Invoke(this, EventArgs.Empty);
+        btnEditScript.Click += (_, _) =>
+            EditScriptRequested?.Invoke(this, EventArgs.Empty);
         btnCancelScript.Click += (_, _) =>
             CancelScriptRequested?.Invoke(this, EventArgs.Empty);
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
+        btnQuote.Click += (_, _) =>
+            QuoteRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
 
         grdScripts.DoubleClick += (_, _) =>
         {
             if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
+            else if (btnEditScript.Visible)
+                EditScriptRequested?.Invoke(this, EventArgs.Empty);
         };
     }
 
@@ -67,7 +73,10 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
 
         if (!Application.Security.PermissionServiceExtensions.Has(
                 _permissions, Domain.Security.PermissionCode.ScriptCapture))
+        {
             btnCapture.Visible = false;
+            btnEditScript.Visible = false;
+        }
 
         if (!Application.Security.PermissionServiceExtensions.Has(
                 _permissions, Domain.Security.PermissionCode.ScriptReverse))
@@ -127,6 +136,10 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         lblCount.Text = $"{scripts.Count} script(s)";
     }
 
+    public void SelectScript(Guid scriptId) =>
+        Suggest.SelectRow(grdScripts,
+            item => item is ScriptDto script && script.Id == scriptId);
+
     public string? PromptCancelReason() =>
         frmTextPrompt.Ask(this, "Cancel script",
             "Why is this script being cancelled? The script is kept and "
@@ -134,6 +147,8 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
 
     public event EventHandler? RefreshRequested;
     public event EventHandler? CaptureRequested;
+    public event EventHandler? EditScriptRequested;
     public event EventHandler? CancelScriptRequested;
     public event EventHandler? ChooseRequested;
+    public event EventHandler? QuoteRequested;
 }

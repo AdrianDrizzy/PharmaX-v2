@@ -70,7 +70,8 @@ partial class frmUserList
         Bind(grdUsers, "Username", "Username", 90);
         Bind(grdUsers, "DisplayName", "Name", 150);
         Bind(grdUsers, "Roles", "Roles", 200);
-        Bind(grdUsers, "DiscountLimitPercent", "Disc %", 55, "N0", true);
+        // 7.5 is a limit people set; "N0" showed it as 8 (ADM-OBS-02).
+        Bind(grdUsers, "DiscountLimitPercent", "Disc %", 55, "0.##", true);
         Bind(grdUsers, "IsActive", "Active", 50);
         Bind(grdUsers, "IsLockedOut", "Locked", 50);
         Bind(grdUsers, "MustChangePassword", "Must change", 75);

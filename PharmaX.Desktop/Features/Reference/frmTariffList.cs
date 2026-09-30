@@ -1,5 +1,6 @@
 using System.Globalization;
 using PharmaX.Application.Reference;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Reference;
@@ -15,6 +16,9 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
     private readonly System.Windows.Forms.Timer _debounce =
         new() { Interval = 250 };
 
+    /// The matches, offered under the search box as it is typed into.
+    private readonly SearchSuggestions _suggestions;
+
     /// The "every society" row, which has no identifier of its own.
     private static readonly Guid AllSchemes = Guid.Empty;
 
@@ -25,6 +29,10 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
     public frmTariffList()
     {
         InitializeComponent();
+
+        _suggestions = new SearchSuggestions(txtSearch);
+        _suggestions.Chosen += (_, chosen) => Suggest.SelectRow(grdTariffs,
+            item => item is TariffListItemDto t && Equals(t.Id, chosen.Value));
 
         txtSearch.TextChanged += (_, _) => Restart();
         _debounce.Tick += (_, _) =>
@@ -109,6 +117,10 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
             if (row.DataBoundItem is TariffListItemDto item && !item.IsActive)
                 row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
         }
+
+        _suggestions.Offer(tariffs.Select(t =>
+            new Suggestion(t.Id, t.ProductDescription, Suggest.Details(
+                t.ProductCode, t.SchemeName, Format.Money(t.Total)))));
 
         RefreshToggleCaption();
     }

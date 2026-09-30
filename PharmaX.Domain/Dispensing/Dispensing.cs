@@ -4,7 +4,12 @@ using PharmaX.Domain.Primitives;
 
 namespace PharmaX.Domain.Dispensing;
 
-public enum DispensingStatus { InProgress, Issued, Reversed }
+/// <remarks>
+/// Abandoned is a dispensing begun and left without being issued: the
+/// screen was closed on it. It used to stay InProgress for ever
+/// (ADM-OBS-14).
+/// </remarks>
+public enum DispensingStatus { InProgress, Issued, Reversed, Abandoned }
 
 /// <summary>
 /// One act of handing medicine over against a script. Its central rule is
@@ -39,6 +44,11 @@ public sealed class Dispensing : AuditableEntity
     public Guid? SaleId { get; private set; }
 
     public DateTime? CollectedAtUtc { get; private set; }
+
+    /// Why an issued dispensing was taken back, and by whom and when.
+    public string? ReversalReason { get; private set; }
+    public Guid? ReversedBy { get; private set; }
+    public DateTime? ReversedAtUtc { get; private set; }
     public DispensingStatus Status { get; private set; } =
         DispensingStatus.InProgress;
 
@@ -201,7 +211,10 @@ public sealed class Dispensing : AuditableEntity
     /// Reverses an issued dispensing. The record stays: a reversal is a
     /// new fact about the dispensing, not the removal of an old one.
     /// </summary>
-    public void Reverse(string reason)
+    public void Reverse(string reason) =>
+        Reverse(reason, Guid.Empty, DateTime.UtcNow);
+
+    public void Reverse(string reason, Guid reversedBy, DateTime nowUtc)
     {
         if (Status != DispensingStatus.Issued)
             throw new DomainException("Only an issued dispensing can be reversed.");
@@ -219,6 +232,19 @@ public sealed class Dispensing : AuditableEntity
             throw new DomainException("A reversal requires a reason.");
 
         Status = DispensingStatus.Reversed;
+        ReversalReason = reason.Trim();
+        ReversedBy = reversedBy == Guid.Empty ? null : reversedBy;
+        ReversedAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// Sets aside a dispensing that was begun and never issued. Nothing
+    /// left the shelf, so nothing is put back.
+    /// </summary>
+    public void Abandon()
+    {
+        EnsureInProgress();
+        Status = DispensingStatus.Abandoned;
     }
 
     private void EnsureInProgress()

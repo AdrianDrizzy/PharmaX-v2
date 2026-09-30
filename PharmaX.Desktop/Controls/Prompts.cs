@@ -11,12 +11,16 @@ namespace PharmaX.Desktop.Controls;
 public sealed class frmNumberPrompt : Form
 {
     private readonly MoneyTextBox _input = new();
+    private readonly Label _problem = new();
     private readonly int _decimals;
+    private readonly decimal? _percentOf;
 
     private frmNumberPrompt(string title, string prompt, decimal current,
-                            int decimals)
+                            int decimals, decimal? percentOf = null)
     {
         _decimals = decimals;
+        _percentOf = percentOf;
+        _input.AllowsPercent = percentOf is not null;
         Name = "frmNumberPrompt";
 
         var label = new Label
@@ -66,18 +70,106 @@ public sealed class frmNumberPrompt : Form
         // Selected on open, so the operator types over the current value
         // rather than having to clear it first.
         Shown += (_, _) => { _input.Focus(); _input.SelectAll(); };
+
+        // Where the answer is not a number, say so and stay open. OK with
+        // "20%" in the box used to close the prompt and do nothing, which
+        // looked exactly like the discount had been refused (ADM-OBS-08).
+        _problem.AutoSize = false;
+        _problem.ForeColor = PhxTheme.Negative;
+        _problem.Location = new Point(16, 70);
+        _problem.Name = "lblProblem";
+        _problem.Size = new Size(160, 40);
+        Controls.Add(_problem);
+
+        // A question longer than a line - a product's whole name and its
+        // pack - wraps and moves the rest down, rather than being cut off
+        // before it has asked anything.
+        var needed = TextRenderer.MeasureText(prompt ?? "", label.Font,
+            new Size(label.Width, 0),
+            TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
+        var extra = Math.Max(0, needed - label.Height);
+
+        if (extra > 0)
+        {
+            label.Height += extra;
+
+            foreach (var below in new Control[] { _input, ok, cancel, _problem })
+                below.Top += extra;
+
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + extra);
+        }
+
+        FormClosing += (_, e) =>
+        {
+            if (DialogResult != DialogResult.OK) return;
+
+            Interpret(_input.Text, _percentOf, _decimals, out var problem);
+            if (problem is null) return;
+
+            _problem.Text = problem;
+            e.Cancel = true;
+        };
     }
 
-    public decimal? Value =>
-        _input.Amount is decimal value
-            ? Math.Round(value, _decimals, MidpointRounding.AwayFromZero)
-            : null;
+    public decimal? Value => Interpret(_input.Text, _percentOf, _decimals,
+                                       out _);
+
+    /// <summary>
+    /// What was typed, as a number: an amount, or - where the prompt takes
+    /// one - a percentage of the figure it was asked about.
+    /// </summary>
+    internal static decimal? Interpret(string text, decimal? percentOf,
+        int decimals, out string? problem)
+    {
+        problem = null;
+        var typed = (text ?? "").Trim();
+
+        if (percentOf is decimal whole
+            && typed.EndsWith('%'))
+        {
+            if (!decimal.TryParse(typed[..^1].Trim(), NumberStyles.Number,
+                    CultureInfo.CurrentCulture, out var percent)
+                || percent < 0m || percent > 100m)
+            {
+                problem = "A percentage from 0% to 100%.";
+                return null;
+            }
+
+            return Math.Round(whole * percent / 100m, decimals,
+                              MidpointRounding.AwayFromZero);
+        }
+
+        if (!decimal.TryParse(typed, NumberStyles.Number,
+                CultureInfo.CurrentCulture, out var value))
+        {
+            problem = percentOf is null
+                ? "Enter a number."
+                : "Enter an amount, or a percentage such as 10%.";
+            return null;
+        }
+
+        return Math.Round(value, decimals, MidpointRounding.AwayFromZero);
+    }
 
     public static decimal? Ask(IWin32Window owner, string title,
         string prompt, decimal current, int decimals)
     {
         using var dialog = new frmNumberPrompt(title, prompt, current,
                                                decimals);
+
+        return dialog.ShowDialog(owner) == DialogResult.OK
+            ? dialog.Value
+            : null;
+    }
+
+    /// <summary>
+    /// Asks for an amount off something, typed as money or as a
+    /// percentage of it.
+    /// </summary>
+    public static decimal? AskAmountOrPercent(IWin32Window owner,
+        string title, string prompt, decimal of)
+    {
+        using var dialog = new frmNumberPrompt(title, prompt, 0m, 2, of);
 
         return dialog.ShowDialog(owner) == DialogResult.OK
             ? dialog.Value
@@ -176,6 +268,146 @@ public sealed class frmTextPrompt : Form
 }
 
 /// <summary>
+/// Asks for a new password: typed twice, and never shown.
+/// </summary>
+/// <remarks>
+/// The starting and reset passwords were taken in the plain text prompt,
+/// readable by anyone standing at the screen while they were typed
+/// (ADM-DEF-02). Masked, a password has to be typed twice, because a slip
+/// nobody can see would lock the new user out of an account before they
+/// ever reached it. Returned exactly as typed: a space is part of a
+/// password, and trimming one would set a different password from the
+/// one the administrator handed over.
+/// </remarks>
+public sealed class frmPasswordPrompt : Form
+{
+    private readonly TextBox _password = new();
+    private readonly TextBox _confirm = new();
+    private readonly Label _problem = new();
+
+    private frmPasswordPrompt(string title, string prompt)
+    {
+        Name = "frmPasswordPrompt";
+
+        var label = new Label
+        {
+            AutoSize = false,
+            Location = new Point(16, 16),
+            MaximumSize = new Size(400, 0),
+            Name = "lblPrompt",
+            Size = new Size(400, 20),
+            Text = prompt
+        };
+
+        label.Height = Math.Max(20, TextRenderer.MeasureText(prompt,
+            label.Font, new Size(400, 0), TextFormatFlags.WordBreak).Height);
+
+        var top = label.Bottom + 8;
+
+        var passwordLabel = new Label
+        {
+            AutoSize = false,
+            Location = new Point(16, top + 3),
+            Size = new Size(120, 20),
+            Text = "&Password"
+        };
+
+        _password.AccessibleName = "Password";
+        _password.Location = new Point(140, top);
+        _password.MaxLength = 128;
+        _password.Name = "txtPassword";
+        _password.Size = new Size(276, 23);
+        _password.UseSystemPasswordChar = true;
+
+        var confirmLabel = new Label
+        {
+            AutoSize = false,
+            Location = new Point(16, top + 35),
+            Size = new Size(120, 20),
+            Text = "Type it &again"
+        };
+
+        _confirm.AccessibleName = "Type it again";
+        _confirm.Location = new Point(140, top + 32);
+        _confirm.MaxLength = 128;
+        _confirm.Name = "txtConfirmPassword";
+        _confirm.Size = new Size(276, 23);
+        _confirm.UseSystemPasswordChar = true;
+
+        _problem.AutoSize = false;
+        _problem.ForeColor = PhxTheme.Negative;
+        _problem.Location = new Point(16, top + 64);
+        _problem.Name = "lblProblem";
+        _problem.Size = new Size(400, 20);
+
+        var ok = new Button
+        {
+            DialogResult = DialogResult.OK,
+            Location = new Point(260, top + 92),
+            Name = "btnOk",
+            Size = new Size(75, 28),
+            Text = "OK"
+        };
+
+        var cancel = new Button
+        {
+            DialogResult = DialogResult.Cancel,
+            Location = new Point(341, top + 92),
+            Name = "btnCancel",
+            Size = new Size(75, 28),
+            Text = "Cancel"
+        };
+
+        Controls.AddRange(new Control[]
+        {
+            label, passwordLabel, _password, confirmLabel, _confirm,
+            _problem, ok, cancel
+        });
+
+        AcceptButton = ok;
+        CancelButton = cancel;
+        ClientSize = new Size(432, top + 134);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        StartPosition = FormStartPosition.CenterParent;
+        Text = WindowTitles.Brand(title);
+
+        Shown += (_, _) => _password.Focus();
+
+        FormClosing += (_, e) =>
+        {
+            if (DialogResult != DialogResult.OK) return;
+
+            var problem = Refuse(_password.Text, _confirm.Text);
+            if (problem is null) return;
+
+            _problem.Text = problem;
+            e.Cancel = true;
+        };
+    }
+
+    /// Why the two boxes cannot be accepted, or null where they can. The
+    /// strength rules themselves belong to the service that sets it.
+    internal static string? Refuse(string password, string confirm) =>
+        string.IsNullOrEmpty(password)
+            ? "Type the new password."
+            : !string.Equals(password, confirm, StringComparison.Ordinal)
+                ? "The two passwords are not the same."
+                : null;
+
+    public static string? Ask(IWin32Window owner, string title,
+                              string prompt)
+    {
+        using var dialog = new frmPasswordPrompt(title, prompt);
+
+        return dialog.ShowDialog(owner) == DialogResult.OK
+            ? dialog._password.Text
+            : null;
+    }
+}
+
+/// <summary>
 /// A read-only window for a block of text somebody needs to look at:
 /// the postings behind a trial-balance figure, and anything else that is
 /// a page rather than a grid.
@@ -187,7 +419,8 @@ public sealed class frmTextPrompt : Form
 /// </remarks>
 public sealed class frmTextViewer : Form
 {
-    private frmTextViewer(string title, string body)
+    private frmTextViewer(string title, string body,
+        IReadOnlyList<(string Text, Action Run)>? actions = null)
     {
         var text = new TextBox
         {
@@ -212,6 +445,25 @@ public sealed class frmTextViewer : Form
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 46 };
         footer.Controls.Add(close);
 
+        // What can be done with the page besides reading it: print it,
+        // send it on.
+        var x = 12;
+
+        foreach (var (caption, run) in actions ?? Array.Empty<(string, Action)>())
+        {
+            var button = new Button
+            {
+                Location = new Point(x, 8),
+                Size = new Size(140, 30),
+                Text = caption,
+                UseVisualStyleBackColor = true
+            };
+
+            button.Click += (_, _) => run();
+            footer.Controls.Add(button);
+            x += 148;
+        }
+
         Controls.Add(text);
         Controls.Add(footer);
 
@@ -233,6 +485,13 @@ public sealed class frmTextViewer : Form
     public static void Show(IWin32Window owner, string title, string body)
     {
         using var dialog = new frmTextViewer(title, body);
+        dialog.ShowDialog(owner);
+    }
+
+    public static void Show(IWin32Window owner, string title, string body,
+        IReadOnlyList<(string Text, Action Run)> actions)
+    {
+        using var dialog = new frmTextViewer(title, body, actions);
         dialog.ShowDialog(owner);
     }
 }

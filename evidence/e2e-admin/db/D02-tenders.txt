@@ -1,0 +1,5 @@
+-- select s.DocumentNumber, s.PatientId, s.AccountId, sp.Tender, sp.Amount from sale s join salepayment sp on sp.SaleId=s.Id where s.DocumentNumber in ('S-001-000008','S-001-000009','S-001-000010');
+DocumentNumber	PatientId	AccountId	Tender	Amount
+S-001-000008	NULL	NULL	Eft	49.99
+S-001-000010	NULL	NULL	MedicalAid	34.95
+S-001-000009	NULL	NULL	Voucher	4.95

@@ -38,6 +38,17 @@ public sealed class ExcelExporter : IReportExporter, IWorkbookWriter
 
         var top = AddLogo(sheet);
 
+        // Whose report it is, in words as well as the logo: the logo
+        // alone left a workbook forwarded to an accountant naming nobody
+        // (ADM-OBS-06).
+        if (!string.IsNullOrWhiteSpace(_branding.TradingName))
+        {
+            sheet.Cell(top, 1).Value = _branding.TradingName;
+            sheet.Cell(top, 1).Style.Font.Bold = true;
+            sheet.Cell(top, 1).Style.Font.FontSize = 13;
+            top++;
+        }
+
         // Provenance first, so an exported file can still answer
         // "what was this?" a month later (RPT-012).
         sheet.Cell(top, 1).Value = report.Title;
@@ -144,7 +155,7 @@ public sealed class ExcelExporter : IReportExporter, IWorkbookWriter
         return cleaned.Length <= 31 ? cleaned : cleaned[..31];
     }
 
-    internal static string FileName(ReportResult report, string extension) =>
+    public static string FileName(ReportResult report, string extension) =>
         string.Format(CultureInfo.InvariantCulture, "{0}-{1:yyyyMMdd-HHmm}.{2}",
             Sanitise(report.Title), DateTime.Now, extension);
 
@@ -189,6 +200,12 @@ public sealed class CsvExporter : IReportExporter
 
 public sealed class PdfExporter : IReportExporter
 {
+    private readonly IReportBranding _branding;
+
+    public PdfExporter() : this(new NoReportBranding()) { }
+
+    public PdfExporter(IReportBranding branding) => _branding = branding;
+
     public ExportFormat Format => ExportFormat.Pdf;
 
     public string Write(ReportResult report, string directory)
@@ -212,6 +229,10 @@ public sealed class PdfExporter : IReportExporter
 
                 page.Header().Column(header =>
                 {
+                    if (!string.IsNullOrWhiteSpace(_branding.TradingName))
+                        header.Item().Text(_branding.TradingName)
+                            .FontSize(11).Bold();
+
                     header.Item().Text(report.Title).FontSize(14).Bold();
                     header.Item().Text(report.Provenance.ParameterSummary);
 
@@ -227,10 +248,16 @@ public sealed class PdfExporter : IReportExporter
 
                 page.Content().PaddingVertical(6).Table(table =>
                 {
+                    // Each column as wide as what it holds, within limits:
+                    // shared out equally, fifteen columns left an item's
+                    // name wrapping a word to a line beside a date column
+                    // with room to spare.
+                    var widths = Widths(report);
+
                     table.ColumnsDefinition(columns =>
                     {
-                        foreach (var _ in report.Columns)
-                            columns.RelativeColumn();
+                        foreach (var width in widths)
+                            columns.RelativeColumn(width);
                     });
 
                     table.Header(h =>
@@ -263,6 +290,33 @@ public sealed class PdfExporter : IReportExporter
         }).GeneratePdf(path);
 
         return path;
+    }
+
+    /// <summary>
+    /// How much of the page each column gets: the longest of its header
+    /// and its values, read from the first few hundred rows, between a
+    /// short number's width and a long name's.
+    /// </summary>
+    public static IReadOnlyList<float> Widths(ReportResult report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var sample = report.Rows.Take(400).ToList();
+
+        return report.Columns
+            .Select(column =>
+            {
+                var longest = sample
+                    .Select(row => row.TryGetValue(column.Key, out var value)
+                        ? Render(value, column.Format).Length
+                        : 0)
+                    .DefaultIfEmpty(0)
+                    .Max();
+
+                return (float)Math.Clamp(
+                    Math.Max(column.Header.Length, longest), 5, 40);
+            })
+            .ToList();
     }
 
     private static string Render(object? value, string? format) =>

@@ -1,0 +1,3 @@
+-- select Username, IsLockedOut, FailedAttempts from user where Username='test.stock';
+Username	IsLockedOut	FailedAttempts
+test.stock	1	6

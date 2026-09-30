@@ -38,9 +38,14 @@ public sealed class SaleServiceBuilder
     {
         // One product, priced so that a single line comes to 24.00 - the
         // figure the guide's own idempotency test tenders.
-        Products = new InMemoryProductRepository(
-            Product.Create("PAR0500", "Paracetamol 500mg 20 tablets",
-                           Money.Of(24m)));
+        var paracetamol = Product.Create("PAR0500",
+            "Paracetamol 500mg 20 tablets", Money.Of(24m));
+
+        // On the shelf, because the till refuses to sell what is not
+        // (ADM-DEF-12). A test about running out says so itself.
+        paracetamol.SetQuantityOnHand(1000m);
+
+        Products = new InMemoryProductRepository(paracetamol);
     }
 
     public SaleServiceBuilder WithUser(FakeCurrentUser user)
@@ -90,8 +95,8 @@ public sealed class SaleServiceBuilder
             NSubstitute.Substitute.For<PharmaX.Application.Repositories
                 .IPatientRepository>(),
 
-            Journals(), Numbering, PermissionService(), Audit, UnitOfWork,
-            Clock);
+            Journals(), User, Numbering, PermissionService(), Audit,
+            UnitOfWork, Clock);
 
     public SaleService Build() =>
         new(Sales, Products, Batches, Dispensings, Quotations, Users,

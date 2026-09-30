@@ -127,13 +127,26 @@ public sealed class ProductRepository : IProductRepository
         return candidates.Find(p => p.MatchesCode(code));
     }
 
+    /// <remarks>
+    /// The code typed exactly comes first, then what starts with the
+    /// first word, so "amox" puts Amoxicillin ahead of Co-Amoxiclav.
+    /// </remarks>
     public async Task<IReadOnlyList<Product>> SearchAsync(string term,
         int take = 200, ProductScope scope = ProductScope.All,
-        CancellationToken ct = default) =>
-        await Matching(term, scope)
-            .OrderBy(p => p.Description)
+        CancellationToken ct = default)
+    {
+        var words = SearchTerms.Words(term);
+        var code = words.Count == 1 ? words[0].ToUpperInvariant() : null;
+        var start = words.Count > 0 ? $"{words[0]}%" : null;
+
+        return await Matching(term, scope)
+            .OrderBy(p => code != null && p.Code == code ? 0 : 1)
+            .ThenBy(p => start != null
+                         && EF.Functions.Like(p.Description, start) ? 0 : 1)
+            .ThenBy(p => p.Description)
             .Take(take)
             .ToListAsync(ct);
+    }
 
     public async Task<int> CountAsync(string term,
         ProductScope scope = ProductScope.All,
@@ -173,19 +186,30 @@ public sealed class ProductRepository : IProductRepository
     public async Task AddAsync(Product product, CancellationToken ct = default)
         => await _db.Products.AddAsync(product, ct);
 
+    /// <summary>
     /// The one place the search predicate is written, so the page and
     /// the count can never disagree about what matched.
+    /// </summary>
+    /// <remarks>
+    /// Word by word, so "amox 500" finds "Amoxicillin 500mg capsules"
+    /// and the generic name finds the brands sold under it.
+    /// </remarks>
     private IQueryable<Product> Matching(string term, ProductScope scope)
     {
         var query = InScope(_db.Products.AsNoTracking(), scope);
 
-        if (string.IsNullOrWhiteSpace(term)) return query;
+        foreach (var word in SearchTerms.Words(term))
+        {
+            var pattern = $"%{word}%";
 
-        var pattern = $"%{term.Trim()}%";
+            query = query.Where(p =>
+                EF.Functions.Like(p.Description, pattern)
+                || EF.Functions.Like(p.Code, pattern)
+                || (p.GenericName != null
+                    && EF.Functions.Like(p.GenericName, pattern)));
+        }
 
-        return query.Where(p =>
-            EF.Functions.Like(p.Description, pattern)
-            || EF.Functions.Like(p.Code, pattern));
+        return query;
     }
 }
 
@@ -212,7 +236,12 @@ public sealed class BatchRepository : IBatchRepository
 
         if (productIds.Count == 0) return Array.Empty<Batch>();
 
+        // Read only, like the product search it expands. A tracked read
+        // hands back the copy this context already holds, so the list
+        // kept showing a batch as it was before the product editor, a
+        // delivery or a sale changed it.
         return await _db.Batches
+            .AsNoTracking()
             .Where(b => productIds.Contains(b.ProductId))
             .OrderBy(b => b.ExpiryDate)
             .ToListAsync(ct);
@@ -246,20 +275,125 @@ public sealed class PatientRepository : IPatientRepository
         await _db.Patients
             .FirstOrDefaultAsync(p => p.FileNumber == fileNumber, ct);
 
+    /// <remarks>
+    /// Surname and file number were all it looked at, so "Tendai", an ID
+    /// number or the telephone number the patient reads out at the
+    /// counter found nobody (ADM-OBS-12). Every word has to match one of
+    /// the fields, so "Moyo Tendai", "Moyo, Tendai" and "mo ten" all
+    /// narrow to the one person - surname first being how the counter
+    /// types it, and how the matches are ranked. A telephone number is
+    /// compared on its last nine digits, so 0771 234 567 finds +263 77
+    /// 123 4567; the address is searched too, so "Woodstock" finds who
+    /// lives there.
+    /// </remarks>
     public async Task<IReadOnlyList<Patient>> SearchAsync(string term,
         int take = 100, CancellationToken ct = default)
     {
-        var pattern = $"%{term?.Trim()}%";
+        var query = _db.Patients.AsNoTracking().Where(p => p.IsActive);
 
-        return await _db.Patients
-            .AsNoTracking()
-            .Where(p => p.IsActive)
-            .Where(p => EF.Functions.Like(p.Surname, pattern)
-                        || EF.Functions.Like(p.FileNumber, pattern))
-            .OrderBy(p => p.Surname).ThenBy(p => p.FirstNames)
+        // A number is typed with spaces as often as without, so one made
+        // of nothing but digits is read whole first: "0771 234 567" is
+        // one telephone number, not three words. The same digits may be
+        // an ID or a membership number, so those are tried too.
+        var number = SearchTerms.Telephone(term, minimumDigits: 7) is string whole
+                     && (term ?? "").All(c => char.IsAsciiDigit(c)
+                                              || c is ' ' or '-' or '+' or '(' or ')')
+            ? whole
+            : null;
+
+        if (number is not null)
+        {
+            var phone = $"%{number}%";
+            var compact = $"%{Compact(term!)}%";
+
+            query = query.Where(p =>
+                (p.Telephone != null
+                 && EF.Functions.Like(p.Telephone.Replace(" ", "")
+                     .Replace("-", "").Replace("(", "").Replace(")", ""), phone))
+                || (p.IdNumber != null && EF.Functions.Like(
+                        p.IdNumber.Replace(" ", "").Replace("-", ""), compact))
+                || (p.MembershipNumber != null && EF.Functions.Like(
+                        p.MembershipNumber.Replace(" ", "").Replace("-", ""),
+                        compact)));
+        }
+        else
+        {
+            foreach (var word in SearchTerms.Words(term))
+            {
+                var pattern = $"%{word}%";
+                var compact = $"%{Compact(word)}%";
+
+                var digits = SearchTerms.Telephone(word);
+                var dialled = digits is null ? null : $"%{digits}%";
+
+                query = query.Where(p =>
+                    EF.Functions.Like(p.Surname, pattern)
+                    || EF.Functions.Like(p.FirstNames, pattern)
+                    || EF.Functions.Like(p.FileNumber, pattern)
+                    || (p.IdNumber != null && EF.Functions.Like(
+                            p.IdNumber.Replace(" ", "").Replace("-", ""), compact))
+                    || (p.MembershipNumber != null
+                        && EF.Functions.Like(p.MembershipNumber, pattern))
+                    || (p.Address != null && EF.Functions.Like(p.Address, pattern))
+                    || (dialled != null && p.Telephone != null && EF.Functions.Like(
+                            p.Telephone.Replace(" ", "").Replace("-", ""), dialled)));
+            }
+        }
+
+        // The counter types the surname first and the first name after
+        // it, so a patient whose surname starts with the first word - and
+        // whose first name starts with the second - comes top, ahead of
+        // one who merely has the letters somewhere in their details.
+        var words = number is null ? SearchTerms.Words(term) : [];
+        var surname = words.Count > 0 ? $"{words[0]}%" : null;
+        var firstName = words.Count > 1 ? $"{words[1]}%" : null;
+
+        return await query
+            .OrderBy(p => surname != null
+                          && EF.Functions.Like(p.Surname, surname) ? 0 : 1)
+            .ThenBy(p => firstName != null
+                         && EF.Functions.Like(p.FirstNames, firstName) ? 0 : 1)
+            .ThenBy(p => p.Surname).ThenBy(p => p.FirstNames)
             .Take(take)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<Patient>> LikelySameAsync(string surname,
+        string firstNames, DateOnly? dateOfBirth, string? idNumber,
+        Guid? except, string? telephone = null,
+        CancellationToken ct = default)
+    {
+        var id = string.IsNullOrWhiteSpace(idNumber) ? null : Compact(idNumber);
+        var last = (surname ?? "").Trim();
+        var first = (firstNames ?? "").Trim();
+
+        // Seven digits at least, so a half-typed number or an extension
+        // does not bring up every file in the town.
+        var digits = SearchTerms.Telephone(telephone, minimumDigits: 7);
+        var phone = digits is null ? null : $"%{digits}";
+
+        return await _db.Patients
+            .AsNoTracking()
+            .Where(p => p.IsActive && p.Id != except)
+            .Where(p =>
+                (id != null && p.IdNumber != null
+                 && p.IdNumber.Replace(" ", "").Replace("-", "") == id)
+                || (dateOfBirth != null && p.DateOfBirth == dateOfBirth
+                    && p.Surname == last && p.FirstNames == first)
+                || (phone != null && p.Telephone != null
+                    && EF.Functions.Like(p.Telephone.Replace(" ", "")
+                        .Replace("-", "").Replace("(", "").Replace(")", ""),
+                        phone)))
+            .OrderBy(p => p.FileNumber)
+            .Take(10)
+            .ToListAsync(ct);
+    }
+
+    /// An ID number as it is compared: no spaces, no dashes, capitals.
+    private static string Compact(string value) =>
+        value.Replace(" ", "", StringComparison.Ordinal)
+             .Replace("-", "", StringComparison.Ordinal)
+             .ToUpperInvariant();
 
     public async Task<ClinicalProfile?> ClinicalProfileAsync(Guid patientId,
         CancellationToken ct = default) =>
@@ -550,6 +684,15 @@ public sealed class StockMovementWriter : IStockMovementWriter
     public StockMovementWriter(PharmaXDbContext db) => _db = db;
 
     public void Add(StockMovement movement) => _db.StockMovements.Add(movement);
+
+    public async Task<IReadOnlyList<StockMovement>> ForSourceAsync(
+        string sourceType, Guid sourceId, CancellationToken ct = default) =>
+        await _db.StockMovements
+            .AsNoTracking()
+            .Where(m => m.SourceDocumentType == sourceType
+                        && m.SourceDocumentId == sourceId)
+            .OrderBy(m => m.OccurredAtUtc)
+            .ToListAsync(ct);
 }
 
 public sealed class SupplierRepository : ISupplierRepository
@@ -610,6 +753,28 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
             query = query.Where(o => o.SupplierId == id);
 
         return await query.OrderBy(o => o.OrderedOn).ToListAsync(ct);
+    }
+
+    /// <remarks>
+    /// Summed here rather than in SQL because SQLite will not total a
+    /// decimal; the open orders are a handful of rows.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<Guid, decimal>> OnOrderAsync(
+        CancellationToken ct = default)
+    {
+        var lines = await _db.PurchaseOrders
+            .AsNoTracking()
+            .Where(o => o.Status == PurchaseOrderStatus.Draft
+                        || o.Status == PurchaseOrderStatus.Sent
+                        || o.Status == PurchaseOrderStatus.PartiallyReceived)
+            .SelectMany(o => o.Lines)
+            .Select(l => new { l.ProductId, l.QuantityOrdered, l.QuantityReceived })
+            .ToListAsync(ct);
+
+        return lines
+            .GroupBy(l => l.ProductId)
+            .ToDictionary(g => g.Key,
+                g => g.Sum(l => Math.Max(l.QuantityOrdered - l.QuantityReceived, 0m)));
     }
 
     public async Task AddAsync(PurchaseOrder order,
@@ -956,9 +1121,14 @@ public sealed class AccountRepository : IAccountRepository
     {
         var query = _db.Accounts.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(term))
-            query = query.Where(a => a.AccountNumber.Contains(term)
-                                  || a.Name.Contains(term));
+        // Word by word, like every other search.
+        foreach (var word in SearchTerms.Words(term))
+        {
+            var pattern = $"%{word}%";
+
+            query = query.Where(a => EF.Functions.Like(a.AccountNumber, pattern)
+                                  || EF.Functions.Like(a.Name, pattern));
+        }
 
         return await query
             .OrderBy(a => a.Name)
@@ -1002,6 +1172,14 @@ public sealed class AccountRepository : IAccountRepository
     public async Task AddTransactionAsync(AccountTransaction transaction,
         CancellationToken ct = default) =>
         await _db.AccountTransactions.AddAsync(transaction, ct);
+
+    public async Task<IReadOnlyList<AccountTransaction>> PaymentsForSessionAsync(
+        Guid tillSessionId, CancellationToken ct = default) =>
+        await _db.AccountTransactions
+            .AsNoTracking()
+            .Where(t => t.TillSessionId == tillSessionId
+                        && t.Kind == AccountEntryKind.Payment)
+            .ToListAsync(ct);
 
     /// <remarks>
     /// Summed here rather than in SQL for the same reason as everywhere

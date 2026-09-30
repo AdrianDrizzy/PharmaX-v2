@@ -431,7 +431,7 @@ public sealed class DemoTradingSeeder
     private async Task<int> QuoteAsync(CancellationToken ct)
     {
         var opened = await _quotations
-            .OpenAsync("Riverside Primary School", 30, ct)
+            .OpenAsync("Riverside Primary School", 30, ct: ct)
             .ConfigureAwait(false);
 
         if (opened.IsFailure) return 0;
@@ -448,7 +448,7 @@ public sealed class DemoTradingSeeder
             .ConfigureAwait(false);
 
         var issued = await _quotations.IssueAsync(id,
-            "Valid for 30 days. Delivery to the school office.", ct)
+            "Valid for 30 days. Delivery to the school office.", ct: ct)
             .ConfigureAwait(false);
 
         return issued.IsSuccess ? 1 : 0;
@@ -655,7 +655,7 @@ public sealed class DemoTradingSeeder
 
         var counted = CountOut(denominations, Math.Max(0m, expectedCash - 20m));
 
-        await _cashUp.DeclareAsync(counted, ct).ConfigureAwait(false);
+        await _cashUp.DeclareAsync(counted, ct: ct).ConfigureAwait(false);
 
         var closed = await _cashUp.CloseAsync(
             "Twenty short; float recounted and the difference noted.", ct)

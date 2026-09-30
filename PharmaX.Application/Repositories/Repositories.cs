@@ -164,8 +164,25 @@ public interface IPatientRepository
     Task<Patient?> GetAsync(Guid id, CancellationToken ct = default);
     Task<Patient?> ByFileNumberAsync(string fileNumber,
                                      CancellationToken ct = default);
+    /// <summary>
+    /// Active patients matching every word typed: surname, first names,
+    /// file number, ID number, membership number or telephone.
+    /// </summary>
     Task<IReadOnlyList<Patient>> SearchAsync(string term, int take = 100,
                                              CancellationToken ct = default);
+
+    /// <summary>
+    /// Files that may be the same person: the same ID number, or the
+    /// same names and date of birth.
+    /// </summary>
+    /// <param name="telephone">
+    /// A number to find on other files as well, compared on its digits.
+    /// </param>
+    Task<IReadOnlyList<Patient>> LikelySameAsync(string surname,
+        string firstNames, DateOnly? dateOfBirth, string? idNumber,
+        Guid? except, string? telephone = null,
+        CancellationToken ct = default);
+
     Task<ClinicalProfile?> ClinicalProfileAsync(Guid patientId,
                                                 CancellationToken ct = default);
     Task AddAsync(Patient patient, CancellationToken ct = default);
@@ -263,6 +280,14 @@ public interface IPurchaseOrderRepository
     Task<IReadOnlyList<PurchaseOrder>> OutstandingAsync(
         Guid? supplierId = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// How much of each product is on an order not yet delivered - drafts
+    /// included, because a draft is an order somebody has already
+    /// decided to place.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, decimal>> OnOrderAsync(
+        CancellationToken ct = default);
+
     Task AddAsync(PurchaseOrder order, CancellationToken ct = default);
 }
 
@@ -347,6 +372,10 @@ public interface IAccountRepository
 
     Task AddTransactionAsync(AccountTransaction transaction,
                              CancellationToken ct = default);
+
+    /// Payments taken off accounts at one till session, for its cash-up.
+    Task<IReadOnlyList<AccountTransaction>> PaymentsForSessionAsync(
+        Guid tillSessionId, CancellationToken ct = default);
 
     /// <summary>
     /// What the movements add up to, for checking the stored balance

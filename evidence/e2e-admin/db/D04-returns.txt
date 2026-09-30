@@ -1,0 +1,7 @@
+-- select Code, QuantityOnHand from product where Code='E2EOTC'; select DocumentNumber, Kind, Status, OriginalDocumentNumber, Reason from salereturn order by DocumentNumber;
+Code	QuantityOnHand
+E2EOTC	48.000
+DocumentNumber	Kind	Status	OriginalDocumentNumber	Reason
+R-001-000001	GoodsReturn	Finalised	S-001-000001	Customer changed their mind.
+R-001-000002	GoodsReturn	Finalised	S-001-000005	Customer bought too many
+R-001-000003	CreditNote	Finalised	S-001-000005	Tablets arrived broken - credited, not restocked

@@ -1,0 +1,3 @@
+-- select q.QuotationNumber, q.Status, s.DocumentNumber from quotation q left join sale s on s.QuotationId=q.Id where q.QuotationNumber='Q-001-000002';
+QuotationNumber	Status	DocumentNumber
+Q-001-000002	Accepted	S-001-000012

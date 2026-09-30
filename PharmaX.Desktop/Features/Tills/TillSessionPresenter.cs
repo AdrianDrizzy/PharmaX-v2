@@ -2,6 +2,7 @@ using PharmaX.Application.Sales;
 using PharmaX.Application.Tills;
 using PharmaX.Desktop.Features.Sales;
 using PharmaX.Desktop.Mvp;
+using PharmaX.Domain.Sales;
 
 namespace PharmaX.Desktop.Features.Tills;
 
@@ -79,13 +80,31 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
 
     private Task DeclareAsync() => GuardAsync(async () =>
     {
-        var declaration = await _cashUp.DeclareAsync(View.CountedDenominations);
+        var declaration = await _cashUp.DeclareAsync(
+            View.CountedDenominations, Statements());
+
         View.ShowVariance(declaration.Variances);
     });
 
+    /// <summary>
+    /// The tenders declared off a statement rather than counted, as the
+    /// operator entered them.
+    /// </summary>
+    /// <remarks>
+    /// Left out where nothing was entered, and the service then declares
+    /// EcoCash as nothing received: a blank is not a statement, and
+    /// taking the till's own figure for it would balance every session
+    /// whether or not the money arrived.
+    /// </remarks>
+    private Dictionary<TenderType, decimal> Statements() =>
+        View.EcoCashStatement is decimal ecoCash
+            ? new Dictionary<TenderType, decimal> { [TenderType.EcoCash] = ecoCash }
+            : new Dictionary<TenderType, decimal>();
+
     private Task CloseAsync() => GuardAsync(async () =>
     {
-        var declaration = await _cashUp.DeclareAsync(View.CountedDenominations);
+        var declaration = await _cashUp.DeclareAsync(
+            View.CountedDenominations, Statements());
 
         string? reason = null;
         var worst = declaration.Variances
@@ -95,7 +114,8 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
         // A reason is mandatory above the configured threshold (POS-023).
         if (worst is not null && worst.RequiresReason)
         {
-            reason = View.PromptVarianceReason(worst.Variance);
+            reason = View.PromptVarianceReason(worst.TenderType,
+                                               worst.Variance);
 
             if (string.IsNullOrWhiteSpace(reason))
             {

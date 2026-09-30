@@ -178,6 +178,7 @@ public sealed class AccountingOptions
     public string Cash { get; init; } = Domain.Finance.LedgerCode.CashOnHand;
     public string Card { get; init; } = Domain.Finance.LedgerCode.Bank;
     public string Eft { get; init; } = Domain.Finance.LedgerCode.Bank;
+    public string EcoCash { get; init; } = Domain.Finance.LedgerCode.EcoCashWallet;
     public string AccountsReceivable { get; init; } = Domain.Finance.LedgerCode.TradeDebtors;
     public string MedicalAidReceivable { get; init; } = Domain.Finance.LedgerCode.MedicalAidDebtors;
     public string Voucher { get; init; } = Domain.Finance.LedgerCode.VouchersRedeemed;
@@ -186,20 +187,23 @@ public sealed class AccountingOptions
     public string Rounding { get; init; } = Domain.Finance.LedgerCode.RoundingDifferences;
 
     /// <summary>
-    /// Where a tender lands. An unrecognised tender goes to cash rather
-    /// than to nothing at all: a journal that refuses to balance because
-    /// somebody added a tender type is worse than one posting a line an
-    /// accountant can see and move.
+    /// Where a tender lands. Every journal reads this - the ones posted
+    /// as trading happens and the day-end - so a tender can only ever
+    /// land in one place. A tender with no setting of its own falls back
+    /// to the standard chart rather than to nothing at all: a journal
+    /// that refuses to balance because somebody added a tender type is
+    /// worse than one posting a line an accountant can see and move.
     /// </summary>
     public string CodeFor(Domain.Sales.TenderType tender) => tender switch
     {
         Domain.Sales.TenderType.Cash => Cash,
         Domain.Sales.TenderType.Card => Card,
         Domain.Sales.TenderType.Eft => Eft,
+        Domain.Sales.TenderType.EcoCash => EcoCash,
         Domain.Sales.TenderType.Account => AccountsReceivable,
         Domain.Sales.TenderType.MedicalAid => MedicalAidReceivable,
         Domain.Sales.TenderType.Voucher => Voucher,
-        _ => Cash
+        _ => Domain.Finance.LedgerCode.For(tender)
     };
 }
 

@@ -9,6 +9,9 @@ public interface IProductListView : IView
     string SearchText { get; }
     Guid? SelectedId { get; }
 
+    /// The batch of the selected row in the batch view; null otherwise.
+    Guid? SelectedBatchId { get; }
+
     /// <summary>
     /// Whether the operator has asked to see the shelf a batch at a time
     /// rather than a product at a time.
@@ -19,12 +22,19 @@ public interface IProductListView : IView
     void ShowBatches(IReadOnlyList<ProductBatchListItemDto> rows);
     void ShowCount(int shown, int total);
 
+    /// <summary>
+    /// The cell just committed, when the operator may edit the list.
+    /// Null when nothing was committed.
+    /// </summary>
+    ProductCellEditDto? PendingEdit { get; }
+
     event EventHandler? SearchChanged;
     event EventHandler? AddRequested;
     event EventHandler? EditRequested;
     event EventHandler? RefreshRequested;
     event EventHandler? ChooseRequested;
     event EventHandler? ViewModeChanged;
+    event EventHandler? CellEdited;
 }
 
 public interface IProductEditView : IView
@@ -42,7 +52,16 @@ public interface IProductEditView : IView
                            IReadOnlyList<ReferenceItemDto> categories,
                            IReadOnlyList<ReferenceItemDto> manufacturers);
 
+    /// <summary>
+    /// The product, with its batches when it has any on the shelf.
+    /// </summary>
     void ShowProduct(ProductDto product);
+
+    /// <summary>
+    /// Everything on the form, the stock included. The quantity on hand
+    /// is only sent when it was changed, and only for a product whose
+    /// stock is not on batches; a batch's quantity is changed on its row.
+    /// </summary>
     ProductEditDto Collect();
 
     event EventHandler? SaveRequested;

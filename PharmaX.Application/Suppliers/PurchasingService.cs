@@ -214,23 +214,35 @@ public sealed class PurchasingService : IPurchasingService
         _permissions.Demand(PermissionCode.PurchaseOrderRaise);
 
         var products = await _products.SearchAsync("", take: 2000, ct: ct);
+        var onOrder = await _orders.OnOrderAsync(ct);
 
         // Orders up to twice the reorder level, which is the simplest
         // rule that does not reorder the same item next week. A proper
         // usage-based calculation belongs in a later release, against
         // real movement history.
+        //
+        // What is already on an order still to arrive counts as coming.
+        // Ignoring it suggested the same 24 again straight after an order
+        // for 50 was raised, which is a second order for stock already on
+        // its way (ADM-DEF-06).
         IReadOnlyList<PurchaseOrderLineDto> suggestions = products
-            .Where(p => p.IsActive && p.IsBelowReorderLevel)
-            .Where(p => p.ReorderLevel > 0m)
-            .Select((p, i) => new PurchaseOrderLineDto(
-                i + 1, p.Id, p.Description,
-                QuantityOrdered: p.ReorderLevel * 2m - p.QuantityOnHand,
+            .Where(p => p.IsActive && p.ReorderLevel > 0m)
+            .Select(p => (Product: p,
+                          Coming: onOrder.GetValueOrDefault(p.Id)))
+            .Where(x => x.Product.QuantityOnHand + x.Coming
+                        <= x.Product.ReorderLevel)
+            .Select(x => (x.Product,
+                          Quantity: x.Product.ReorderLevel * 2m
+                                    - x.Product.QuantityOnHand - x.Coming))
+            .Where(x => x.Quantity > 0m)
+            .Select((x, i) => new PurchaseOrderLineDto(
+                i + 1, x.Product.Id, x.Product.Description,
+                QuantityOrdered: x.Quantity,
                 QuantityReceived: 0m,
-                Outstanding: p.ReorderLevel * 2m - p.QuantityOnHand,
-                UnitCost: p.CostPrice.Amount,
-                LineTotal: (p.ReorderLevel * 2m - p.QuantityOnHand)
-                           * p.CostPrice.Amount,
-                ProductCode: p.Code))
+                Outstanding: x.Quantity,
+                UnitCost: x.Product.CostPrice.Amount,
+                LineTotal: x.Quantity * x.Product.CostPrice.Amount,
+                ProductCode: x.Product.Code))
             .ToList();
 
         return Result<IReadOnlyList<PurchaseOrderLineDto>>.Ok(suggestions);

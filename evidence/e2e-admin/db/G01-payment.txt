@@ -1,0 +1,6 @@
+-- select AccountNumber, Balance from account where AccountNumber='A-001-000002'; select at.* from accounttransaction at join account a on a.Id=at.AccountId where a.AccountNumber='A-001-000002' order by at.CreatedAtUtc;
+AccountNumber	Balance
+A-001-000002	31.90
+Id	AccountId	OccurredOn	Kind	Reference	Narration	Amount	AmountCurrency	CreatedAtUtc	CreatedBy	UpdatedAtUtc	UpdatedBy	RowVersion
+b1ed7324-c9e9-4d8e-b204-bef9ba2d27ef	baa8b866-31b9-4253-be89-8f4d5aa3ae31	2026-09-25	Charge	S-001-000007	Sale on account	81.90	USD	2026-09-25 03:21:26.001497	51999a5e-8b42-416f-a05b-4cfe9e9ee511	2026-09-25 03:21:26.001497	51999a5e-8b42-416f-a05b-4cfe9e9ee511	?9um?VG?k??,?}
+9ed9c34c-9cb4-4651-a41e-cd4471ad24bf	baa8b866-31b9-4253-be89-8f4d5aa3ae31	2026-09-25	Payment	RCPT-ACC-0001	Payment by Cash	50.00	USD	2026-09-25 04:06:25.953982	51999a5e-8b42-416f-a05b-4cfe9e9ee511	2026-09-25 04:06:25.953982	51999a5e-8b42-416f-a05b-4cfe9e9ee511	???^??O??7??

@@ -1,5 +1,6 @@
 using System.Globalization;
 using PharmaX.Application.Reference;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Reference;
@@ -16,6 +17,9 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     private readonly System.Windows.Forms.Timer _debounce =
         new() { Interval = 250 };
 
+    /// The matches, offered under the search box as it is typed into.
+    private readonly SearchSuggestions _suggestions;
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ProductRead;
 
@@ -23,6 +27,10 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     public frmReferenceList()
     {
         InitializeComponent();
+
+        _suggestions = new SearchSuggestions(txtSearch);
+        _suggestions.Chosen += (_, chosen) => Suggest.SelectRow(grdItems,
+            item => item is ReferenceItemDto r && Equals(r.Id, chosen.Value));
 
         txtSearch.TextChanged += (_, _) => Restart();
         _debounce.Tick += (_, _) =>
@@ -99,6 +107,9 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
             if (row.DataBoundItem is ReferenceItemDto item && !item.IsActive)
                 row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
         }
+
+        _suggestions.Offer(items.Select(i =>
+            new Suggestion(i.Id, i.Name, Suggest.Details(i.Code, i.Detail))));
 
         RefreshToggleCaption();
     }

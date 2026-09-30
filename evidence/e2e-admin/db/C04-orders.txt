@@ -1,0 +1,6 @@
+-- select OrderNumber, Status from purchaseorder order by OrderNumber;
+OrderNumber	Status
+PO-001-000001	Received
+PO-001-000002	Sent
+PO-001-000003	Sent
+PO-001-000004	Cancelled

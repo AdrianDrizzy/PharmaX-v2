@@ -150,13 +150,24 @@ public sealed class TestCatalogueSeeder
             product.SetReorderLevel(Math.Ceiling(item.Quantity / 4m));
             product.SetQuantityOnHand(item.Quantity);
 
-            // The dispensary lines are priced per pack, and the pack size
-            // is on the description: "21s", "60s". Dispensing fewer is
-            // priced pro rata against it (DEF-0021).
+            // Priced per pack, with the pack's count on the description:
+            // "20s", "60s", "100ml". A script counts tablets, so dispensing
+            // fewer is priced pro rata (DEF-0021) and takes that fraction
+            // of a pack off the shelf. Panado was left without one, so a
+            // script for twenty tablets was priced as twenty packs
+            // (ADM-DEF-14). The insulin refill is handed over whole.
             product.SetUnitsPerPack(item.Code switch
             {
+                "PAN500" => 20m,
+                "DIS200" => 24m,
+                "VITC1G" => 10m,
+                "ALLERG" => 30m,
+                "COUGH1" => 100m,
                 "AMOX50" => 21m,
                 "METF85" => 60m,
+                "INSUL1" => 1m,
+                "PLAST1" => 40m,
+                "SURGM1" => 50m,
                 _ => null
             });
 

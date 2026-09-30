@@ -43,11 +43,19 @@ public class Phx {
   // drawn in physical ones, and the capture is cropped.
   public static void Dpi() { try { SetProcessDpiAwarenessContext((IntPtr)(-4)); } catch {} }
 
+  // The pharmacy's trading name, which the application puts in place of
+  // "PharmaX" at the start of every window title. Callers keep writing
+  // "PharmaX - Reports"; Find looks for "<Brand> - Reports". Null leaves
+  // titles as written, for a database still trading as PharmaX.
+  public static string Brand = null;
+
   // Exact title first, substring only as a fallback. Every child form is
   // called "PharmaX - something", so a substring search for "PharmaX"
   // matches whichever window Windows happens to enumerate first - which
   // silently returns a dialog when the caller asked for the main window.
   public static IntPtr Find(int pid, string title) {
+    if (!String.IsNullOrEmpty(Brand) && title.StartsWith("PharmaX"))
+      title = Brand + title.Substring("PharmaX".Length);
     IntPtr exact = IntPtr.Zero, partial = IntPtr.Zero;
     EnumWindows(delegate(IntPtr h, IntPtr l) {
       uint p; GetWindowThreadProcessId(h, out p);
@@ -173,6 +181,10 @@ public class Phx {
 "@ -ReferencedAssemblies System.Drawing, System.Drawing.Primitives -ErrorAction SilentlyContinue
 
 [Phx]::Dpi()
+
+# Set PHX_BRAND to the trading name saved at the System Console, so that
+# window lookups written against "PharmaX - ..." find the branded titles.
+if ($env:PHX_BRAND) { [Phx]::Brand = $env:PHX_BRAND }
 
 # InvokePattern.Invoke() does not return until the click handler does, and
 # a handler that calls ShowDialog() does not return until the operator

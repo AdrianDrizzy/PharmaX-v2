@@ -1,4 +1,5 @@
 using PharmaX.Application.Inventory;
+using PharmaX.Application.Inventory.Dtos;
 using PharmaX.Desktop.Mvp;
 using PharmaX.Application.Reference;
 
@@ -21,7 +22,24 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
         View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.ViewModeChanged += (_, _) => Enqueue(LoadAsync);
         View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
-        View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
+        View.EditRequested += (_, _) =>
+        {
+            // Nothing selected is not an invitation to add a product.
+            if (View.SelectedId is not Guid id)
+            {
+                View.ShowInfo("Choose a product first.");
+                return;
+            }
+
+            var batch = View.SelectedBatchId;
+            Enqueue(() => OpenEditorAsync(id, batch));
+        };
+        View.CellEdited += (_, _) =>
+        {
+            if (View.PendingEdit is not { } edit) return;
+
+            Enqueue(() => SaveCellAsync(edit));
+        };
 
         View.ChooseRequested += (_, _) =>
         {
@@ -77,13 +95,33 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
             result.Value.TotalCount);
     });
 
-    private Task OpenEditorAsync(Guid? id) => GuardAsync(async () =>
+    private Task OpenEditorAsync(Guid? id, Guid? batchId = null) =>
+        GuardAsync(async () =>
     {
         using var editor = _views.Create<frmProductEdit>();
-        editor.LoadProduct(id);
+        editor.LoadProduct(id, batchId);
 
         if (editor.ShowDialog((Form)View) == DialogResult.OK)
             await LoadAsync();
+    });
+
+    /// <summary>
+    /// Writes the cell, then reloads either way so a refused value does
+    /// not stay on the screen as if it had been kept.
+    /// </summary>
+    private Task SaveCellAsync(ProductCellEditDto edit) => GuardAsync(async () =>
+    {
+        try
+        {
+            var result = await _products.ApplyCellEditAsync(edit);
+
+            if (result.IsFailure)
+                View.ShowError(result.Error.Message);
+        }
+        finally
+        {
+            await LoadAsync();
+        }
     });
 }
 
@@ -123,8 +161,12 @@ public sealed class ProductEditPresenter : PresenterBase<IProductEditView>
             return;
         }
 
+        _loaded = result.Value;
         View.ShowProduct(result.Value);
     });
+
+    /// The product as it was opened. Null for a new one.
+    private ProductDto? _loaded;
 
     /// <remarks>
     /// Active entries only. A retired department is kept so that history
@@ -153,6 +195,12 @@ public sealed class ProductEditPresenter : PresenterBase<IProductEditView>
     private Task SaveAsync() => GuardAsync(async () =>
     {
         var edit = View.Collect();
+
+        // The same question the list asks when Active is changed there.
+        if (_loaded is { IsActive: true } && edit.IsActive == false
+            && !View.Confirm(
+                "Discontinue this product? It stays on past sales."))
+            return;
 
         var result = View.ProductId is Guid id
             ? await _products.UpdateAsync(id, edit)

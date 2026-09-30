@@ -30,6 +30,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         scanBar.CodeEntered += (_, code) => ProductScanned?.Invoke(this, code);
         btnFindScript.Click += (_, _) =>
             ScriptRequested?.Invoke(this, EventArgs.Empty);
+        btnQuote.Click += (_, _) =>
+            QuoteRequested?.Invoke(this, EventArgs.Empty);
         btnIssue.Click += (_, _) =>
             IssueRequested?.Invoke(this, EventArgs.Empty);
         btnReprint.Click += (_, _) =>
@@ -40,14 +42,37 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Closing with the window's own button goes the same way as Close,
+    /// so a dispensing begun here is set aside first.
+    /// </summary>
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_presenter is { HasUnissuedDispensing: true }
+            && e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        base.OnFormClosing(e);
+    }
+
     /// Runtime. Resolved by the container.
     public frmDispense(DispensePresenter presenter,
-                       IAuthenticationService auth, ViewFactory views)
+                       IAuthenticationService auth, ViewFactory views,
+                       Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
         _presenter = presenter;
         _auth = auth;
         _views = views;
+
+        // A product added by name is offered from its first few letters.
+        scanBar.SuggestFrom(Suggest.Products(scopes));
         _presenter.Attach(this);
     }
 
@@ -158,6 +183,28 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             : null;
     }
 
+    public (Guid PatientId, Guid ScriptId)? PromptQuote()
+    {
+        if (_views is null) return null;
+
+        using var quote = _views.Create<frmDispensaryQuote>();
+
+        return quote.ShowDialog(this) == DialogResult.OK
+               && quote.CreatedForPatientId is Guid patientId
+               && quote.CreatedScriptId is Guid scriptId
+            ? (patientId, scriptId)
+            : null;
+    }
+
+    public (Guid PatientId, Guid ScriptId)? StartWith { get; private set; }
+
+    /// <summary>
+    /// Opens on a script already chosen - one just captured from a quote.
+    /// Called before ShowDialog.
+    /// </summary>
+    public void BeginOn(Guid patientId, Guid scriptId) =>
+        StartWith = (patientId, scriptId);
+
     public int? SelectedLineNo =>
         grdItems.CurrentRow?.Cells["LineNo"].Value is int lineNo
             ? lineNo
@@ -218,6 +265,7 @@ public partial class frmDispense : PhxFormBase, IDispenseView
 
     public event EventHandler? PatientRequested;
     public event EventHandler? ScriptRequested;
+    public event EventHandler? QuoteRequested;
     public event EventHandler<string>? ProductScanned;
     public event EventHandler? IssueRequested;
     public event EventHandler? LabelReprintRequested;

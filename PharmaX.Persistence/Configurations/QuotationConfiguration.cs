@@ -18,6 +18,7 @@ public sealed class QuotationConfiguration
         b.Property(x => x.CustomerName).HasMaxLength(200).IsRequired();
         b.Property(x => x.Notes).HasMaxLength(1000);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         // Computed from the lines, like a sale's total.
@@ -48,6 +49,7 @@ public sealed class QuotationLineConfiguration
         b.Property(x => x.Description).HasMaxLength(200).IsRequired();
         b.Property(x => x.TaxCode).HasMaxLength(5).IsRequired();
         b.Property(x => x.Quantity).HasPrecision(18, 3);
+        b.Property(x => x.UnitsInPack).HasPrecision(18, 3);
 
         b.ComplexProperty(x => x.UnitPrice, m =>
         {

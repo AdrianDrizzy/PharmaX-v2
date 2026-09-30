@@ -210,15 +210,29 @@ public sealed class ReturnPresenter : PresenterBase<IReturnView>
             new string('-', 42)
         };
 
+        // 6 + 24 + 12: the amount ends under the totals, and a long
+        // description carries on underneath rather than being cut.
         foreach (var line in credit.Lines)
-            lines.Add(string.Format(culture, "{0,5:0.##} {1,-24}{2,11:N2}",
-                line.Quantity,
-                line.Description.Length <= 24
-                    ? line.Description
-                    : line.Description[..24],
-                line.LineTotal));
+        {
+            var description = SlipLayout.Wrap(line.Description, 24, 36);
+
+            lines.Add(string.Format(culture, "{0,5:0.##} {1,-24}{2,12:N2}",
+                line.Quantity, description[0], line.LineTotal));
+
+            foreach (var more in description.Skip(1))
+                lines.Add("      " + more);
+        }
 
         lines.Add(new string('-', 42));
+
+        // The VAT going back, as the receipt showed the VAT charged. A
+        // credit note is a fiscal document, and one that did not show
+        // the VAT reversed could not be set against the sale it credits
+        // (ADM-OBS-11).
+        lines.Add(string.Format(culture, "{0,-30}{1,12:N2}",
+            "Excluding VAT", credit.Total - credit.VatTotal));
+        lines.Add(string.Format(culture, "{0,-30}{1,12:N2}",
+            "VAT reversed", credit.VatTotal));
         lines.Add(string.Format(culture, "{0,-30}{1,12:N2}", "Refunded",
             credit.Total));
 

@@ -19,6 +19,7 @@ public sealed class PatientConfiguration : IEntityTypeConfiguration<Patient>
         b.Property(x => x.IdNumber).HasMaxLength(20);
         b.Property(x => x.Telephone).HasMaxLength(30);
         b.Property(x => x.Email).HasMaxLength(150);
+        b.Property(x => x.Address).HasMaxLength(250);
 
         // Bounded rather than left as unlimited text: a membership
         // number goes on every claim, and an unbounded column cannot be
@@ -174,6 +175,7 @@ public sealed class AccountTransactionConfiguration
         b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Reference).HasMaxLength(60);
         b.Property(x => x.Narration).HasMaxLength(300);
+        b.Property(x => x.Tender).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.ComplexProperty(x => x.Amount, m =>
@@ -191,5 +193,8 @@ public sealed class AccountTransactionConfiguration
 
         // The statement's own query: one account, in date order.
         b.HasIndex(x => new { x.AccountId, x.OccurredOn });
+
+        // The cash-up's: what a till took off accounts.
+        b.HasIndex(x => x.TillSessionId);
     }
 }

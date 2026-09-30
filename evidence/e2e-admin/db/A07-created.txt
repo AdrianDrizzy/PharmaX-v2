@@ -1,0 +1,3 @@
+-- select Username, DisplayName, DiscountLimitPercent, IsActive, MustChangePassword from user where Username='e2e.cashier';
+Username	DisplayName	DiscountLimitPercent	IsActive	MustChangePassword
+e2e.cashier	E2E Cashier	5.0000	1	1

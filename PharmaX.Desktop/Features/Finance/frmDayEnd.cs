@@ -53,6 +53,8 @@ public partial class frmDayEnd : PhxFormBase
     {
         _posting = posting;
         _options = options;
+        _workbooks = workbooks;
+        _user = user;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -94,7 +96,13 @@ public partial class frmDayEnd : PhxFormBase
                 .Select(t => $"{t.Key} {Format.Amount(t.Value)}")));
         }
 
-        if (s.AlreadyPosted)
+        if (s.PostedAsTraded)
+        {
+            text.AppendLine();
+            text.Append("Automatic posting is on: each sale was journalled "
+                        + "as it was made, so there is nothing to prepare.");
+        }
+        else if (s.AlreadyPosted)
         {
             text.AppendLine();
             text.Append("This day already has a journal.");
@@ -102,7 +110,8 @@ public partial class frmDayEnd : PhxFormBase
 
         lblSummary.Text = text.ToString();
 
-        btnPrepare.Enabled = s.Sales > 0 && !s.AlreadyPosted;
+        btnPrepare.Enabled = s.Sales > 0 && !s.AlreadyPosted
+                             && !s.PostedAsTraded;
     });
 
     private Task PrepareAsync() => GuardAsync(async () =>
@@ -208,8 +217,9 @@ public partial class frmDayEnd : PhxFormBase
         var saved = GridExport.Offer(this, _workbooks, grdLines,
             "Day-End Journal",
             string.Format(CultureInfo.CurrentCulture,
-                "Batch {0}, posted {1:dd/MM/yyyy}",
-                batch.BatchNumber, batch.PostingDate),
+                "Batch {0} for {1:dd/MM/yyyy}{2}",
+                batch.BatchNumber, batch.PostingDate,
+                batch.IsPosted ? ", posted" : ", not yet posted"),
             _user.Username);
 
         if (saved is not null) ShowInfo($"Exported to {saved}");

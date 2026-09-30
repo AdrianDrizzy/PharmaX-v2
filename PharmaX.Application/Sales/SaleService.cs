@@ -216,7 +216,15 @@ public sealed class SaleService : ISaleService
         Domain.Inventory.Product product, decimal quantity,
         CancellationToken ct)
     {
+        if (RefuseScheduled(product) is Error scheduled)
+            return Result<SaleLine>.Fail(scheduled.Code, scheduled.Message);
+
         var price = product.ResolvePrice(sale.PatientId);
+
+        if (!product.IsBatchTracked
+            && RefuseShortStock(sale, product, quantity, exceptLine: null)
+                is Error shortStock)
+            return Result<SaleLine>.Fail(shortStock.Code, shortStock.Message);
 
         if (!product.IsBatchTracked)
             return Result<SaleLine>.Ok(sale.AddLine(SaleLine.Create(
@@ -251,6 +259,84 @@ public sealed class SaleService : ISaleService
                 batchNumber: batch.BatchNumber));
 
         return Result<SaleLine>.Ok(last!);
+    }
+
+    /// <summary>
+    /// Refuses a medicine that is dispensed rather than sold.
+    /// </summary>
+    /// <remarks>
+    /// Schedule 3 and above go to the patient against a script, through
+    /// dispensing, whoever is standing at the till - and a controlled
+    /// medicine only on a pharmacist's release and into the register.
+    /// Who may see dispensary stock was the only thing checked here, so
+    /// an administrator or pharmacist could scan codeine onto a walk-in
+    /// cash sale and it went out over the counter with no script, no
+    /// patient and no register entry (ADM-DEF-11).
+    /// </remarks>
+    private static Error? RefuseScheduled(Domain.Inventory.Product product) =>
+        product.RequiresPharmacist
+            ? new Error("POS-022",
+                $"{product.Description} is a schedule {product.Schedule} "
+                + "medicine. It is dispensed against a script at the "
+                + "dispensary, not sold over the counter.")
+            : null;
+
+    /// <summary>
+    /// Refuses more of an untracked product than is on the shelf.
+    /// </summary>
+    /// <remarks>
+    /// Batch-tracked lines have always been held to their batches; the
+    /// rest were not checked at all, so a product with nothing on hand
+    /// sold anyway and went negative (ADM-DEF-12). What the rest of this
+    /// sale already holds counts against the shelf, so two lines of the
+    /// same item cannot between them take more than there is.
+    /// </remarks>
+    private static Error? RefuseShortStock(Sale sale,
+        Domain.Inventory.Product product, decimal quantity,
+        SaleLine? exceptLine)
+    {
+        var onSale = sale.Lines
+            .Where(l => !l.IsVoided && l.ProductId == product.Id
+                        && l != exceptLine)
+            .Sum(l => l.Quantity);
+
+        var available = product.QuantityOnHand - onSale;
+
+        return available >= quantity
+            ? null
+            : new Error("POS-023",
+                $"{product.Description}: only {Math.Max(available, 0m):0.###} "
+                + $"in stock, so {quantity:0.###} cannot be sold.");
+    }
+
+    /// <summary>
+    /// The same two rules again at payment, for a sale that sat on hold
+    /// or came across from a quotation while the shelf changed.
+    /// </summary>
+    private async Task<Error?> RefuseUnsellableAsync(Sale sale,
+        CancellationToken ct)
+    {
+        // A collection carries the dispensed items, whose stock moved
+        // when the script was issued.
+        if (sale.IsCollection) return null;
+
+        foreach (var group in sale.Lines.Where(l => !l.IsVoided)
+                     .GroupBy(l => l.ProductId))
+        {
+            var product = await _products.GetAsync(group.Key, ct);
+            if (product is null) continue;
+
+            if (RefuseScheduled(product) is Error scheduled) return scheduled;
+
+            if (!product.IsBatchTracked
+                && product.QuantityOnHand < group.Sum(l => l.Quantity))
+                return new Error("POS-023",
+                    $"{product.Description}: only "
+                    + $"{Math.Max(product.QuantityOnHand, 0m):0.###} in stock, "
+                    + $"so {group.Sum(l => l.Quantity):0.###} cannot be sold.");
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -352,6 +438,13 @@ public sealed class SaleService : ISaleService
         }
         else
         {
+            var product = await _products.GetAsync(line.ProductId, ct);
+
+            if (product is not null && !sale.IsCollection
+                && RefuseShortStock(sale, product, quantity, exceptLine: line)
+                    is Error shortStock)
+                return Result.Fail(shortStock.Code, shortStock.Message);
+
             line.ChangeQuantity(quantity);
         }
 
@@ -458,6 +551,21 @@ public sealed class SaleService : ISaleService
         if (sale.Status != SaleStatus.Open)
             return Result<FinaliseDto>.Fail("POS-015",
                 "This sale is not open. Recall it before taking payment.");
+
+        // A medical aid pays its share through the claim raised when the
+        // script is issued, and nowhere else. Taken at the till, it
+        // finalised a walk-in sale that no scheme would ever be billed
+        // for, and parked the amount in debtors with nobody owing it
+        // (ADM-DEF-10).
+        if (payments.Any(p => string.Equals(p.TenderType,
+                nameof(TenderType.MedicalAid), StringComparison.OrdinalIgnoreCase)))
+            return Result<FinaliseDto>.Fail("POS-021",
+                "A medical aid pays its share through the claim raised when "
+                + "the script is issued. Take only the patient's portion at "
+                + "the till.");
+
+        if (await RefuseUnsellableAsync(sale, ct) is Error unsellable)
+            return Result<FinaliseDto>.Fail(unsellable.Code, unsellable.Message);
 
         // Change from cash where more was tendered than the sale comes
         // to (DEF-0019); the payments keep what stayed in the drawer.
@@ -626,6 +734,13 @@ public sealed class SaleService : ISaleService
         if (quotation is null)
             return Result<QuotationConversionDto>.Fail("QUO-022",
                 $"No quotation {quotationNumber}.");
+
+        // The dispensary's quote counts tablets, not packs, and is taken
+        // up as a script: rung up here, 21 tablets would sell as 21 packs.
+        if (quotation.Kind == QuotationKind.Dispensary)
+            return Result<QuotationConversionDto>.Fail("QUO-028",
+                $"Quote {quotation.QuotationNumber} is a dispensary quote. "
+                + "It is taken up as a script at the dispensary.");
 
         if (quotation.Status == QuotationStatus.Accepted
             || quotation.SaleId is not null)

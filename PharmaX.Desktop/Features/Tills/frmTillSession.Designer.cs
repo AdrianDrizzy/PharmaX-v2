@@ -11,6 +11,7 @@ partial class frmTillSession
     private Panel pnlButtons = null!;
     private Panel pnlCount = null!;
     private Panel pnlCountFooter = null!;
+    private Panel pnlStatement = null!;
     private Panel pnlReads = null!;
     private Panel pnlExpected = null!;
     private Panel pnlVariance = null!;
@@ -21,6 +22,8 @@ partial class frmTillSession
     private Label lblCountHint = null!;
     private Label lblDeclared = null!;
     private Label lblDeclaredValue = null!;
+    private Label lblEcoCash = null!;
+    private MoneyTextBox txtEcoCash = null!;
     private Label lblExpectedCaption = null!;
     private Label lblVarianceCaption = null!;
 
@@ -47,6 +50,7 @@ partial class frmTillSession
         pnlButtons = PhxTheme.FooterBand(56);
         pnlCount = new Panel();
         pnlCountFooter = new Panel();
+        pnlStatement = new Panel();
         pnlReads = new Panel();
         pnlExpected = new Panel();
         pnlVariance = new Panel();
@@ -56,6 +60,8 @@ partial class frmTillSession
         lblCountHint = new Label();
         lblDeclared = new Label();
         lblDeclaredValue = new Label();
+        lblEcoCash = new Label();
+        txtEcoCash = new MoneyTextBox();
         lblExpectedCaption = new Label();
         lblVarianceCaption = new Label();
         grdDenominations = new DataGridView();
@@ -159,9 +165,35 @@ partial class frmTillSession
         pnlCountFooter.Height = 52;
         pnlCountFooter.Name = "pnlCountFooter";
 
+        // EcoCash is not in the drawer, so it cannot be counted with the
+        // notes. It is declared from the merchant statement on the phone
+        // - what EcoCash itself says it received for this till - which is
+        // the only figure that catches a payment the customer never
+        // actually sent.
+        lblEcoCash.AutoSize = false;
+        lblEcoCash.Location = new Point(8, 10);
+        lblEcoCash.Name = "lblEcoCash";
+        lblEcoCash.Size = new Size(220, 24);
+        lblEcoCash.Text = "&EcoCash per statement";
+        lblEcoCash.TextAlign = ContentAlignment.MiddleLeft;
+
+        txtEcoCash.AccessibleName = "EcoCash per statement";
+        txtEcoCash.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        txtEcoCash.Location = new Point(240, 8);
+        txtEcoCash.Name = "txtEcoCash";
+        txtEcoCash.PlaceholderText = "From the merchant statement";
+        txtEcoCash.Size = new Size(200, 26);
+
+        pnlStatement.Controls.Add(txtEcoCash);
+        pnlStatement.Controls.Add(lblEcoCash);
+        pnlStatement.Dock = DockStyle.Top;
+        pnlStatement.Height = 44;
+        pnlStatement.Name = "pnlStatement";
+
         // Added bottom-up: docking is resolved from the highest child
         // index down, so the caption added last is the one that ends up
         // at the top.
+        pnlCount.Controls.Add(pnlStatement);
         pnlCount.Controls.Add(pnlCountFooter);
         pnlCount.Controls.Add(grdDenominations);
         pnlCount.Controls.Add(lblCountHint);

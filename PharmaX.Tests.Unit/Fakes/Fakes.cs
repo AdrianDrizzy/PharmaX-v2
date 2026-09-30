@@ -57,6 +57,9 @@ public sealed class FakeUnitOfWork : IUnitOfWork
         return Task.FromResult(0);
     }
 
+    /// Nothing is cached: the tests' objects are the only copy there is.
+    public void Forget() { }
+
     public Task<IAsyncDisposable> BeginTransactionAsync(
         CancellationToken ct = default)
     {
@@ -370,6 +373,15 @@ public sealed class InMemoryBatchRepository : IBatchRepository
 /// </summary>
 public sealed class RecordingStockService : IStockService
 {
+    public List<PharmaX.Domain.Dispensing.Dispensing> Reversed { get; } = new();
+
+    public Task ApplyDispensingReversalAsync(
+        PharmaX.Domain.Dispensing.Dispensing dispensing, CancellationToken ct = default)
+    {
+        Reversed.Add(dispensing);
+        return Task.CompletedTask;
+    }
+
     public List<(Guid SaleId, int Lines)> Issues { get; } = new();
 
     public Task ApplyIssueAsync(Sale sale, CancellationToken ct = default)
@@ -795,6 +807,17 @@ public sealed class InMemoryAccountRepository : IAccountRepository
         Task.FromResult(_movements
             .Where(t => t.AccountId == accountId)
             .Sum(t => t.Effect.Amount));
+
+    public Task<IReadOnlyList<AccountTransaction>> PaymentsForSessionAsync(
+        Guid tillSessionId, CancellationToken ct = default)
+    {
+        IReadOnlyList<AccountTransaction> found = _movements
+            .Where(t => t.TillSessionId == tillSessionId
+                        && t.Kind == AccountEntryKind.Payment)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
 }
 
 public sealed class InMemoryQuotationRepository
@@ -812,8 +835,10 @@ public sealed class InMemoryQuotationRepository
         Task.FromResult(_quotations.Find(q => q.Id == id));
 
     public Task<IReadOnlyList<Quotation>> RecentAsync(int take = 100,
-        CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<Quotation>>(_quotations.Take(take).ToList());
+        QuotationKind? kind = null, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Quotation>>(_quotations
+            .Where(q => kind is null || q.Kind == kind)
+            .Take(take).ToList());
 
     public Task<Quotation?> ByNumberAsync(string quotationNumber,
         CancellationToken ct = default) =>

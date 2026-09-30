@@ -1,0 +1,4 @@
+-- select s.DocumentNumber, s.Status, s.ChangeGiven, sp.Tender, sp.Amount, sp.Reference from sale s join salepayment sp on s.Id=sp.SaleId where s.DocumentNumber='S-001-000005';
+DocumentNumber	Status	ChangeGiven	Tender	Amount	Reference
+S-001-000005	Finalised	6.19	Card	50.00	APP-4471
+S-001-000005	Finalised	6.19	Cash	53.81	NULL

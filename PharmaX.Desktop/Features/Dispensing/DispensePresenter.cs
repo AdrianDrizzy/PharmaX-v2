@@ -1,3 +1,4 @@
+using PharmaX.Application.Claims;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
 using PharmaX.Application.Sales;
@@ -24,29 +25,66 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
     private readonly IScriptService _scripts;
     private readonly Application.Patients.IPatientService _patients;
     private readonly ILabelPrinter _labels;
+    private readonly IClaimFormService _claimForms;
+    private readonly IClaimFormPrinter _claimFormPrinter;
 
     private Guid _dispensingId;
 
     public DispensePresenter(IDispensingService dispensing,
                              IScriptService scripts,
                              Application.Patients.IPatientService patients,
-                             ILabelPrinter labels)
+                             ILabelPrinter labels,
+                             IClaimFormService claimForms,
+                             IClaimFormPrinter claimFormPrinter)
     {
         _dispensing = dispensing;
         _scripts = scripts;
         _patients = patients;
         _labels = labels;
+        _claimForms = claimForms;
+        _claimFormPrinter = claimFormPrinter;
     }
 
     protected override void Subscribe()
     {
         View.ScriptRequested += (_, _) => Enqueue(BeginAsync);
+        View.QuoteRequested += (_, _) => Enqueue(QuoteAsync);
         View.ProductScanned += (_, code) => Enqueue(() => AddItemAsync(code));
         View.RemoveItemRequested += (_, _) => Enqueue(RemoveItemAsync);
         View.IssueRequested += (_, _) => Enqueue(IssueAsync);
         View.LabelReprintRequested += (_, _) => View.ShowLabelScreen();
-        View.CloseRequested += (_, _) => View.CloseView(true);
+        View.CloseRequested += (_, _) => Enqueue(CloseAsync);
     }
+
+    /// <summary>
+    /// A dispensing begun on this screen and not issued from it.
+    /// </summary>
+    public bool HasUnissuedDispensing => _dispensingId != Guid.Empty;
+
+    /// <summary>
+    /// Closes the screen, setting aside a dispensing that was begun and
+    /// never issued rather than leaving it in progress for ever
+    /// (ADM-OBS-14).
+    /// </summary>
+    private Task CloseAsync() => GuardAsync(async () =>
+    {
+        await AbandonCurrentAsync();
+        View.CloseView(true);
+    });
+
+    private async Task AbandonCurrentAsync()
+    {
+        if (_dispensingId == Guid.Empty) return;
+
+        await _dispensing.AbandonAsync(_dispensingId);
+        _dispensingId = Guid.Empty;
+    }
+
+    /// A script captured from a quote on the way in is begun at once.
+    public override Task InitialiseAsync() =>
+        View.StartWith is var (patientId, scriptId)
+            ? GuardAsync(() => BeginOnAsync(patientId, scriptId))
+            : Task.CompletedTask;
 
     private Task BeginAsync() => GuardAsync(async () =>
     {
@@ -56,7 +94,26 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         var scriptId = View.PromptScriptSearch(patientId.Value);
         if (scriptId is null) return;
 
-        var result = await _dispensing.BeginAsync(scriptId.Value);
+        await BeginOnAsync(patientId.Value, scriptId.Value);
+    });
+
+    /// <summary>
+    /// Prices the medicine for a customer who has not decided, and
+    /// dispenses the script it becomes if they go ahead.
+    /// </summary>
+    private Task QuoteAsync() => GuardAsync(async () =>
+    {
+        if (View.PromptQuote() is var (patientId, scriptId))
+            await BeginOnAsync(patientId, scriptId);
+    });
+
+    private async Task BeginOnAsync(Guid patientId, Guid scriptId)
+    {
+        // Another script loaded over one not issued: the first is set
+        // aside, not left behind.
+        await AbandonCurrentAsync();
+
+        var result = await _dispensing.BeginAsync(scriptId);
 
         if (result.IsFailure)
         {
@@ -69,11 +126,11 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         // The header comes from the patient and the script rather than
         // from the dispensing, because it is what the pharmacist checks
         // before the first item goes on.
-        var patient = await _patients.GetAsync(patientId.Value);
+        var patient = await _patients.GetAsync(patientId);
         if (patient.IsSuccess)
             View.ShowPatient(ToSummary(patient.Value));
 
-        var script = await _scripts.GetAsync(scriptId.Value);
+        var script = await _scripts.GetAsync(scriptId);
         if (script.IsSuccess) View.ShowScript(script.Value.Script);
 
         // What the prescriber wrote goes straight on, quantity and
@@ -93,7 +150,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         if (added.Value.Problems.Count > 0)
             View.ShowError("Not everything on the script could go on:\n\n"
                            + string.Join("\n", added.Value.Problems));
-    });
+    }
 
     private Task AddItemAsync(string code) => GuardAsync(async () =>
     {
@@ -216,10 +273,30 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         foreach (var label in result.Value.Labels)
             printed.Add(await _labels.PrintAsync(label));
 
+        // The whole script on one more label, after the item labels.
+        if (result.Value.Trailer is { } trailer)
+            printed.Add(await _labels.PrintTrailerAsync(trailer));
+
+        // Issued, so there is nothing to set aside on the way out.
+        var issued = _dispensingId;
+        _dispensingId = Guid.Empty;
+
+        // The member signs the claim form at the counter, so it is
+        // offered while they are still standing there. Asked rather than
+        // printed every time: some schemes take the claim electronically
+        // and want no paper at all.
+        var claimForm = "";
+
+        if (result.Value.ClaimNumber is string claimNumber
+            && View.Confirm($"Claim {claimNumber} has been raised on the "
+                            + "medical aid. Print the claim form for the "
+                            + "member to sign?"))
+            claimForm = "\n\n" + await PrintClaimFormAsync(issued);
+
         View.ShowInfo($"Issued. Script {result.Value.ScriptNumber}. "
                       + $"Co-payment {result.Value.CoPayment:N2} "
                       + "has been added to the collection queue.\n\n"
-                      + DescribeLabels(printed));
+                      + DescribeLabels(printed) + claimForm);
 
         View.CloseView(true);
     });
@@ -285,6 +362,24 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Prints the claim form for a dispensing and says what happened.
+    /// </summary>
+    private async Task<string> PrintClaimFormAsync(Guid dispensingId)
+    {
+        var form = await _claimForms.ForDispensingAsync(dispensingId);
+
+        if (form.IsFailure) return form.Error.Message;
+
+        var printed = await _claimFormPrinter.PrintAsync(form.Value);
+        var what = $"The claim form for {form.Value.ClaimNumber}";
+
+        return printed.Printed
+            ? printed.Describe(what)
+            : printed.Describe(what)
+              + " Print it from Dispensary > Labels once the printer is ready.";
     }
 
     /// <summary>

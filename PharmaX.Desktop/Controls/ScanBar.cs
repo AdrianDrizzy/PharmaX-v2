@@ -12,6 +12,8 @@ public partial class ScanBar : UserControl
 
     public event EventHandler<string>? CodeEntered;
 
+    private SearchSuggestions? _suggestions;
+
     public ScanBar()
     {
         InitializeComponent();
@@ -33,6 +35,42 @@ public partial class ScanBar : UserControl
     }
 
     public void TakeFocus() => txtScan.Focus();
+
+    /// <summary>
+    /// Offers matching products under the box while a name is being
+    /// typed, so an item can be rung up from its first few letters.
+    /// </summary>
+    /// <remarks>
+    /// A name no longer goes off on its own after a pause: that sent the
+    /// first half of it as a code and cleared the box under the typing.
+    /// It waits for Enter or a pick from the list. Digits alone are still
+    /// flushed as before, so a scanner - or a code keyed in without Enter
+    /// - behaves exactly as it always did.
+    /// </remarks>
+    public void SuggestFrom(Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        _suggestions?.Dispose();
+        _suggestions = new SearchSuggestions(txtScan, source)
+        {
+            Wanted = Suggest.IsName
+        };
+
+        _suggestions.Chosen += (_, chosen) =>
+        {
+            _idle.Stop();
+            _buffer.Clear();
+            txtScan.Clear();
+
+            if (chosen.Value is string code) CodeEntered?.Invoke(this, code);
+        };
+    }
+
+    /// What the suggestions under the box are offering, for a test.
+    internal IReadOnlyList<Suggestion> Suggestions =>
+        _suggestions?.Showing ?? Array.Empty<Suggestion>();
 
     /// The prompt shown to the left of the input, so the same control
     /// reads correctly on the till and on the dispensing screen.
@@ -66,14 +104,26 @@ public partial class ScanBar : UserControl
 
         _buffer.Append(e.KeyChar);
         _idle.Stop();
+
+        // A name being typed waits for Enter or a suggestion; see
+        // SuggestFrom.
+        if (_suggestions is not null && Suggest.IsName(txtScan.Text + e.KeyChar))
+            return;
+
         _idle.Start();
     }
 
     private void Flush()
     {
         _idle.Stop();
+        _suggestions?.Hide();
 
-        var code = _buffer.ToString().Trim();
+        // What is in the box, which is what the operator sees: a name
+        // typed slowly may have been corrected with backspace, which the
+        // keystroke buffer never hears about.
+        var code = (_suggestions is null ? _buffer.ToString() : txtScan.Text)
+            .Trim();
+
         _buffer.Clear();
         txtScan.Clear();
 
@@ -84,6 +134,7 @@ public partial class ScanBar : UserControl
     {
         if (disposing)
         {
+            _suggestions?.Dispose();
             _idle.Dispose();
             components?.Dispose();
         }

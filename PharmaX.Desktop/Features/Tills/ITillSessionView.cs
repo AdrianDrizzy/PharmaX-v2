@@ -10,8 +10,12 @@ public interface ITillSessionView : Mvp.IView
     void ShowDenominationGrid(IReadOnlyList<DenominationDto> denominations);
 
     decimal? PromptFloat();
-    string? PromptVarianceReason(decimal variance);
+    string? PromptVarianceReason(string tender, decimal variance);
     IReadOnlyDictionary<string, int> CountedDenominations { get; }
+
+    /// What the EcoCash merchant statement shows was received this
+    /// session, or null where nothing was entered.
+    decimal? EcoCashStatement { get; }
 
     event EventHandler? OpenRequested;
     event EventHandler? XReadRequested;      // Ctrl+X

@@ -18,7 +18,9 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
         btnAdd.Click += (_, _) => AddRequested?.Invoke(this, EventArgs.Empty);
         btnEdit.Click += (_, _) => EditRequested?.Invoke(this, EventArgs.Empty);
         btnDeactivate.Click += (_, _) =>
-            DeactivateRequested?.Invoke(this, EventArgs.Empty);
+            ToggleActiveRequested?.Invoke(this, EventArgs.Empty);
+
+        grdSuppliers.SelectionChanged += (_, _) => ShowSelectionState();
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
@@ -60,6 +62,13 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
     public Guid? SelectedId => grdSuppliers.CurrentRow?.DataBoundItem
         is SupplierListItemDto dto ? dto.Id : null;
 
+    public bool SelectedIsActive => grdSuppliers.CurrentRow?.DataBoundItem
+        is not SupplierListItemDto { IsActive: false };
+
+    /// The one button says what it will do to the selected supplier.
+    private void ShowSelectionState() =>
+        btnDeactivate.Text = SelectedIsActive ? "Deac&tivate" : "Re&activate";
+
     public bool IncludeInactive => chkIncludeInactive.Checked;
 
     public void ShowSuppliers(IReadOnlyList<SupplierListItemDto> suppliers)
@@ -75,11 +84,12 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
         }
 
         lblCount.Text = $"{suppliers.Count} supplier(s)";
+        ShowSelectionState();
     }
 
     public event EventHandler? RefreshRequested;
     public event EventHandler? AddRequested;
     public event EventHandler? EditRequested;
-    public event EventHandler? DeactivateRequested;
+    public event EventHandler? ToggleActiveRequested;
     public event EventHandler? ChooseRequested;
 }
