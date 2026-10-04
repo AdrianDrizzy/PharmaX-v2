@@ -6,6 +6,7 @@ using PharmaX.Application;
 using PharmaX.Application.Abstractions;
 using PharmaX.Domain.Dispensing;
 using PharmaX.Domain.Inventory;
+using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Sales;
 using PharmaX.Domain.Tills;
 using PharmaX.Persistence;
@@ -365,6 +366,156 @@ public class DemoDataSeederTests : IClassFixture<DemoSeedFixture>
             (await db.Patients.CountAsync()).Should().Be(patients);
             (await db.TillSessions.CountAsync()).Should().Be(sessions);
         }
+    }
+
+    /// <summary>
+    /// Everything in the catalogue can be sold, dispensed and counted
+    /// without being received first.
+    /// </summary>
+    /// <remarks>
+    /// The price list brings in seven hundred products and no stock,
+    /// which is right for a site and useless for a test: every second
+    /// thing scanned is refused for having none on the shelf. Ten is a
+    /// floor, not a level - the lines the demonstration deliberately
+    /// leaves low or empty stay where they are, and so does a shelf a
+    /// tester has sold down.
+    /// </remarks>
+    [Fact]
+    public async Task Everything_in_the_catalogue_has_ten_on_hand_to_test_with()
+    {
+        Guid plain, batched;
+
+        // Two products as the price list leaves them: priced, and with
+        // nothing on the shelf.
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            var counter = Product.Create("TESTPLAIN",
+                "Price list tablets 30s", Money.Of(10m));
+
+            var tracked = Product.Create("TESTBATCH",
+                "Price list syrup 100ml", Money.Of(20m),
+                isBatchTracked: true);
+
+            db.Products.AddRange(counter, tracked);
+            await db.SaveChangesAsync();
+
+            plain = counter.Id;
+            batched = tracked.Id;
+        }
+
+        using (var scope = _fixture.NewScope())
+            await PharmaXFixture.Resolve<DemoDataSeeder>(scope).SeedAsync();
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            (await db.Products.AsNoTracking()
+                .SingleAsync(p => p.Id == plain)).QuantityOnHand
+                .Should().Be(10m);
+
+            (await db.Products.AsNoTracking()
+                .SingleAsync(p => p.Id == batched)).QuantityOnHand
+                .Should().Be(10m);
+
+            // A batch-tracked product with no batch cannot leave the
+            // shelf however much its own on-hand claims to hold.
+            (await db.Batches.AsNoTracking()
+                .Where(b => b.ProductId == batched)
+                .ToListAsync())
+                .Should().ContainSingle()
+                .Which.QuantityOnHand.Should().Be(10m);
+
+            // And every one of those units is explained on the ledger.
+            (await db.StockMovements.CountAsync(m => m.ProductId == plain))
+                .Should().Be(1);
+
+            // The line the alert centre reports as out of stock is still
+            // out of stock.
+            (await db.Products.AsNoTracking()
+                .SingleAsync(p => p.Code == "SURGM1")).QuantityOnHand
+                .Should().Be(0m);
+        }
+
+        // Sold down afterwards, it stays where the tester left it rather
+        // than being refilled behind them at the next start-up.
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var product = await db.Products.SingleAsync(p => p.Id == plain);
+
+            product.SetQuantityOnHand(2m);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _fixture.NewScope())
+            await PharmaXFixture.Resolve<DemoDataSeeder>(scope).SeedAsync();
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            (await db.Products.AsNoTracking()
+                .SingleAsync(p => p.Id == plain)).QuantityOnHand
+                .Should().Be(2m);
+        }
+    }
+
+    /// <remarks>
+    /// A test database stocked before dispensary lines were batch-tracked
+    /// has their ten loose on the shelf, and every label printed from them
+    /// carried no batch or expiry (OCT-DEF-02). The next start puts that
+    /// stock on a test batch and tracks the line; counter lines are left
+    /// as they are.
+    /// </remarks>
+    [Fact]
+    public async Task Test_stock_on_a_dispensary_line_is_put_on_a_batch()
+    {
+        Guid dispensary, counter;
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            // As an older price list left a prescription line: schedule 3,
+            // untracked, nothing on the shelf.
+            var losartan = Product.Create("TESTDISP",
+                "Price list losartan 50mg", Money.Of(12m), schedule: 3);
+
+            var lozenges = Product.Create("TESTOTC",
+                "Price list lozenges 24s", Money.Of(3m));
+
+            db.Products.AddRange(losartan, lozenges);
+            await db.SaveChangesAsync();
+
+            dispensary = losartan.Id;
+            counter = lozenges.Id;
+        }
+
+        using (var scope = _fixture.NewScope())
+            await PharmaXFixture.Resolve<DemoDataSeeder>(scope).SeedAsync();
+
+        using var check = _fixture.NewScope();
+        var after = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        var tracked = await after.Products.AsNoTracking()
+            .SingleAsync(p => p.Id == dispensary);
+
+        tracked.IsBatchTracked.Should().BeTrue();
+        tracked.QuantityOnHand.Should().Be(10m, "putting it on a batch moves nothing");
+
+        var batch = (await after.Batches.AsNoTracking()
+                .Where(b => b.ProductId == dispensary).ToListAsync())
+            .Should().ContainSingle().Subject;
+
+        batch.BatchNumber.Should().Be("TESTDISP-TEST");
+        batch.QuantityOnHand.Should().Be(10m);
+        batch.ExpiryDate.Should().BeAfter(DateOnly.FromDateTime(DateTime.Today).AddYears(1));
+
+        (await after.Products.AsNoTracking().SingleAsync(p => p.Id == counter))
+            .IsBatchTracked.Should().BeFalse("counter stock stays loose");
     }
 
     /// <remarks>

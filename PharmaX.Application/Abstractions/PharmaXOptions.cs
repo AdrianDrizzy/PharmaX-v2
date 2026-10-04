@@ -43,6 +43,12 @@ public sealed class PharmacyOptions
     public string Address { get; init; } = "";
     public string VatNumber { get; init; } = "";
     public string LicenceNumber { get; init; } = "";
+
+    /// The number the receipt and the dispensing label are answered on.
+    public string Telephone { get; init; } = "";
+
+    /// The number the pharmacy takes messages on, where it has one.
+    public string WhatsApp { get; init; } = "";
 }
 
 public sealed class WorkstationOptions

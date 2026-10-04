@@ -1,0 +1,6 @@
+-- SELECT p.Code, p.IsBatchTracked, p.QuantityOnHand, COALESCE(SUM(b.QuantityOnHand),0) AS batches FROM product p LEFT JOIN batch b ON b.ProductId = p.Id WHERE p.IsBatchTracked = 1 GROUP BY p.Id, p.Code, p.IsBatchTracked, p.QuantityOnHand;
+Code	IsBatchTracked	QuantityOnHand	batches
+INSUL1	1	12.000	12.000
+AMOX50	1	47.620	47.620
+METF85	1	23.866	23.866
+COUGH1	1	56.000	56.000

@@ -1,0 +1,4 @@
+-- SELECT (s.DispensingId IS NOT NULL) AS collection, COUNT(*) AS line_count, SUM(l.Quantity) AS units, ROUND(SUM(ROUND(l.UnitPrice * l.Quantity, 2) - l.DiscountAmount), 2) AS sales, ROUND(SUM(CASE WHEN s.DispensingId IS NULL THEN p.CostPrice * l.Quantity ELSE 0 END), 2) AS cost FROM sale s JOIN saleline l ON l.SaleId = s.Id JOIN product p ON p.Id = l.ProductId WHERE s.Status = 'Finalised' AND l.IsVoided = 0 AND s.OccurredAtUtc >= '2026-09-30 22:00:00' GROUP BY (s.DispensingId IS NOT NULL);
+collection	line_count	units	sales	cost
+0	8	13.000	442.54	263.48
+1	4	4.000	219.75	0.00

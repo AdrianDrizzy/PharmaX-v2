@@ -112,6 +112,22 @@ public sealed class SalesLinesReport : IReportDefinition
                                           .Distinct().ToList(), ct)
                 .ConfigureAwait(false);
 
+        // A refund of a collected script gives back a co-payment, which
+        // no more carries a cost than the collection did.
+        var refundedIds = returns.Select(x => x.OriginalSaleId)
+                                 .Distinct().ToList();
+
+        var refundedCollections = refundedIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await _db.Sales
+                .AsNoTracking()
+                .Where(s => refundedIds.Contains(s.Id)
+                            && s.DispensingId != null)
+                .Select(s => s.Id)
+                .ToListAsync(ct)
+                .ConfigureAwait(false))
+              .ToHashSet();
+
         // A script collection names neither patient nor account on the
         // sale: both belong to the dispensing it is collecting for.
         var collected = await CollectedAsync(sales
@@ -195,7 +211,9 @@ public sealed class SalesLinesReport : IReportDefinition
 
                     return new Line(CodeOf(l.ProductId), l.Description,
                         -l.Quantity, l.UnitPrice.Amount, 0m, -vat, -total,
-                        restocked ? -UnitCost(l.ProductId) * l.Quantity : 0m);
+                        refundedCollections.Contains(refund.OriginalSaleId)
+                            ? null
+                            : restocked ? -UnitCost(l.ProductId) * l.Quantity : 0m);
                 })
                 .ToList();
 

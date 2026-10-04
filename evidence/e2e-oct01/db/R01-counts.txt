@@ -1,0 +1,3 @@
+-- SELECT SUM(Schedule >= 3) AS dispensary, SUM(Schedule >= 3 AND IsBatchTracked = 1) AS dispensary_tracked, SUM(Schedule < 3 AND IsBatchTracked = 1) AS counter_tracked, SUM(UnitsPerPack IS NOT NULL) AS with_units FROM product WHERE Code REGEXP '^[0-9]+$';
+dispensary	dispensary_tracked	counter_tracked	with_units
+313	313	0	373

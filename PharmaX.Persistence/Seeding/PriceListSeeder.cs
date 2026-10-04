@@ -21,6 +21,10 @@ namespace PharmaX.Persistence.Seeding;
 /// Stock is deliberately untouched. A price list says what things cost,
 /// not what is on the shelf, and a seeder that reset quantities every
 /// morning would wipe out the counting the staff had just done.
+///
+/// What the list says about a pack - how many units it holds - is
+/// written where a product has nothing of its own yet, and never over
+/// something the pharmacy set on the product form.
 /// </remarks>
 public sealed class PriceListSeeder
 {
@@ -36,8 +40,17 @@ public sealed class PriceListSeeder
         _log = log;
     }
 
+    /// <param name="CostsToCheck">
+    /// Products whose cost does not look like the cost of the pack they
+    /// are priced as (see Product.CostNeedsChecking).
+    /// </param>
+    /// <param name="StockWithoutBatch">
+    /// Dispensary products holding stock on no batch, which stay untracked
+    /// until somebody puts that stock on a batch.
+    /// </param>
     public sealed record Outcome(int Added, int Updated, int Unchanged,
-                                 int Skipped)
+                                 int Skipped, int CostsToCheck = 0,
+                                 int StockWithoutBatch = 0)
     {
         public int Total => Added + Updated + Unchanged + Skipped;
     }
@@ -59,7 +72,23 @@ public sealed class PriceListSeeder
             .ToDictionaryAsync(p => p.Code, StringComparer.Ordinal, ct)
             .ConfigureAwait(false);
 
+        // Products that have never moved and never had a batch are still
+        // as this list left them, so how they are tracked is still the
+        // list's to say. Anything that has traded is the pharmacy's.
+        var traded = (await _db.StockMovements
+                .Select(m => m.ProductId)
+                .Distinct()
+                .ToListAsync(ct)
+                .ConfigureAwait(false))
+            .Concat(await _db.Batches
+                .Select(b => b.ProductId)
+                .Distinct()
+                .ToListAsync(ct)
+                .ConfigureAwait(false))
+            .ToHashSet();
+
         int added = 0, updated = 0, unchanged = 0, skipped = 0;
+        var unbatched = 0;
 
         foreach (var row in rows)
         {
@@ -74,7 +103,15 @@ public sealed class PriceListSeeder
 
             if (existing.TryGetValue(row.Code, out var product))
             {
-                if (Update(product, row)) updated++; else unchanged++;
+                if (Update(product, row, traded.Contains(product.Id)))
+                    updated++;
+                else
+                    unchanged++;
+
+                if (row.RequiresPharmacist && !product.IsBatchTracked
+                    && product.QuantityOnHand > 0m)
+                    unbatched++;
+
                 continue;
             }
 
@@ -84,7 +121,10 @@ public sealed class PriceListSeeder
 
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
-        var outcome = new Outcome(added, updated, unchanged, skipped);
+        var toCheck = await CostsToCheckAsync(codes, ct).ConfigureAwait(false);
+
+        var outcome = new Outcome(added, updated, unchanged, skipped,
+                                  toCheck, unbatched);
 
         _log.LogInformation(
             "Price list: {Added} added, {Updated} repriced, {Unchanged} "
@@ -92,8 +132,33 @@ public sealed class PriceListSeeder
             outcome.Added, outcome.Updated, outcome.Unchanged,
             outcome.Skipped, outcome.Total);
 
+        if (outcome.CostsToCheck > 0)
+            _log.LogWarning(
+                "Price list: {Count} product(s) have a cost of nothing, under "
+                + "a tenth of the price, or at or above it - most likely the "
+                + "cost of one unit against the price of a pack. Reports > "
+                + "Inventory > Cost Prices to Check lists them.",
+                outcome.CostsToCheck);
+
+        if (outcome.StockWithoutBatch > 0)
+            _log.LogWarning(
+                "Price list: {Count} dispensary product(s) hold stock on no "
+                + "batch, so their labels carry no batch or expiry. Put the "
+                + "stock on a batch from the product list to track it.",
+                outcome.StockWithoutBatch);
+
         return outcome;
     }
+
+    /// The list's products whose cost needs a second look, counted.
+    private async Task<int> CostsToCheckAsync(IReadOnlyList<string> codes,
+                                              CancellationToken ct) =>
+        (await _db.Products
+            .AsNoTracking()
+            .Where(p => codes.Contains(p.Code))
+            .ToListAsync(ct)
+            .ConfigureAwait(false))
+        .Count(p => p.CostNeedsChecking);
 
     private static Product Create(PriceListRow row)
     {
@@ -109,16 +174,24 @@ public sealed class PriceListSeeder
             // and selling one is not. Adjustable per product afterwards.
             schedule: row.RequiresPharmacist ? 3 : 0,
 
-            // Not batch-tracked on the way in. A batch-tracked product
-            // with no batches cannot be sold at all, and this list
-            // brings in no stock, so switching it on here would leave
-            // the whole catalogue unsellable until someone received it.
-            isBatchTracked: false);
+            // Dispensary stock is batch-tracked: its label has to carry
+            // the batch and the expiry, FEFO has to choose what goes in
+            // the bag, and the alert centre has to see it running out of
+            // date. Untracked, none of that happened and the label said
+            // nothing of either (OCT-DEF-02). It is dispensed once it has
+            // been received against a batch, which is how prescription
+            // stock arrives. Counter stock stays untracked: the list
+            // brings no stock, and a tracked line with no batch could not
+            // be sold until somebody received it.
+            isBatchTracked: row.RequiresPharmacist);
 
         product.ChangeCostPrice(Money.Of(row.CostPrice));
 
         if (row.PackDescription.Length > 0)
             product.SetPackSize(row.PackDescription);
+
+        if (row.UnitsPerPack is decimal units)
+            product.SetUnitsPerPack(units);
 
         return product;
     }
@@ -128,9 +201,37 @@ public sealed class PriceListSeeder
     /// where something actually changed, so the log can distinguish a
     /// reprice from a no-op.
     /// </summary>
-    private static bool Update(Product product, PriceListRow row)
+    /// <param name="traded">
+    /// Whether the product has ever moved stock or held a batch, after
+    /// which how it is tracked is the pharmacy's decision, not the list's.
+    /// </param>
+    private static bool Update(Product product, PriceListRow row, bool traded)
     {
         var changed = false;
+
+        // How many tablets, capsules or millilitres the priced pack holds.
+        // The list has always said - "TAB 100" - and none of it reached
+        // the product, so a script for thirty tablets was read as thirty
+        // packs: refused against ten on the shelf, and charged as thirty
+        // had there been enough (OCT-DEF-01). Filled in where the product
+        // has none; a count set on the product form is left alone.
+        if (product.UnitsPerPack is null && row.UnitsPerPack is decimal units)
+        {
+            product.SetUnitsPerPack(units);
+            changed = true;
+        }
+
+        // Dispensary lines the list loaded untracked before it tracked
+        // them, and that nobody has traded since: tracked now, as a new
+        // one would be. Stock already on the shelf with no batch is left
+        // as it is - a batch number and expiry cannot be made up - and
+        // counted for the log.
+        if (row.RequiresPharmacist && !product.IsBatchTracked && !traded
+            && product.QuantityOnHand == 0m)
+        {
+            product.SetBatchTracked(true);
+            changed = true;
+        }
 
         if (product.RetailPrice.Amount != row.SellingPrice)
         {
@@ -252,6 +353,17 @@ public sealed class PriceListSeeder
         /// "TAB 1000", or just the form where the pack is a single.
         public string PackDescription =>
             PackSize is "1" or "" ? Unit : $"{Unit} {PackSize}".Trim();
+
+        /// <summary>
+        /// The units the priced pack holds - 100 for "TAB 100" - or null
+        /// where the pack is a single, which is dispensed as itself.
+        /// </summary>
+        public decimal? UnitsPerPack =>
+            decimal.TryParse(PackSize, NumberStyles.Number,
+                             CultureInfo.InvariantCulture, out var units)
+            && units > 1m
+                ? units
+                : null;
 
         public bool RequiresPharmacist =>
             Department.Equals("DISPENSARY", StringComparison.OrdinalIgnoreCase);

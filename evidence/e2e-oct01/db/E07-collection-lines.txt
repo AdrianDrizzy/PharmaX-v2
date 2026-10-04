@@ -1,0 +1,6 @@
+-- SELECT s.DocumentNumber, l.Description, l.Quantity, p.CostPrice, ROUND(p.CostPrice * l.Quantity, 2) AS old_cost, ROUND(ROUND(l.UnitPrice * l.Quantity, 2) - l.DiscountAmount, 2) AS charged FROM sale s JOIN saleline l ON l.SaleId = s.Id JOIN product p ON p.Id = l.ProductId WHERE s.Status = 'Finalised' AND l.IsVoided = 0 AND s.DispensingId IS NOT NULL AND s.OccurredAtUtc >= '2026-09-30 22:00:00';
+DocumentNumber	Description	Quantity	CostPrice	old_cost	charged
+S-001-000004	Metformin 850mg tablets 60s x 4	1.000	95.95	95.95	26.50
+S-001-000004	Amoxicillin 500mg capsules 21s x 4	1.000	73.41	73.41	26.50
+S-001-000006	Metformin 850mg tablets 60s x 60	1.000	95.95	95.95	154.75
+S-001-000006	LOSARTAN VALOSAR (VARICHEM) 50MG	1.000	1.86	1.86	12.00

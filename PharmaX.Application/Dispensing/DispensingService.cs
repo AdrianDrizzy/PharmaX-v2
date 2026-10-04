@@ -691,17 +691,22 @@ public sealed class DispensingService : IDispensingService
         var patient = await _patients.GetAsync(dispensing.PatientId, ct);
         var pharmacist = await _users.GetAsync(responsible, ct);
 
-        var labels = dispensing.Lines.Select(l => new LabelDto(
-            PatientName: patient?.FullName ?? "",
-            ProductDescription: l.Description,
-            Quantity: l.Quantity,
-            Directions: l.Directions,
-            BatchNumber: l.BatchSummary,
-            Expiry: l.BatchExpiry,
-            PharmacistName: pharmacist?.DisplayName ?? "",
-            ScriptNumber: script.ScriptNumber,
-            DispensedOn: _clock.Today,
-            Cautions: Array.Empty<string>())).ToList();
+        var labels = dispensing.Lines.OrderBy(l => l.LineNo).Select(l =>
+            new LabelDto(
+                PatientName: patient?.FullName ?? "",
+                ProductDescription: l.Description,
+                Quantity: l.Quantity,
+                Directions: l.Directions,
+                BatchNumber: l.BatchSummary,
+                Expiry: l.BatchExpiry,
+                PharmacistName: pharmacist?.DisplayName ?? "",
+                ScriptNumber: script.ScriptNumber,
+                DispensedOn: _clock.Today,
+                Cautions: Array.Empty<string>(),
+                ItemNumber: l.LineNo,
+                ItemCount: dispensing.Lines.Count,
+                PrescriberName: script.PrescriberName,
+                PrescriberNumber: script.PrescriberNumber)).ToList();
 
         // The scheme's share of the bill, recognised now rather than
         // whenever somebody remembers to submit a batch. Inside the issue

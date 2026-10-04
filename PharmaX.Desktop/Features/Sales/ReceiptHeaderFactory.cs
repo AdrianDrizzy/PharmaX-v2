@@ -42,5 +42,7 @@ public sealed class ReceiptHeaderFactory
         PrintedAtLocal: _clock.UtcNow.ToLocalTime(),
         LogoPath: _branding.LogoPath,
         TillNumber: _options.Workstation.TillNumber,
-        CurrencyCode: Mvp.Format.Currency.Code);
+        CurrencyCode: Mvp.Format.Currency.Code,
+        Telephone: _pharmacy.Telephone,
+        WhatsApp: _pharmacy.WhatsApp);
 }

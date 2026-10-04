@@ -81,6 +81,8 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
         txtTradingName.Text = details.TradingName;
         txtRegisteredName.Text = details.RegisteredName;
         txtVatNumber.Text = details.VatNumber;
+        txtTelephone.Text = details.Telephone;
+        txtWhatsApp.Text = details.WhatsApp;
 
         // Stored with Environment.NewLine; a multi-line box wants CRLF.
         txtAddress.Text = details.Address.ReplaceLineEndings("\r\n");
@@ -90,7 +92,9 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
         TradingName: txtTradingName.Text,
         RegisteredName: txtRegisteredName.Text,
         VatNumber: txtVatNumber.Text,
-        Address: txtAddress.Text);
+        Address: txtAddress.Text,
+        Telephone: txtTelephone.Text,
+        WhatsApp: txtWhatsApp.Text);
 
     public event EventHandler? RefreshRequested;
     public event EventHandler? CloseRequested;

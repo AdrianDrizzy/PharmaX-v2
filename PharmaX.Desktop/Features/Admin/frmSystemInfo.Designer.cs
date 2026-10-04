@@ -21,6 +21,10 @@ partial class frmSystemInfo
     private TextBox txtRegisteredName = null!;
     private Label lblVatNumber = null!;
     private TextBox txtVatNumber = null!;
+    private Label lblTelephone = null!;
+    private TextBox txtTelephone = null!;
+    private Label lblWhatsApp = null!;
+    private TextBox txtWhatsApp = null!;
     private Label lblAddress = null!;
     private TextBox txtAddress = null!;
     private Button btnSavePharmacy = null!;
@@ -51,6 +55,10 @@ partial class frmSystemInfo
         txtRegisteredName = new TextBox();
         lblVatNumber = new Label();
         txtVatNumber = new TextBox();
+        lblTelephone = new Label();
+        txtTelephone = new TextBox();
+        lblWhatsApp = new Label();
+        txtWhatsApp = new TextBox();
         lblAddress = new Label();
         txtAddress = new TextBox();
         btnSavePharmacy = new Button();
@@ -147,6 +155,25 @@ partial class frmSystemInfo
         txtVatNumber.Width = 240;
         txtVatNumber.TabIndex = 2;
 
+        // Both print on the receipt, and the telephone at the foot of
+        // every dispensing label: a patient holding a container hours
+        // later has no other way to ask about it.
+        Caption(lblTelephone, "lblTelephone", "Te&lephone");
+        txtTelephone.Anchor = AnchorStyles.Left;
+        txtTelephone.MaxLength = 40;
+        txtTelephone.Name = "txtTelephone";
+        txtTelephone.MinimumSize = new Size(240, 0);
+        txtTelephone.Width = 240;
+        txtTelephone.TabIndex = 3;
+
+        Caption(lblWhatsApp, "lblWhatsApp", "&WhatsApp");
+        txtWhatsApp.Anchor = AnchorStyles.Left;
+        txtWhatsApp.MaxLength = 40;
+        txtWhatsApp.Name = "txtWhatsApp";
+        txtWhatsApp.MinimumSize = new Size(240, 0);
+        txtWhatsApp.Width = 240;
+        txtWhatsApp.TabIndex = 4;
+
         Caption(lblAddress, "lblAddress", "&Address");
         lblAddress.Anchor = AnchorStyles.Left | AnchorStyles.Top;
         txtAddress.AcceptsReturn = true;
@@ -155,13 +182,13 @@ partial class frmSystemInfo
         txtAddress.Multiline = true;
         txtAddress.Name = "txtAddress";
         txtAddress.ScrollBars = ScrollBars.Vertical;
-        txtAddress.TabIndex = 3;
+        txtAddress.TabIndex = 5;
 
         btnSavePharmacy.Anchor = AnchorStyles.Right;
         btnSavePharmacy.AutoSize = true;
         btnSavePharmacy.Name = "btnSavePharmacy";
         btnSavePharmacy.Padding = new Padding(10, 2, 10, 2);
-        btnSavePharmacy.TabIndex = 4;
+        btnSavePharmacy.TabIndex = 6;
         btnSavePharmacy.Text = "&Save pharmacy details";
         btnSavePharmacy.UseVisualStyleBackColor = true;
 
@@ -170,8 +197,10 @@ partial class frmSystemInfo
         layPharmacy.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         layPharmacy.Dock = DockStyle.Fill;
         layPharmacy.Name = "layPharmacy";
-        layPharmacy.RowCount = 6;
+        layPharmacy.RowCount = 8;
         layPharmacy.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layPharmacy.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+        layPharmacy.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
         layPharmacy.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
         layPharmacy.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
         layPharmacy.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
@@ -185,13 +214,17 @@ partial class frmSystemInfo
         layPharmacy.Controls.Add(txtRegisteredName, 1, 2);
         layPharmacy.Controls.Add(lblVatNumber, 0, 3);
         layPharmacy.Controls.Add(txtVatNumber, 1, 3);
-        layPharmacy.Controls.Add(lblAddress, 0, 4);
-        layPharmacy.Controls.Add(txtAddress, 1, 4);
-        layPharmacy.Controls.Add(btnSavePharmacy, 1, 5);
+        layPharmacy.Controls.Add(lblTelephone, 0, 4);
+        layPharmacy.Controls.Add(txtTelephone, 1, 4);
+        layPharmacy.Controls.Add(lblWhatsApp, 0, 5);
+        layPharmacy.Controls.Add(txtWhatsApp, 1, 5);
+        layPharmacy.Controls.Add(lblAddress, 0, 6);
+        layPharmacy.Controls.Add(txtAddress, 1, 6);
+        layPharmacy.Controls.Add(btnSavePharmacy, 1, 7);
 
         pnlPharmacy.Controls.Add(layPharmacy);
         pnlPharmacy.Dock = DockStyle.Top;
-        pnlPharmacy.Height = 238;
+        pnlPharmacy.Height = 302;
         pnlPharmacy.Name = "pnlPharmacy";
         pnlPharmacy.Padding = new Padding(PhxTheme.Gutter, 4, PhxTheme.Gutter, 8);
         pnlPharmacy.Visible = false;

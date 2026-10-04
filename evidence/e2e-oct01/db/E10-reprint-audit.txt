@@ -1,0 +1,4 @@
+-- SELECT Action, EntityType, Outcome, Reason, OccurredAtUtc FROM auditentry WHERE Action LIKE '%reprint%' OR Action LIKE '%label%' ORDER BY OccurredAtUtc;
+Action	EntityType	Outcome	Reason	OccurredAtUtc
+dsp.label.reprint	Dispensing	Applied	3 label(s) reprinted on Microsoft Print to PDF.	2026-10-01 01:54:22.194696
+pos.receipt.reprint	Sale	Applied	Receipt S-001-000007 printed again	2026-10-01 01:56:25.014309

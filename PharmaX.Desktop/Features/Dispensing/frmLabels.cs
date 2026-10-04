@@ -26,6 +26,7 @@ public partial class frmLabels : PhxFormBase
     private readonly IClaimFormService? _claimForms;
     private readonly IClaimFormPrinter? _claimFormPrinter;
     private readonly string? _pharmacy;
+    private readonly Adapters.Printing.PharmacyImprint? _imprint;
 
     private Guid? _patientId;
 
@@ -58,6 +59,11 @@ public partial class frmLabels : PhxFormBase
     {
         _pharmacy = Adapters.Printing.LabelDocument.DispensedBy(
             pharmacy.TradingName, pharmacy.Address);
+
+        // The same imprint the label printer is handed, so the preview
+        // shows the foot of the label as well as the top of it.
+        _imprint = new Adapters.Printing.PharmacyImprint(
+            pharmacy.TradingName, pharmacy.Address, pharmacy.Telephone);
         _labels = labels;
         _views = views;
         _dispensing = dispensing;
@@ -125,24 +131,23 @@ public partial class frmLabels : PhxFormBase
 
         var text = new StringBuilder();
 
+        // Each label as the label printer draws it, row for row, from the
+        // document that prints it. The preview used to be written out
+        // here separately, in the wording of the old label, so it showed
+        // neither the prescriber, the item and practice numbers nor the
+        // pharmacy, and gave the expiry as a month (OCT-DEF-04).
         foreach (var label in result.Value)
         {
-            text.AppendLine(CultureInfo.CurrentCulture,
-                $"{label.ProductDescription}  x{label.Quantity:N0}");
-            text.AppendLine(label.Directions);
+            using var document = new Adapters.Printing.LabelDocument(label,
+                                                                     _imprint);
 
-            if (label.BatchNumber is not null)
-            {
-                var expiry = label.Expiry is DateOnly e
-                    ? string.Format(CultureInfo.CurrentCulture,
-                                    ", expires {0:MM/yyyy}", e)
-                    : "";
-
-                text.AppendLine($"Batch {label.BatchNumber}{expiry}");
-            }
-
-            text.AppendLine($"{label.PatientName} - {label.ScriptNumber} - "
-                            + label.PharmacistName);
+            foreach (var row in document.Rows())
+                text.AppendLine(row.Style switch
+                {
+                    Adapters.Printing.LabelStyle.Rule => new string('-', 40),
+                    Adapters.Printing.LabelStyle.Gap => "",
+                    _ => row.Text
+                });
 
             text.AppendLine();
         }

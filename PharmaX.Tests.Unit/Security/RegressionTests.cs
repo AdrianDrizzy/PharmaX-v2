@@ -271,7 +271,8 @@ public class PrintingTests
         lines.Should().Contain(l => l.Contains("AMOX50-A x4, AMOX50-B x17",
                                                StringComparison.Ordinal)
                                     && l.Contains("01/2027", StringComparison.Ordinal));
-        lines.Should().Contain("Script SC-001-000003");
+        lines.Should().Contain(l => l.StartsWith("RxNo: SC-001-000003",
+                                                 StringComparison.Ordinal));
     }
 
     [Fact]

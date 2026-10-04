@@ -47,6 +47,104 @@ public static class Suggest
     }
 
     /// <summary>
+    /// A product as a script is taken down against it: what it is, and
+    /// then everything the pharmacist checks before writing it down - its
+    /// code, how it is packed, what a pack costs, how much is on the
+    /// shelf, and whether it is dispensary stock.
+    /// </summary>
+    /// <remarks>
+    /// The value is the product itself rather than its code, so the screen
+    /// that takes it can show those details beside the item as well.
+    /// </remarks>
+    public static Suggestion ProductInFull(ProductListItemDto product)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+
+        return new Suggestion(product, product.Description,
+                              ProductDetails(product));
+    }
+
+    /// <summary>
+    /// "1850   ·   TAB 100   ·   $12.00 a pack   ·   8.7 on hand   ·
+    /// schedule 3": the details of a product on one line.
+    /// </summary>
+    /// <param name="withCode">
+    /// False beside a code already on show, where it would say it twice.
+    /// </param>
+    public static string ProductDetails(ProductListItemDto product,
+                                        bool withCode = true)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+
+        var pack = !string.IsNullOrWhiteSpace(product.PackSize)
+            ? product.PackSize
+            : product.UnitsPerPack is decimal units
+                ? $"{Format.Quantity(units)} per pack"
+                : null;
+
+        return Details(withCode ? product.Code : null, pack,
+                   $"{Format.Money(product.RetailPrice)} a pack",
+                   $"{Format.Quantity(product.QuantityOnHand)} on hand",
+                   product.Schedule >= 3
+                       ? $"schedule {product.Schedule}"
+                       : "over the counter")!;
+    }
+
+    /// <summary>
+    /// Products for a script's items: every active product, dispensary
+    /// stock included, each with its details.
+    /// </summary>
+    /// <remarks>
+    /// Looked up in a scope of their own, as the scan bars' are.
+    /// </remarks>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> ProductsInFull(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            var found = await scope.ServiceProvider
+                .GetRequiredService<IProductService>()
+                .SearchAsync(term, take: 30, ct);
+
+            return found.IsSuccess
+                ? found.Value.Items
+                    .Where(p => p.IsActive)
+                    .Take(8)
+                    .Select(ProductInFull)
+                    .ToList()
+                : Array.Empty<Suggestion>();
+        };
+    }
+
+    /// <summary>
+    /// The active product a code belongs to, or null: for a code typed
+    /// straight in rather than chosen from the suggestions.
+    /// </summary>
+    public static async Task<ProductListItemDto?> FindProductAsync(
+        IServiceScopeFactory scopes, string code, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        var wanted = (code ?? "").Trim();
+        if (wanted.Length == 0) return null;
+
+        using var scope = scopes.CreateScope();
+
+        var found = await scope.ServiceProvider
+            .GetRequiredService<IProductService>()
+            .SearchAsync(wanted, take: 10, ct);
+
+        return found.IsSuccess
+            ? found.Value.Items.FirstOrDefault(p => p.IsActive
+                && string.Equals(p.Code, wanted, StringComparison.OrdinalIgnoreCase))
+            : null;
+    }
+
+    /// <summary>
     /// Products for a box with no list of its own: the till's and the
     /// dispensary's scan bars, a stock adjustment's code.
     /// </summary>

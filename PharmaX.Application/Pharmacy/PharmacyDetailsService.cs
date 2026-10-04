@@ -6,8 +6,8 @@ using PharmaX.Domain.Security;
 namespace PharmaX.Application.Pharmacy;
 
 /// <summary>
-/// Reads and changes the name, registered name, VAT number and address
-/// the pharmacy trades under.
+/// Reads and changes the name, registered name, VAT number, address and
+/// contact numbers the pharmacy trades under.
 /// </summary>
 public interface IPharmacyDetailsService
 {
@@ -32,6 +32,7 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
     public const int MaxRegisteredName = 100;
     public const int MaxVatNumber = 30;
     public const int MaxAddress = 400;
+    public const int MaxTelephone = 40;
 
     private readonly IPharmacySettings _settings;
     private readonly PharmacyProfile _profile;
@@ -62,6 +63,10 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
                                  .ConfigureAwait(false);
         var address = await _settings.GetAsync(PharmacySettingKey.Address, ct)
                                      .ConfigureAwait(false);
+        var telephone = await _settings.GetAsync(
+            PharmacySettingKey.Telephone, ct).ConfigureAwait(false);
+        var whatsApp = await _settings.GetAsync(
+            PharmacySettingKey.WhatsApp, ct).ConfigureAwait(false);
 
         // A value never set falls back to the installed file. One set to
         // blank on purpose - an address removed, a sole trader with no
@@ -71,7 +76,9 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
                 ? installed.TradingName : name,
             RegisteredName: registered ?? installed.RegisteredName,
             VatNumber: vat ?? installed.VatNumber,
-            Address: address ?? installed.Address);
+            Address: address ?? installed.Address,
+            Telephone: telephone ?? installed.Telephone,
+            WhatsApp: whatsApp ?? installed.WhatsApp);
     }
 
     public async Task<Result> SaveAsync(PharmacyDetails details,
@@ -85,7 +92,9 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
             TradingName: details.TradingName?.Trim() ?? "",
             RegisteredName: details.RegisteredName?.Trim() ?? "",
             VatNumber: details.VatNumber?.Trim() ?? "",
-            Address: NormaliseAddress(details.Address));
+            Address: NormaliseAddress(details.Address),
+            Telephone: details.Telephone?.Trim() ?? "",
+            WhatsApp: details.WhatsApp?.Trim() ?? "");
 
         var refusal = Validate(clean);
         if (refusal is not null) return refusal;
@@ -105,6 +114,10 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
             clean.VatNumber, ct).ConfigureAwait(false);
         await _settings.SetAsync(PharmacySettingKey.Address,
             clean.Address, ct).ConfigureAwait(false);
+        await _settings.SetAsync(PharmacySettingKey.Telephone,
+            clean.Telephone, ct).ConfigureAwait(false);
+        await _settings.SetAsync(PharmacySettingKey.WhatsApp,
+            clean.WhatsApp, ct).ConfigureAwait(false);
 
         _profile.Use(clean);
         return Result.Ok();
@@ -137,6 +150,16 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
             return Result.Fail("PHX-005",
                 $"The address can be at most {MaxAddress} characters.");
 
+        if (d.Telephone.Length > MaxTelephone)
+            return Result.Fail("PHX-007",
+                $"The telephone number can be at most {MaxTelephone} "
+                + "characters.");
+
+        if (d.WhatsApp.Length > MaxTelephone)
+            return Result.Fail("PHX-008",
+                $"The WhatsApp number can be at most {MaxTelephone} "
+                + "characters.");
+
         return null;
     }
 
@@ -164,6 +187,8 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
         Compare("registered name", before.RegisteredName, after.RegisteredName);
         Compare("VAT number", before.VatNumber, after.VatNumber);
         Compare("address", before.Address, after.Address);
+        Compare("telephone", before.Telephone, after.Telephone);
+        Compare("WhatsApp", before.WhatsApp, after.WhatsApp);
 
         return changes.Count == 0 ? "saved unchanged" : string.Join("; ", changes);
     }

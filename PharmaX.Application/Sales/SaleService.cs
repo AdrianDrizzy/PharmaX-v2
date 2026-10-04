@@ -31,6 +31,20 @@ public interface ISaleService
 
     Task<Result<SaleDto>> GetAsync(Guid saleId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The number of the last receipt this till printed in its open
+    /// session, for a reprint after the till window was closed and opened
+    /// again.
+    /// </summary>
+    Task<Result<string>> LastReceiptNumberAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// A finalised sale by the number on its receipt, for a copy for a
+    /// customer who comes back for one.
+    /// </summary>
+    Task<Result<SaleDto>> FindReceiptAsync(string documentNumber,
+        CancellationToken ct = default);
+
     Task<Result<SaleLineDto>> AddLineAsync(Guid saleId, string scannedCode,
         decimal quantity, CancellationToken ct = default);
 
@@ -153,6 +167,60 @@ public sealed class SaleService : ISaleService
         return sale is null
             ? Result<SaleDto>.Fail("POS-000", "Sale not found.")
             : Result<SaleDto>.Ok(SaleDto.From(sale));
+    }
+
+    /// <remarks>
+    /// Read from the till's session rather than remembered by the till
+    /// window: the window forgot its last sale as soon as it was closed,
+    /// so a cashier who reopened it to reprint was told no sale had been
+    /// completed on a till that had just taken several (OCT-DEF-05).
+    /// </remarks>
+    public async Task<Result<string>> LastReceiptNumberAsync(
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.SaleCreate);
+
+        var last = _user.TillSessionId is Guid session
+            ? (await _sales.ForSessionAsync(session, ct))
+                .Where(s => s.Status == SaleStatus.Finalised
+                            && s.DocumentNumber.Length > 0)
+                .OrderByDescending(s => s.OccurredAtUtc)
+                .FirstOrDefault()
+            : null;
+
+        return last is null
+            ? Result<string>.Fail("POS-025",
+                "No sale has been completed in this till session yet.")
+            : Result<string>.Ok(last.DocumentNumber);
+    }
+
+    public async Task<Result<SaleDto>> FindReceiptAsync(string documentNumber,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.SaleCreate);
+
+        var number = (documentNumber ?? "").Trim().ToUpperInvariant();
+
+        if (number.Length == 0)
+            return Result<SaleDto>.Fail("POS-024",
+                "Enter the number printed on the receipt.");
+
+        // A basket still open, held or abandoned was never a receipt, so
+        // there is nothing to copy.
+        var sale = await _sales.ByDocumentNumberAsync(number, ct);
+
+        if (sale is not { Status: SaleStatus.Finalised })
+            return Result<SaleDto>.Fail("POS-024",
+                $"There is no receipt {number}. Check the number printed "
+                + "under Inv RefNo.");
+
+        // The copy names the cashier who sold it, as the original did.
+        var cashier = await _users.GetAsync(sale.OperatorId, ct);
+
+        return Result<SaleDto>.Ok(SaleDto.From(sale) with
+        {
+            OperatorName = cashier?.Username
+        });
     }
 
     public async Task<Result<SaleLineDto>> AddLineAsync(Guid saleId,

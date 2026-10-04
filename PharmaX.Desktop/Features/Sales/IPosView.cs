@@ -54,6 +54,12 @@ public interface IPosView : Mvp.IView
     string? PromptQuotationNumber();
 
     /// <summary>
+    /// Which receipt to print again, offering the last one this till
+    /// printed. Null where the cashier backed out.
+    /// </summary>
+    string? PromptReceiptNumber(string? last);
+
+    /// <summary>
     /// The change to hand back from the last sale, shown where the cashier
     /// is looking until the next one starts.
     /// </summary>

@@ -1,0 +1,5 @@
+-- SELECT Code, QuantityOnHand FROM product WHERE Code IN ('PAN500','1582','1621');
+Code	QuantityOnHand
+1582	9.000
+1621	9.000
+PAN500	114.000

@@ -49,10 +49,13 @@ partial class frmScriptList
         SuspendLayout();
 
         lblPatient.AutoSize = false;
+        lblPatient.AutoEllipsis = true;
+        lblPatient.Anchor = AnchorStyles.Top | AnchorStyles.Left
+                            | AnchorStyles.Right;
         lblPatient.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
         lblPatient.Location = new Point(12, 14);
         lblPatient.Name = "lblPatient";
-        lblPatient.Size = new Size(500, 24);
+        lblPatient.Size = new Size(600, 24);
 
         lblCount.AutoSize = false;
         lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;

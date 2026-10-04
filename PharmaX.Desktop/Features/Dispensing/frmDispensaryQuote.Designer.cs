@@ -84,6 +84,7 @@ partial class frmDispensaryQuote
         txtCustomer.Size = new Size(320, 23);
 
         lblPatient.AutoSize = false;
+        lblPatient.AutoEllipsis = true;
         lblPatient.Location = new Point(420, 52);
         lblPatient.Name = "lblPatient";
         lblPatient.Size = new Size(540, 20);

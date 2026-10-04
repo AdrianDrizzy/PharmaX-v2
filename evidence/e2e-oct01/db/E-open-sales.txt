@@ -1,0 +1,5 @@
+-- SELECT s.OccurredAtUtc, s.CreatedAtUtc, s.Status, (SELECT COUNT(*) FROM saleline l WHERE l.SaleId = s.Id) AS line_count, u.Username FROM sale s JOIN `user` u ON u.Id = s.OperatorId WHERE s.Status = 'Open' ORDER BY s.CreatedAtUtc;
+OccurredAtUtc	CreatedAtUtc	Status	line_count	Username
+2026-10-01 01:42:02.745556	2026-10-01 01:42:02.745751	Open	0	test.admin
+2026-10-01 01:56:10.897117	2026-10-01 01:56:10.897360	Open	0	test.admin
+2026-10-01 01:58:50.726839	2026-10-01 01:58:50.726955	Open	0	test.cashier

@@ -88,7 +88,7 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
 
         if (patient.IsSuccess)
             View.ShowPatient(
-                $"{patient.Value.FullNameOrFile()}  ({patient.Value.FileNumber})");
+                patient.Value.Header());
 
         var result = await _scripts.ForPatientAsync(patientId);
 
@@ -215,7 +215,7 @@ public sealed class ScriptEditPresenter : PresenterBase<IScriptEditView>
         }
 
         View.ShowPatient(
-            $"{patient.Value.FullNameOrFile()}  ({patient.Value.FileNumber})");
+            patient.Value.Header());
 
         if (View.ScriptId is not Guid scriptId) return;
 
@@ -271,5 +271,22 @@ internal static class PatientDtoExtensions
     {
         var name = $"{patient.FirstNames} {patient.Surname}".Trim();
         return name.Length == 0 ? patient.FileNumber : name;
+    }
+
+    /// <summary>
+    /// Name, file number and allergies, for the header of every screen
+    /// where a script is captured or priced: the allergy has to be in
+    /// front of the pharmacist before the item is chosen, not only at
+    /// the dispensing screen's warning.
+    /// </summary>
+    public static string Header(
+        this Application.Patients.Dtos.PatientDto patient)
+    {
+        var header = $"{patient.FullNameOrFile()}  ({patient.FileNumber})";
+
+        return patient.Allergies.Count == 0
+            ? header
+            : header + "   ALLERGIES: " + string.Join(", ",
+                patient.Allergies.Select(a => $"{a.Substance} ({a.Severity})"));
     }
 }

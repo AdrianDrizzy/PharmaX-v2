@@ -2,10 +2,15 @@ using PharmaX.Domain.Inventory;
 
 namespace PharmaX.Application.Inventory.Dtos;
 
+/// <param name="PackSize">How it is packed, as the shelf label says: "TAB 100".</param>
+/// <param name="UnitsPerPack">
+/// The tablets, capsules or millilitres a pack holds, where it is known.
+/// </param>
 public sealed record ProductListItemDto(
     Guid Id, string Code, string Description, decimal RetailPrice,
     decimal QuantityOnHand, int Schedule, bool IsBatchTracked,
-    bool IsActive, bool IsBelowReorderLevel)
+    bool IsActive, bool IsBelowReorderLevel, string? PackSize = null,
+    decimal? UnitsPerPack = null)
 {
     public static ProductListItemDto From(Product p)
     {
@@ -14,7 +19,7 @@ public sealed record ProductListItemDto(
         return new ProductListItemDto(
             p.Id, p.Code, p.Description, p.RetailPrice.Amount,
             p.QuantityOnHand, p.Schedule, p.IsBatchTracked, p.IsActive,
-            p.IsBelowReorderLevel);
+            p.IsBelowReorderLevel, p.PackSize, p.UnitsPerPack);
     }
 }
 

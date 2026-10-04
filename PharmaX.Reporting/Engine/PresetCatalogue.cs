@@ -162,6 +162,15 @@ public sealed class PresetCatalogue : IPresetCatalogue
             "PriceChanges",
             new Dictionary<string, string?>(),
             new[] { "operator" },
+            PermissionCode.ReportManagement),
+
+        // The costs every margin stands on, where one does not look like
+        // the cost of the pack it is priced as. Management's, because it
+        // shows what the pharmacy pays for everything.
+        new("inv.cost.check", "Cost Prices to Check",
+            "CostCheck",
+            new Dictionary<string, string?>(),
+            new[] { "department", "category" },
             PermissionCode.ReportManagement)
 
         // ... one entry per name in specification Appendix B.
