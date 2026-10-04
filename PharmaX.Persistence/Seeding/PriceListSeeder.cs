@@ -13,10 +13,10 @@ namespace PharmaX.Persistence.Seeding;
 /// <remarks>
 /// The list is an embedded CSV rather than several hundred lines of C#,
 /// because it is data and it changes: the next list the wholesaler sends
-/// replaces the file and the seeder brings the changes in on the next
+/// replaces the file and the seeder adds its new codes on the next
 /// start-up. Codes are the identity, so a product that is already there
-/// has its description and prices brought up to date rather than being
-/// added twice.
+/// is not added twice, and its prices and description are the
+/// pharmacy's: the list never overwrites them.
 ///
 /// Stock is deliberately untouched. A price list says what things cost,
 /// not what is on the shelf, and a seeder that reset quantities every
@@ -127,7 +127,7 @@ public sealed class PriceListSeeder
                                   toCheck, unbatched);
 
         _log.LogInformation(
-            "Price list: {Added} added, {Updated} repriced, {Unchanged} "
+            "Price list: {Added} added, {Updated} updated, {Unchanged} "
             + "unchanged, {Skipped} skipped of {Total}.",
             outcome.Added, outcome.Updated, outcome.Unchanged,
             outcome.Skipped, outcome.Total);
@@ -197,9 +197,9 @@ public sealed class PriceListSeeder
     }
 
     /// <summary>
-    /// Brings an existing product into line with the list. Returns true
-    /// where something actually changed, so the log can distinguish a
-    /// reprice from a no-op.
+    /// Fills in what an existing product is missing from the list. Returns
+    /// true where something actually changed, so the log can distinguish
+    /// an update from a no-op.
     /// </summary>
     /// <param name="traded">
     /// Whether the product has ever moved stock or held a batch, after
@@ -233,24 +233,12 @@ public sealed class PriceListSeeder
             changed = true;
         }
 
-        if (product.RetailPrice.Amount != row.SellingPrice)
-        {
-            product.ChangeRetailPrice(Money.Of(row.SellingPrice));
-            changed = true;
-        }
-
-        if (product.CostPrice.Amount != row.CostPrice)
-        {
-            product.ChangeCostPrice(Money.Of(row.CostPrice));
-            changed = true;
-        }
-
-        if (!string.Equals(product.Description, row.FullDescription,
-                           StringComparison.Ordinal))
-        {
-            product.Rename(row.FullDescription);
-            changed = true;
-        }
+        // Prices and the name are deliberately not touched. This runs at
+        // every start-up, so a list that overwrote them would put back
+        // every price the pharmacy changed on the product form the next
+        // time the till was switched on.
+        // ponytail: a new wholesaler list only prices new codes; reprice
+        // existing ones through a deliberate import if that is ever needed.
 
         return changed;
     }

@@ -94,11 +94,12 @@ public sealed class PriceListSeederTests : IDisposable
     }
 
     /// <remarks>
-    /// The point of re-running it: next month's list is the same file
-    /// with different numbers in it.
+    /// It runs at every start-up, so a list that repriced existing
+    /// products would undo every price the pharmacy set on the product
+    /// form the next time the till was switched on.
     /// </remarks>
     [Fact]
-    public async Task A_price_that_has_moved_is_brought_up_to_date()
+    public async Task A_price_set_by_the_pharmacy_survives_a_restart()
     {
         await SeedAsync();
 
@@ -108,19 +109,24 @@ public sealed class PriceListSeederTests : IDisposable
             var product = await db.Products.SingleAsync(p => p.Code == "1454");
 
             product.ChangeRetailPrice(Domain.Primitives.Money.Of(1m));
+            product.ChangeCostPrice(Domain.Primitives.Money.Of(0.5m));
+            product.Rename("IBUPROFEN 400MG (house)");
             await db.SaveChangesAsync();
         }
 
         var outcome = await SeedAsync();
 
-        outcome.Updated.Should().Be(1);
+        outcome.Updated.Should().Be(0);
 
         using var check = _fixture.NewScope();
         var after = PharmaXFixture.Resolve<PharmaXDbContext>(check);
 
-        (await after.Products.AsNoTracking()
-            .SingleAsync(p => p.Code == "1454"))
-            .RetailPrice.Amount.Should().Be(50.00m);
+        var ibuprofen = await after.Products.AsNoTracking()
+            .SingleAsync(p => p.Code == "1454");
+
+        ibuprofen.RetailPrice.Amount.Should().Be(1m);
+        ibuprofen.CostPrice.Amount.Should().Be(0.5m);
+        ibuprofen.Description.Should().Be("IBUPROFEN 400MG (house)");
     }
 
     /// <remarks>
