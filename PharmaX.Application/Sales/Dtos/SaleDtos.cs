@@ -47,12 +47,16 @@ public sealed record SaleTotalsDto(
 /// Who the receipt is for - the account, the patient, the script - where
 /// the sale was for somebody in particular. Filled in for printing.
 /// </param>
+/// <param name="OperatorName">
+/// Who rang the sale up, filled in where a receipt is found to be printed
+/// again: a copy names the cashier who sold it, not whoever reprinted it.
+/// </param>
 public sealed record SaleDto(
     Guid Id, string DocumentNumber, IReadOnlyList<SaleLineDto> Lines,
     SaleTotalsDto Totals, IReadOnlyList<PaymentDto>? Payments = null,
     string Status = "Open", Guid? AccountId = null,
     Guid? QuotationId = null, DateTime? OccurredAtUtc = null,
-    ReceiptParticularsDto? Particulars = null)
+    ReceiptParticularsDto? Particulars = null, string? OperatorName = null)
 {
     public static SaleDto From(Sale s)
     {

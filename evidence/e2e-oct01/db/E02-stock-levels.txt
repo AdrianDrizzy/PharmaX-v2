@@ -1,0 +1,3 @@
+-- SELECT COUNT(*) AS products, SUM(QuantityOnHand < 10) AS below_ten, SUM(QuantityOnHand = 10) AS exactly_ten, SUM(QuantityOnHand > 10) AS above_ten FROM product WHERE IsActive = 1;
+products	below_ten	exactly_ten	above_ten
+759	2	749	8

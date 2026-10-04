@@ -1,0 +1,5 @@
+-- SELECT Code, Description, PackSize, UnitsPerPack, Schedule, RetailPrice, QuantityOnHand FROM product WHERE Code IN ('1850','METF85','AMOX50');
+Code	Description	PackSize	UnitsPerPack	Schedule	RetailPrice	QuantityOnHand
+1850	LOSARTAN VALOSAR (VARICHEM) 50MG	TAB 100	NULL	3	12.00	10.000
+AMOX50	Amoxicillin 500mg capsules 21s	NULL	21.000	4	118.40	47.620
+METF85	Metformin 850mg tablets 60s	NULL	60.000	4	154.75	23.866

@@ -1,0 +1,7 @@
+-- SELECT Code, PackSize, UnitsPerPack, IsBatchTracked, QuantityOnHand, (SELECT GROUP_CONCAT(CONCAT(b.BatchNumber, ' x', b.QuantityOnHand, ' exp ', b.ExpiryDate)) FROM batch b WHERE b.ProductId = product.Id) AS batches FROM product WHERE Code IN ('1850','1748','204','469','1582');
+Code	PackSize	UnitsPerPack	IsBatchTracked	QuantityOnHand	batches
+1582	CAP 500	500.000	0	9.000	NULL
+1748	TAB 30	30.000	1	10.000	1748-TEST x10.000 exp 2028-10-01
+1850	TAB 100	100.000	1	9.000	1850-TEST x9.000 exp 2028-10-01
+204	TAB 1000	1000.000	1	10.000	204-TEST x10.000 exp 2028-10-01
+469	LIQ	NULL	0	10.000	NULL

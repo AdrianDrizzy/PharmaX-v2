@@ -1,0 +1,3 @@
+-- SELECT COUNT(*) AS dispensary_on_hand_without_batch FROM product p WHERE p.Schedule >= 3 AND p.QuantityOnHand > 0 AND NOT EXISTS (SELECT 1 FROM batch b WHERE b.ProductId = p.Id);
+dispensary_on_hand_without_batch
+0

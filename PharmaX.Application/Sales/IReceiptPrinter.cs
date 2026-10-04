@@ -105,11 +105,18 @@ public interface IDocumentPrinter
 /// The ISO code the pharmacy trades in, which the receipt writes beside
 /// the VAT, the total and each tender - "TOTAL-USD", "Cash USD".
 /// </param>
+/// <param name="Telephone">
+/// The number the pharmacy answers, under its address on the slip.
+/// </param>
+/// <param name="WhatsApp">
+/// The number it takes messages on, where that is a different one.
+/// </param>
 public sealed record ReceiptHeaderDto(string TradingName,
     string RegisteredName, string Address, string VatNumber,
     string LicenceNumber, string BranchAndTill, string OperatorName,
     DateTime PrintedAtLocal, string? LogoPath = null, bool IsCopy = false,
-    string? TillNumber = null, string? CurrencyCode = null);
+    string? TillNumber = null, string? CurrencyCode = null,
+    string? Telephone = null, string? WhatsApp = null);
 
 /// <summary>
 /// Prints a till receipt. Returns an outcome rather than throwing,

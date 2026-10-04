@@ -1,0 +1,3 @@
+-- SELECT d.DocumentNumber, d.Status, d.SaleId, s.ScriptNumber FROM dispensing d JOIN script s ON s.Id = d.ScriptId WHERE s.ScriptNumber = 'SC-001-000003';
+DocumentNumber	Status	SaleId	ScriptNumber
+D-001-000003	Issued	NULL	SC-001-000003

@@ -3,11 +3,22 @@ namespace PharmaX.Application.Abstractions;
 /// <summary>
 /// The particulars the pharmacy trades under: the name on the shop
 /// front, the company's registered name beneath it, its VAT
-/// registration and its address.
+/// registration, its address, and the numbers it is reached on.
 /// </summary>
+/// <param name="Telephone">
+/// The number printed on the receipt and at the foot of every
+/// dispensing label. A patient holding a container hours later has
+/// nothing else to ring.
+/// </param>
+/// <param name="WhatsApp">
+/// Where the pharmacy takes messages and photographs of scripts, which
+/// is often not the number it answers calls on. Printed on the receipt.
+/// </param>
 public sealed record PharmacyDetails(string TradingName,
                                      string RegisteredName,
-                                     string VatNumber, string Address)
+                                     string VatNumber, string Address,
+                                     string Telephone = "",
+                                     string WhatsApp = "")
 {
     /// What the application calls itself until the pharmacy has been
     /// given a name of its own.
@@ -20,7 +31,8 @@ public sealed record PharmacyDetails(string TradingName,
         ArgumentNullException.ThrowIfNull(options);
 
         return new(options.TradingName, options.RegisteredName,
-                   options.VatNumber, options.Address);
+                   options.VatNumber, options.Address, options.Telephone,
+                   options.WhatsApp);
     }
 
     /// <summary>
@@ -69,6 +81,8 @@ public sealed class PharmacyProfile
     public string RegisteredName => Current.RegisteredName;
     public string VatNumber => Current.VatNumber;
     public string Address => Current.Address;
+    public string Telephone => Current.Telephone;
+    public string WhatsApp => Current.WhatsApp;
 
     /// Raised after the details have changed, so open windows can
     /// re-title themselves.

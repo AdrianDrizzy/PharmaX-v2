@@ -1,0 +1,10 @@
+-- SELECT ReasonCode, MovementType, COUNT(*) FROM stockmovement GROUP BY ReasonCode, MovementType ORDER BY 1,2;
+ReasonCode	MovementType	COUNT(*)
+NULL	Issue	9
+NULL	Receipt	2
+NULL	Return	1
+COUNT-OVER	StockTake	1
+DEMO	Adjustment	2
+DEMO	Receipt	3
+OPENING	Receipt	14
+TESTSTOCK	Adjustment	749

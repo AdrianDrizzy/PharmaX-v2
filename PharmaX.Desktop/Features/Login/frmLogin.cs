@@ -55,6 +55,17 @@ public partial class frmLogin : PhxFormBase, ILoginView
 
     protected override void OnBrandChanged() => ShowPharmacy();
 
+    /// <summary>
+    /// No function keys written on the sign-in buttons.
+    /// </summary>
+    /// <remarks>
+    /// The window has two buttons and two keys everybody already knows:
+    /// Enter signs in and Escape cancels, as they do on every sign-in
+    /// window. "F6 Log in" and "Esc Cancel" taught nobody anything and
+    /// made the first screen of the day read like a keyboard chart.
+    /// </remarks>
+    protected override bool AssignsFunctionKeys => false;
+
     private void PaintLogo(PaintEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);

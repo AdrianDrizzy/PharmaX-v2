@@ -1,0 +1,4 @@
+-- SELECT Code, Description, QuantityOnHand, ReorderLevel FROM product WHERE IsActive = 1 AND QuantityOnHand < 10 ORDER BY Code;
+Code	Description	QuantityOnHand	ReorderLevel
+DIS200	Disprin 300mg tablets 24s	8.000	60.000
+SURGM1	Surgical face masks 50s	0.000	25.000

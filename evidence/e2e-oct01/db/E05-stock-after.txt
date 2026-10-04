@@ -1,0 +1,4 @@
+-- SELECT Code, QuantityOnHand FROM product WHERE Code IN ('1850','METF85');
+Code	QuantityOnHand
+1850	9.000
+METF85	22.866

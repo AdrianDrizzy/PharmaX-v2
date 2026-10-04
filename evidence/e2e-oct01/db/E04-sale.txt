@@ -1,0 +1,2 @@
+-- SELECT s.DocumentNumber, s.Status, s.Total, s.Tendered, s.Change FROM sale s WHERE s.DocumentNumber = 'S-001-000005';
+ERROR 1054 (42S22) at line 1: Unknown column 's.Total' in 'field list'

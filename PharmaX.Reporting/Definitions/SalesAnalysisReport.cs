@@ -13,6 +13,13 @@ namespace PharmaX.Reporting.Definitions;
 /// Markup %)" - reach this one class, which is the whole point of the
 /// parameterised design.
 /// </summary>
+/// <remarks>
+/// Refunds and credit notes are in it as negative lines, the way Daily
+/// Sales (Line Items) has them, so that the two reports of the same day
+/// come to the same figure: goods put back on the shelf bring their
+/// cost back with them, goods written off and credit given without goods
+/// do not.
+/// </remarks>
 public sealed class SalesAnalysisReport : IReportDefinition
 {
     public string Key => "SalesAnalysis";
@@ -37,6 +44,25 @@ public sealed class SalesAnalysisReport : IReportDefinition
             .Where(s => s.Status == SaleStatus.Finalised)
             .Include(s => s.Lines)
             .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        // What the period gave back. Left out, Daily Sales came to more
+        // than Daily Sales (Line Items) for the same day by exactly the
+        // day's refunds, and its margin was struck on money the pharmacy
+        // had already handed back (OCT-DEF-03).
+        var returns = await _db.SaleReturns
+            .AsNoTracking()
+            .Where(x => x.OccurredAtUtc >= r.FromUtc
+                        && x.OccurredAtUtc < r.ToExclusiveUtc)
+            .Where(x => x.Status == ReturnStatus.Finalised)
+            .Include(x => x.Lines)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        // A refund of a collected script gives a co-payment back, and has
+        // no more cost to set against it than the collection did.
+        var refundedCollections = await CollectionsAsync(returns
+                .Select(x => x.OriginalSaleId).Distinct().ToList(), ct)
             .ConfigureAwait(false);
 
         // Cost comes from the product rather than the line, because a
@@ -74,26 +100,75 @@ public sealed class SalesAnalysisReport : IReportDefinition
             .SelectMany(s => s.Lines
                 .Where(l => !l.IsVoided)
                 .Where(l => !filtered || inScope.Contains(l.ProductId))
-                .Select(l => new
-                {
+                .Select(l => new SoldLine(
                     s.OperatorId,
-                    Day = DateOnly.FromDateTime(s.OccurredAtUtc.ToLocalTime()),
+                    DateOnly.FromDateTime(s.OccurredAtUtc.ToLocalTime()),
                     l.ProductId,
                     l.Description,
                     l.Quantity,
-                    Gross = l.LineTotal.Amount
-                }))
+                    l.LineTotal.Amount,
+
+                    // A collection's line is the patient's share of a
+                    // script, not the item's price, so the medicine's cost
+                    // cannot be set against it - it was bought against the
+                    // dispensing. Charged in full against the co-payment,
+                    // it reported a loss on every script collected, and a
+                    // day with a few scripts on it read as a day the
+                    // pharmacy had traded at a loss. Daily Sales (Line
+                    // Items) leaves the same lines out of its cost.
+                    s.IsCollection,
+                    s.IsCollection ? 0m : Cost(costs, l.ProductId, l.Quantity),
+                    IsRefund: false)))
+            .Concat(returns.SelectMany(x => x.Lines
+                .Where(l => !filtered || inScope.Contains(l.ProductId))
+                .Select(l =>
+                {
+                    var coPayment = refundedCollections.Contains(x.OriginalSaleId);
+                    var restocked = x.Kind == ReturnKind.GoodsReturn
+                                    && l.RestockToShelf;
+
+                    return new SoldLine(
+                        x.OperatorId,
+                        DateOnly.FromDateTime(x.OccurredAtUtc.ToLocalTime()),
+                        l.ProductId,
+                        l.Description,
+                        -l.Quantity,
+                        -l.LineTotal.Amount,
+                        coPayment,
+                        coPayment || !restocked
+                            ? 0m
+                            : -Cost(costs, l.ProductId, l.Quantity),
+                        IsRefund: true);
+                })))
             .ToList();
+
+        // What a group sold, and what the part of it the pharmacy can
+        // cost actually cost.
+        Dictionary<string, object?> Of(string group, IEnumerable<SoldLine> sold)
+        {
+            var items = sold.ToList();
+
+            return Row(group,
+                items.Sum(x => x.Quantity),
+                items.Sum(x => x.Gross),
+                items.Where(x => x.IsCoPayment).Sum(x => x.Gross),
+                items.Where(x => !x.IsCoPayment).Sum(x => x.Cost));
+        }
 
         var groupBy = r.String("groupBy") ?? "operator";
 
         var rows = groupBy switch
         {
+            // A co-payment has no cost to mark up, so it is banded as
+            // what it is rather than counted as pure margin; a refund is
+            // trade given back rather than trade at a markup.
             "markupBand" => lines
-                .GroupBy(l => Band(l.Gross, Cost(costs, l.ProductId, l.Quantity)))
-                .Select(g => Row(g.Key, g.Sum(x => x.Quantity),
-                    g.Sum(x => x.Gross),
-                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
+                .GroupBy(l => l.IsCoPayment
+                    ? CoPaymentBand
+                    : l.IsRefund
+                        ? RefundBand
+                        : Band(l.Gross, l.Cost))
+                .Select(g => Of(g.Key, g))
                 .OrderBy(row => (string)row["Group"]!)
                 .ToList(),
 
@@ -102,34 +177,26 @@ public sealed class SalesAnalysisReport : IReportDefinition
             "day" => lines
                 .GroupBy(l => l.Day)
                 .OrderBy(g => g.Key)
-                .Select(g => Row(g.Key.ToString("yyyy-MM-dd",
-                        CultureInfo.InvariantCulture),
-                    g.Sum(x => x.Quantity), g.Sum(x => x.Gross),
-                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
+                .Select(g => Of(g.Key.ToString("yyyy-MM-dd",
+                    CultureInfo.InvariantCulture), g))
                 .ToList(),
 
             "month" => lines
                 .GroupBy(l => new DateOnly(l.Day.Year, l.Day.Month, 1))
                 .OrderBy(g => g.Key)
-                .Select(g => Row(g.Key.ToString("yyyy-MM",
-                        CultureInfo.InvariantCulture),
-                    g.Sum(x => x.Quantity), g.Sum(x => x.Gross),
-                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
+                .Select(g => Of(g.Key.ToString("yyyy-MM",
+                    CultureInfo.InvariantCulture), g))
                 .ToList(),
 
             "product" => lines
                 .GroupBy(l => l.Description)
-                .Select(g => Row(g.Key, g.Sum(x => x.Quantity),
-                    g.Sum(x => x.Gross),
-                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
+                .Select(g => Of(g.Key, g))
                 .OrderByDescending(row => (decimal)row["Sales"]!)
                 .ToList(),
 
             _ => lines
                 .GroupBy(l => l.OperatorId)
-                .Select(g => Row(r.OperatorName(g.Key),
-                    g.Sum(x => x.Quantity), g.Sum(x => x.Gross),
-                    g.Sum(x => Cost(costs, x.ProductId, x.Quantity))))
+                .Select(g => Of(r.OperatorName(g.Key), g))
                 .OrderByDescending(row => (decimal)row["Sales"]!)
                 .ToList()
         };
@@ -147,11 +214,18 @@ public sealed class SalesAnalysisReport : IReportDefinition
             .Column("Group", GroupHeader(groupBy))
             .Column("Quantity", "Units", "N3", rightAlign: true)
             .Column("Sales", "Sales", "N2", rightAlign: true)
+
+            // Named on the report rather than quietly netted off, so a
+            // manager can see why the margin is struck on less than the
+            // sales: the co-payment's medicine was costed against the
+            // dispensing that issued it.
+            .Column("Scripts", "Script co-pay", "N2", rightAlign: true)
             .Column("Cost", "Cost", "N2", rightAlign: true)
             .Column("Margin", "Margin", "N2", rightAlign: true)
             .Column("MarginPercent", "Margin %", "N1", rightAlign: true)
             .Rows(rows)
             .Total("Sales", rows.Sum(x => (decimal)x["Sales"]!))
+            .Total("Scripts", rows.Sum(x => (decimal)x["Scripts"]!))
             .Total("Cost", rows.Sum(x => (decimal)x["Cost"]!))
             .Total("Margin", rows.Sum(x => (decimal)x["Margin"]!))
             .Total("Count", rows.Count)
@@ -162,19 +236,29 @@ public sealed class SalesAnalysisReport : IReportDefinition
         Guid productId, decimal quantity) =>
         costs.TryGetValue(productId, out var unit) ? unit * quantity : 0m;
 
+    /// <param name="scripts">
+    /// The script co-payments inside <paramref name="sales"/>, which
+    /// carry no cost and so are struck out of the margin.
+    /// </param>
     private static Dictionary<string, object?> Row(string group,
-        decimal quantity, decimal sales, decimal cost)
+        decimal quantity, decimal sales, decimal scripts, decimal cost)
     {
-        var margin = sales - cost;
+        // The turnover this report can cost: everything but the
+        // co-payments. A margin taken on the whole of the sales would be
+        // wrong either way round - the cost missing, or the co-payment
+        // counted as pure profit.
+        var costed = sales - scripts;
+        var margin = costed - cost;
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["Group"] = group,
             ["Quantity"] = quantity,
             ["Sales"] = sales,
+            ["Scripts"] = scripts,
             ["Cost"] = cost,
             ["Margin"] = margin,
-            ["MarginPercent"] = sales == 0m ? 0m : margin / sales * 100m
+            ["MarginPercent"] = costed == 0m ? 0m : margin / costed * 100m
         };
     }
 
@@ -208,6 +292,45 @@ public sealed class SalesAnalysisReport : IReportDefinition
         "month" => "Month",
         _ => "Operator"
     };
+
+    /// Sorted first, because it is the band that is not a markup.
+    private const string CoPaymentBand = "0. Script co-payment";
+
+    /// Sorted last, after the bands of the trade it gives back.
+    private const string RefundBand = "7. Refunds and credit notes";
+
+    /// The sales, of those given, that collected a script.
+    private async Task<HashSet<Guid>> CollectionsAsync(
+        IReadOnlyCollection<Guid> saleIds, CancellationToken ct) =>
+        saleIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await _db.Sales
+                .AsNoTracking()
+                .Where(s => saleIds.Contains(s.Id) && s.DispensingId != null)
+                .Select(s => s.Id)
+                .ToListAsync(ct)
+                .ConfigureAwait(false))
+              .ToHashSet();
+
+    /// <summary>
+    /// One sold or refunded line, lifted off the document it is on.
+    /// </summary>
+    /// <param name="IsCoPayment">
+    /// True where the sale was a script collection, or the refund gave
+    /// one back: the line is the patient's share of a dispensing, not the
+    /// item's own price.
+    /// </param>
+    /// <param name="Cost">
+    /// What the line cost the pharmacy: nothing for a co-payment, and on
+    /// a refund only what went back on the shelf, as a negative.
+    /// </param>
+    /// <param name="IsRefund">
+    /// True for a line of a refund or credit note, whose quantity and
+    /// amount are negative.
+    /// </param>
+    private sealed record SoldLine(Guid OperatorId, DateOnly Day,
+        Guid ProductId, string Description, decimal Quantity, decimal Gross,
+        bool IsCoPayment, decimal Cost, bool IsRefund);
 }
 
 /// <summary>

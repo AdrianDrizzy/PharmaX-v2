@@ -1,0 +1,3 @@
+-- SELECT p.QuantityOnHand, b.BatchNumber, b.QuantityOnHand AS batch FROM product p JOIN batch b ON b.ProductId = p.Id WHERE p.Code = '1850';
+QuantityOnHand	BatchNumber	batch
+8.700	1850-TEST	8.700

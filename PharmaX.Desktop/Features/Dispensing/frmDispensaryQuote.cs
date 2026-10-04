@@ -124,8 +124,7 @@ public partial class frmDispensaryQuote : PhxFormBase
 
             if (patient.IsSuccess)
             {
-                lblPatient.Text = $"Patient: {patient.Value.FullNameOrFile()}"
-                                  + $"  ({patient.Value.FileNumber})";
+                lblPatient.Text = $"Patient: {patient.Value.Header()}";
 
                 if (txtCustomer.Text.Length == 0)
                     txtCustomer.Text = patient.Value.FullNameOrFile();

@@ -159,13 +159,31 @@ public class FunctionKeyTests
         removed.Should().Be(0, "a disabled button stays unpressed");
     }
 
+    /// <remarks>
+    /// The sign-in window keeps Enter and Escape, the keys every sign-in
+    /// window has, and has nothing written on its buttons.
+    /// </remarks>
+    [Fact]
+    public void The_sign_in_buttons_carry_no_keys()
+    {
+        using var form = new PharmaX.Desktop.Features.Login.frmLogin();
+
+        form.FunctionKeyMap.Should().BeEmpty();
+
+        Buttons(form).Select(b => b.Text).Should()
+            .BeEquivalentTo("&Log in", "&Cancel");
+
+        form.AcceptButton.Should().NotBeNull("Enter still signs in");
+        form.CancelButton.Should().NotBeNull("and Escape still cancels");
+    }
+
     // ---- Steps -----------------------------------------------------------
 
     private static IEnumerable<Type> Screens() =>
         typeof(PhxFormBase).Assembly.GetTypes()
             .Where(t => t.IsSubclassOf(typeof(PhxFormBase)) && !t.IsAbstract)
             .Where(t => t.GetConstructor(Type.EmptyTypes) is not null)
-            .Where(t => t.Name is not ("frmMain" or "frmPOS"));
+            .Where(t => t.Name is not ("frmMain" or "frmPOS" or "frmLogin"));
 
     private static IEnumerable<Button> Buttons(Control root)
     {

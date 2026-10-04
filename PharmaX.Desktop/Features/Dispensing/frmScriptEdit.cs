@@ -1,4 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Dispensing;
+using PharmaX.Application.Inventory.Dtos;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Dispensing;
@@ -11,6 +14,8 @@ namespace PharmaX.Desktop.Features.Dispensing;
 public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 {
     private readonly ScriptEditPresenter? _presenter;
+    private readonly IServiceScopeFactory? _scopes;
+    private readonly SearchSuggestions? _suggestions;
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ScriptCapture;
@@ -24,7 +29,18 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         btnCancel.Click += (_, _) =>
             CancelRequested?.Invoke(this, EventArgs.Empty);
 
-        btnAddItem.Click += (_, _) => grdItems.Rows.Add("", 1m, "", true);
+        // Add starts a line and goes to the product box to fill it.
+        btnAddItem.Click += (_, _) =>
+        {
+            AddRow("", 1m, "", true);
+            txtFindProduct.Focus();
+        };
+
+        grdItems.CellEndEdit += async (_, e) =>
+        {
+            if (grdItems.Columns[e.ColumnIndex].Name == "ProductCode")
+                await DescribeAsync(grdItems.Rows[e.RowIndex]);
+        };
         btnRemoveItem.Click += (_, _) =>
         {
             if (grdItems.CurrentRow is { IsNewRow: false } row)
@@ -36,10 +52,133 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     }
 
     /// Runtime. Resolved by the container.
-    public frmScriptEdit(ScriptEditPresenter presenter) : this()
+    public frmScriptEdit(ScriptEditPresenter presenter,
+                         IServiceScopeFactory scopes) : this()
     {
         _presenter = presenter;
+        _scopes = scopes;
+
+        // A few words of the name are enough: the matches come up under
+        // the box with their code, pack, price, stock and schedule, Down
+        // and Enter take one, and it goes onto the script. Codes nobody
+        // remembers were the only way in, so a pharmacist taking down a
+        // script looked each one up on another screen first.
+        _suggestions = new SearchSuggestions(txtFindProduct,
+            Suggest.ProductsInFull(scopes))
+        {
+            Wanted = Suggest.IsName
+        };
+
+        _suggestions.Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is ProductListItemDto product) AddProduct(product);
+        };
+
+        // After the suggestions, which take Enter first when one is
+        // highlighted: otherwise Enter puts on the code that was typed.
+        txtFindProduct.PreviewKeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter && txtFindProduct.Text.Trim().Length > 0)
+                e.IsInputKey = true;
+        };
+
+        txtFindProduct.KeyDown += async (_, e) =>
+        {
+            if (e.Handled || e.KeyCode != Keys.Enter) return;
+
+            var typed = txtFindProduct.Text.Trim();
+            if (typed.Length == 0) return;
+
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+
+            if (await Suggest.FindProductAsync(scopes, typed) is { } product)
+                AddProduct(product);
+            else
+                ShowError($"No product with the code {typed}. Type a few "
+                          + "words of its name to choose it from a list.");
+        };
+
         _presenter.Attach(this);
+    }
+
+    /// <summary>
+    /// Puts a product on the script: into the empty line the screen opens
+    /// with, or onto a new one, with its name and details beside it, and
+    /// the cursor on its quantity.
+    /// </summary>
+    private void AddProduct(ProductListItemDto product)
+    {
+        var row = grdItems.Rows.Cast<DataGridViewRow>()
+            .FirstOrDefault(r => string.IsNullOrWhiteSpace(
+                r.Cells["ProductCode"].Value?.ToString()))
+            ?? AddRow("", 1m, "", true);
+
+        row.Cells["ProductCode"].Value = product.Code;
+        Describe(row, product);
+
+        txtFindProduct.Clear();
+
+        grdItems.CurrentCell = row.Cells["Quantity"];
+        grdItems.Focus();
+        grdItems.BeginEdit(true);
+    }
+
+    /// One line of the script, its cells set by name.
+    private DataGridViewRow AddRow(string code, decimal quantity,
+                                   string directions, bool allowSubstitution)
+    {
+        var row = grdItems.Rows[grdItems.Rows.Add()];
+
+        row.Cells["ProductCode"].Value = code;
+        row.Cells["Quantity"].Value = quantity;
+        row.Cells["Directions"].Value = directions;
+        row.Cells["AllowSubstitution"].Value = allowSubstitution;
+
+        return row;
+    }
+
+    private static void Describe(DataGridViewRow row, ProductListItemDto? product)
+    {
+        row.Cells["Product"].Value = product?.Description
+            ?? (string.IsNullOrWhiteSpace(row.Cells["ProductCode"].Value?.ToString())
+                ? ""
+                : "No product with this code");
+
+        row.Cells["Details"].Value = product is null
+            ? ""
+            : Suggest.ProductDetails(product, withCode: false);
+
+        row.Cells["Product"].Style.ForeColor = product is null
+            ? Color.Firebrick
+            : SystemColors.ControlText;
+    }
+
+    /// <summary>
+    /// The name and details of whatever code a line holds: one typed into
+    /// the grid, or one brought from a quote or an earlier capture.
+    /// </summary>
+    private async Task DescribeAsync(DataGridViewRow row)
+    {
+        if (_scopes is null || row.DataGridView is null) return;
+
+        var code = row.Cells["ProductCode"].Value?.ToString()?.Trim() ?? "";
+
+        if (code.Length == 0)
+        {
+            Describe(row, null);
+            return;
+        }
+
+        var product = await Suggest.FindProductAsync(_scopes, code);
+
+        // Typed over again while the answer was coming.
+        if (row.DataGridView is null
+            || !string.Equals(row.Cells["ProductCode"].Value?.ToString()?.Trim(),
+                              code, StringComparison.Ordinal))
+            return;
+
+        Describe(row, product);
     }
 
     public Guid PatientId { get; private set; }
@@ -76,7 +215,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         grdItems.Rows.Clear();
 
         foreach (var line in quote.Lines)
-            grdItems.Rows.Add(line.ProductCode ?? "", line.Quantity, "", true);
+            AddRow(line.ProductCode ?? "", line.Quantity, "", true);
     }
 
     /// <summary>
@@ -111,8 +250,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         grdItems.Rows.Clear();
 
         foreach (var item in script.Items)
-            grdItems.Rows.Add(item.ProductCode ?? "", item.Quantity,
-                              item.Directions, item.AllowSubstitution);
+            AddRow(item.ProductCode ?? "", item.Quantity, item.Directions,
+                   item.AllowSubstitution);
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -122,7 +261,11 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 
         // One blank line to start, so the common case of a one-item
         // script needs no button press.
-        if (grdItems.Rows.Count == 0) grdItems.Rows.Add("", 1m, "", true);
+        if (grdItems.Rows.Count == 0) AddRow("", 1m, "", true);
+
+        // Items brought from a quote or an earlier capture, described.
+        foreach (DataGridViewRow row in grdItems.Rows)
+            await DescribeAsync(row);
     }
 
     public void ShowPatient(string description) =>

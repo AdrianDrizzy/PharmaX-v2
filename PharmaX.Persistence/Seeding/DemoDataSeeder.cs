@@ -168,6 +168,16 @@ public sealed class DemoDataSeeder
                 + await Section("trading history", _trading.SeedAsync, ct)
                     .ConfigureAwait(false)
 
+                // Before the shelf state, which then puts its handful of
+                // products back below it: ten of everything is the floor
+                // for testing, not an instruction to restock the line
+                // that is deliberately out of stock.
+                + await Section("stock for testing", SeedTestStockAsync, ct)
+                    .ConfigureAwait(false)
+                + await Section("test stock onto batches",
+                        SeedTestBatchesAsync, ct)
+                    .ConfigureAwait(false)
+
                 // After the trading, whose delivery would otherwise put the
                 // low and the out-of-stock lines back on the shelf. They
                 // were only ever low at the second start, when this used to
@@ -486,6 +496,133 @@ public sealed class DemoDataSeeder
     }
 
     /// <summary>
+    /// Ten of everything on the price list, so that anything in the
+    /// catalogue can be sold, dispensed, returned or counted without
+    /// being received first.
+    /// </summary>
+    /// <remarks>
+    /// The price list brings in the whole catalogue and no stock, which
+    /// is right for a site - a price list says what things cost, not
+    /// what is on the shelf - and useless for a test, where every second
+    /// product scanned is refused for having none. Ten is enough to sell
+    /// a few, dispense a few and still have some left to count.
+    /// <para>
+    /// Once per product, ever, and only up to ten: a shelf a tester has
+    /// sold down, or counted, stays where they left it rather than being
+    /// refilled behind them at the next start-up. Products the shelf
+    /// state deliberately empties are left alone for the same reason -
+    /// the out-of-stock alert has to have something to report.
+    /// </para>
+    /// </remarks>
+    private async Task<int> SeedTestStockAsync(CancellationToken ct)
+    {
+        const decimal Level = 10m;
+
+        var staged = await _db.StockMovements
+            .Where(m => m.ReasonCode == DemoReason
+                        && m.MovementType == MovementType.Adjustment)
+            .Select(m => m.ProductId)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var already = await _db.StockMovements
+            .Where(m => m.ReasonCode == TestStockReason)
+            .Select(m => m.ProductId)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var leave = staged.Concat(already).ToHashSet();
+
+        var bare = await _db.Products
+            .Where(p => p.IsActive && p.QuantityOnHand < Level)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var expiry = _clock.Today.AddYears(2);
+        var added = 0;
+
+        foreach (var product in bare.Where(p => !leave.Contains(p.Id)))
+        {
+            // A batch-tracked product needs the batch as well as the
+            // number: with no batch there is nothing to allocate, and
+            // the till refuses it however much its on-hand claims.
+            if (product.IsBatchTracked)
+            {
+                added += await AddBatchAsync(product,
+                        $"{product.Code}-TEST", expiry,
+                        Level - product.QuantityOnHand, ct,
+                        TestStockReason)
+                    .ConfigureAwait(false);
+
+                continue;
+            }
+
+            Adjust(product, Level, TestStockReason);
+            added++;
+        }
+
+        if (added > 0) await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return added;
+    }
+
+    /// <summary>
+    /// The test stock on dispensary lines put onto a batch, where it was
+    /// topped up before those lines were batch-tracked.
+    /// </summary>
+    /// <remarks>
+    /// The price list loads dispensary lines batch-tracked now, and the
+    /// top-up above receives their ten onto a batch. A database seeded
+    /// before that has them untracked with the stock loose on the shelf,
+    /// so the label printed from them carried no batch or expiry
+    /// (OCT-DEF-02). Whatever is on the shelf now goes onto one test
+    /// batch - the on-hand does not move, so there is no stock movement -
+    /// and only on lines the top-up stocked: a real database never gets
+    /// here, because none of this runs at a site.
+    /// </remarks>
+    private async Task<int> SeedTestBatchesAsync(CancellationToken ct)
+    {
+        var toppedUp = await _db.StockMovements
+            .Where(m => m.ReasonCode == TestStockReason)
+            .Select(m => m.ProductId)
+            .Distinct()
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        if (toppedUp.Count == 0) return 0;
+
+        var batched = (await _db.Batches
+                .Select(b => b.ProductId)
+                .Distinct()
+                .ToListAsync(ct)
+                .ConfigureAwait(false))
+            .ToHashSet();
+
+        var loose = await _db.Products
+            .Where(p => toppedUp.Contains(p.Id) && p.Schedule >= 3
+                        && !p.IsBatchTracked && p.QuantityOnHand > 0m)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var expiry = _clock.Today.AddYears(2);
+        var added = 0;
+
+        foreach (var product in loose.Where(p => !batched.Contains(p.Id)))
+        {
+            _db.Batches.Add(Batch.Receive(product.Id, $"{product.Code}-TEST",
+                expiry, product.QuantityOnHand, product.CostPrice,
+                _clock.UtcNow));
+
+            product.SetBatchTracked(true);
+            added++;
+        }
+
+        if (added > 0) await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return added;
+    }
+
+    /// <summary>
     /// Stock left in the states the alert centre exists to report: below
     /// its reorder level, out of stock entirely, expired, and expiring
     /// inside the warning window.
@@ -573,8 +710,11 @@ public sealed class DemoDataSeeder
     /// batches - and no stocktake could say which was right.
     /// </remarks>
     private async Task<int> AddBatchAsync(Product product, string number,
-        DateOnly expiry, decimal quantity, CancellationToken ct)
+        DateOnly expiry, decimal quantity, CancellationToken ct,
+        string reason = DemoReason)
     {
+        if (quantity <= 0m) return 0;
+
         var exists = await _db.Batches
             .AnyAsync(b => b.ProductId == product.Id
                            && b.BatchNumber == number, ct)
@@ -592,7 +732,7 @@ public sealed class DemoDataSeeder
 
         _db.StockMovements.Add(StockMovement.Record(product.Id, batch.Id,
             MovementType.Receipt, quantity, balance, _clock.UtcNow,
-            reasonCode: "DEMO", sourceDocumentType: "Demo"));
+            reasonCode: reason, sourceDocumentType: "Demo"));
 
         return 1;
     }
@@ -610,11 +750,15 @@ public sealed class DemoDataSeeder
 
     private const string DemoReason = "DEMO";
 
+    /// Why a product that had none is holding ten.
+    internal const string TestStockReason = "TESTSTOCK";
+
     /// <summary>
     /// Sets a product that is not batch tracked to a demonstration level,
     /// with an adjustment movement carrying the difference.
     /// </summary>
-    private void Adjust(Product product, decimal level)
+    private void Adjust(Product product, decimal level,
+                        string reason = DemoReason)
     {
         var delta = level - product.QuantityOnHand;
         product.SetQuantityOnHand(level);
@@ -623,7 +767,7 @@ public sealed class DemoDataSeeder
 
         _db.StockMovements.Add(StockMovement.Record(product.Id, null,
             MovementType.Adjustment, delta, level, _clock.UtcNow,
-            reasonCode: DemoReason, sourceDocumentType: "Demo"));
+            reasonCode: reason, sourceDocumentType: "Demo"));
     }
 }
 

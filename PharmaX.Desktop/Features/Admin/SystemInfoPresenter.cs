@@ -131,6 +131,10 @@ public sealed class SystemInfoPresenter : PresenterBase<ISystemInfoView>
             Held(pharmacy.Address, installed.Address)));
         rows.Add(new("Pharmacy", "VAT number", Or(pharmacy.VatNumber),
             Held(pharmacy.VatNumber, installed.VatNumber)));
+        rows.Add(new("Pharmacy", "Telephone", Or(pharmacy.Telephone),
+            Held(pharmacy.Telephone, installed.Telephone)));
+        rows.Add(new("Pharmacy", "WhatsApp", Or(pharmacy.WhatsApp),
+            Held(pharmacy.WhatsApp, installed.WhatsApp)));
         rows.Add(new("Pharmacy", "Licence number",
             Or(_options.Pharmacy.LicenceNumber), FromFile));
 
@@ -209,6 +213,10 @@ public sealed class SystemInfoPresenter : PresenterBase<ISystemInfoView>
                 Held(pharmacy.VatNumber, installed.VatNumber)),
             new("Pharmacy", "Address", Or(OneLine(pharmacy.Address)),
                 Held(pharmacy.Address, installed.Address)),
+            new("Pharmacy", "Telephone", Or(pharmacy.Telephone),
+                Held(pharmacy.Telephone, installed.Telephone)),
+            new("Pharmacy", "WhatsApp", Or(pharmacy.WhatsApp),
+                Held(pharmacy.WhatsApp, installed.WhatsApp)),
 
             new("Application", "Version",
                 typeof(SystemInfoPresenter).Assembly.GetName().Version?

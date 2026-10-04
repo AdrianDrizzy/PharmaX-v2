@@ -69,40 +69,130 @@ public class ReceiptDocumentTests : IDisposable
         rows[2].Text.Should().Be("Harare");
         rows[3].Text.Should().Be("VAT No: 4123456789");
 
+        // The numbers a customer rings about what is on the slip. They
+        // were on no receipt at all, so a query about a purchase had
+        // nowhere to go but back to the shop.
+        rows[4].Text.Should().Be("Tel: +263 78 376 6260");
+        rows[5].Text.Should().Be("WhatsApp: +263 77 123 4567");
+
         Texts(rows).Should().NotContain(t => t.Contains("Riverside Pharmacy Ltd"),
             "the registered name is left off to keep the slip short");
     }
 
+    /// <remarks>
+    /// A pharmacy that has given no number prints no label for one,
+    /// rather than a receipt headed "Tel:" with nothing after it.
+    /// </remarks>
     [Fact]
-    public void The_slip_follows_the_fiscal_tax_invoice_layout()
+    public void A_pharmacy_with_no_numbers_prints_no_room_for_them()
+    {
+        var texts = Texts(Rows(Sale(),
+            Header(null) with { Telephone = null, WhatsApp = "" }));
+
+        texts.Should().NotContain(t => t.StartsWith("Tel:",
+                                                    StringComparison.Ordinal));
+        texts.Should().NotContain(t => t.StartsWith("WhatsApp:",
+                                                    StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_slip_follows_the_tax_invoice_layout()
     {
         var texts = Texts(Rows(Sale(), Header(null)));
 
         texts.Should().ContainInOrder(
-            "Fiscal Tax Invoice",
-            "Cash Sale",
-            "Trans No    : S-001-000042",
-            "Date        : 11/09/2026 09:30",
-            "Operator    : test.admin",
-            "Till Number : 1",
-            "Code      QTY     Unit Price Amount Inc");
+            // Room for the customer's own registrations, which whoever
+            // is reclaiming the VAT writes in at the counter.
+            "Customer TIN    :",
+            "Customer VAT No :",
+            "TAX INVOICE (CASH)",
+            "Cashier   : test.admin",
+            "Date&Time : 11/09/2026 09:30  Till No: 1",
+            "Inv RefNo : S-001-000042",
+            "Pay Method: CASH  Tendered: 100.00",
+            "Tendered: USD = 100.00",
+            "CUSTOMER COPY",
+            "ORIGINAL",
+            "Description",
+            "Code        Qty UnitPrice DiscPerc   Total");
 
-        // The code and quantity at the unit price, then the description
-        // and the amount under the total.
-        texts.Should().Contain(t => t.StartsWith("PAN500    2 @", StringComparison.Ordinal)
-                                    && t.EndsWith("34.95", StringComparison.Ordinal));
+        // The code and the description, then the figures under their
+        // columns: how many, at what each, less what discount, for what.
+        texts.Should().Contain("PAN500    Panado 500mg 20s");
 
-        var item = texts.Single(t => t.StartsWith("Panado 500mg 20s",
-                                                  StringComparison.Ordinal));
-        item.Should().EndWith("69.90");
-        item.Length.Should().Be(39, "amounts end under the totals");
+        var figures = texts.Single(t => t.TrimStart()
+            .StartsWith("2     34.95", StringComparison.Ordinal));
 
-        texts.Should().Contain(AmountRow("Sub Total", "69.90"));
-        texts.Should().Contain(AmountRow("VAT-USD : 15.0%", "9.12"));
-        texts.Should().Contain(AmountRow("TOTAL-USD:", "69.90"));
+        figures.Should().EndWith("0.00   69.90");
+        figures.Length.Should().Be(42, "the figures end at the right edge");
+
+        texts.Should().Contain(AmountRow("SubTotal", "69.90"));
+        texts.Should().Contain(AmountRow("Vat-USD : 15.0%", "9.12"));
+        texts.Should().Contain(AmountRow("Total(Incl VAT)", "69.90"));
         texts.Should().Contain(AmountRow("Cash USD", "100.00"));
-        texts.Should().Contain(AmountRow("Change", "30.10"));
+
+        // What was put down against what was owed, and how many things
+        // were bought: the two lines a customer checks at the counter.
+        texts.Should().Contain("Change for Tendered 100.00 = 30.10");
+        texts.Should().Contain("Total Items: 2.00");
         texts[^1].Should().Be("Thank you");
+    }
+
+    /// <remarks>
+    /// The heading names the tender because the commonest query at the
+    /// counter is how something was paid for.
+    /// </remarks>
+    [Fact]
+    public void The_heading_names_how_the_sale_was_paid()
+    {
+        var account = Sale() with
+        {
+            Payments = new[] { new PaymentDto("Account", 69.90m, null) },
+            Totals = new SaleTotalsDto(69.90m, 0m, 9.12m, 69.90m, 0m, 0m)
+        };
+
+        Texts(Rows(account, Header(null))).Should()
+            .Contain("TAX INVOICE (ACCOUNT)");
+
+        var split = Sale() with
+        {
+            Payments = new[]
+            {
+                new PaymentDto("Cash", 40m, null),
+                new PaymentDto("Card", 29.90m, "1234")
+            },
+            Totals = new SaleTotalsDto(69.90m, 0m, 9.12m, 69.90m, 0m, 0m)
+        };
+
+        Texts(Rows(split, Header(null))).Should()
+            .Contain("TAX INVOICE (CASH/CARD)");
+    }
+
+    /// <remarks>
+    /// The column exists because a discount given at the till is the
+    /// thing a manager is most often asked to explain afterwards.
+    /// </remarks>
+    [Fact]
+    public void A_discounted_line_shows_what_percentage_came_off()
+    {
+        var sale = Sale() with
+        {
+            Lines = new[]
+            {
+                new SaleLineDto(1, Guid.NewGuid(), "Panado 500mg 20s", 2m,
+                    34.95m, 6.99m, "A", 62.91m, null, null, false, false, 15m,
+                    "PAN500")
+            },
+            Totals = new SaleTotalsDto(69.90m, 6.99m, 8.21m, 62.91m, 62.91m, 0m),
+            Payments = new[] { new PaymentDto("Cash", 62.91m, null) }
+        };
+
+        var texts = Texts(Rows(sale, Header(null)));
+
+        texts.Should().Contain(t => t.EndsWith("10.00   62.91",
+                                               StringComparison.Ordinal));
+
+        texts.Should().Contain(AmountRow("Discount", "6.99"));
     }
 
     [Fact]
@@ -120,13 +210,12 @@ public class ReceiptDocumentTests : IDisposable
 
         var texts = Texts(Rows(sale, Header(null)));
 
-        texts.Should().Contain(t => t.StartsWith("Ibuprofen 200mg 20s",
-                                                 StringComparison.Ordinal)
-                                    && t.EndsWith("1.00 NV", StringComparison.Ordinal));
+        texts.Should().Contain(t => t.Contains("Ibuprofen 200mg 20s",
+                                               StringComparison.Ordinal)
+                                    && t.EndsWith(" NV", StringComparison.Ordinal));
 
-        texts.Should().NotContain(t => t.StartsWith("Change",
-                                                    StringComparison.Ordinal),
-            "nothing was handed back");
+        texts.Should().Contain("Change for Tendered 1.00 = 0.00",
+            "nothing was handed back, and the slip says so");
     }
 
     [Fact]
@@ -140,7 +229,7 @@ public class ReceiptDocumentTests : IDisposable
 
         Texts(Rows(sale, Header(null))).Should().Contain(new[]
         {
-            "Patient     : Tendai Moyo (F00012)",
+            "Patient   : Tendai Moyo (F00012)",
             "REF: Script No-13972"
         });
     }
@@ -172,7 +261,7 @@ public class ReceiptDocumentTests : IDisposable
     // ---- Steps -----------------------------------------------------------
 
     private static string AmountRow(string label, string amount) =>
-        label.PadRight(39 - amount.Length) + amount;
+        label.PadRight(42 - amount.Length) + amount;
 
     private static IReadOnlyList<ReceiptRow> Rows(SaleDto sale,
                                                   ReceiptHeaderDto header)
@@ -269,5 +358,7 @@ public class ReceiptDocumentTests : IDisposable
                                      DateTimeKind.Local),
         LogoPath: logoPath,
         TillNumber: "1",
-        CurrencyCode: "USD");
+        CurrencyCode: "USD",
+        Telephone: "+263 78 376 6260",
+        WhatsApp: "+263 77 123 4567");
 }

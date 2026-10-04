@@ -441,6 +441,143 @@ public class PosPresenterTests
         _view.DidNotReceive().ShowRatedPricing(!rated);
     }
 
+    /// <remarks>
+    /// The till window used to remember only the sale it had finalised
+    /// itself, so a till closed and opened again had nothing to reprint
+    /// (OCT-DEF-05). It now offers the last receipt of the till's session.
+    /// </remarks>
+    [Fact]
+    public async Task A_reopened_till_offers_its_last_receipt_for_a_reprint()
+    {
+        var receipt = SaleWithOneLine() with { DocumentNumber = "S-001-000005" };
+
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.LastReceiptNumberAsync().Returns(Result<string>.Ok("S-001-000005"));
+        _view.PromptReceiptNumber("S-001-000005").Returns("S-001-000005");
+        _sales.FindReceiptAsync("S-001-000005").Returns(Result<SaleDto>.Ok(receipt));
+
+        _receipts.PrintAsync(Arg.Any<SaleDto>(), Arg.Any<ReceiptHeaderDto>(),
+                Arg.Any<CancellationToken>())
+            .Returns(PrintOutcome.Printed);
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ReprintRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        _view.Received().PromptReceiptNumber("S-001-000005");
+
+        await _receipts.Received().PrintAsync(
+            Arg.Is<SaleDto>(s => s.DocumentNumber == "S-001-000005"),
+            Arg.Is<ReceiptHeaderDto>(h => h.IsCopy),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>
+    /// A customer back for a copy of an earlier receipt hands over its
+    /// number, which the cashier types over the one offered.
+    /// </remarks>
+    [Fact]
+    public async Task A_receipt_number_typed_over_the_offer_is_the_one_reprinted()
+    {
+        var earlier = SaleWithOneLine() with { DocumentNumber = "S-001-000002" };
+
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.LastReceiptNumberAsync().Returns(Result<string>.Ok("S-001-000005"));
+        _view.PromptReceiptNumber("S-001-000005").Returns("s-001-000002");
+        _sales.FindReceiptAsync("s-001-000002").Returns(Result<SaleDto>.Ok(earlier));
+
+        _receipts.PrintAsync(Arg.Any<SaleDto>(), Arg.Any<ReceiptHeaderDto>(),
+                Arg.Any<CancellationToken>())
+            .Returns(PrintOutcome.Printed);
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ReprintRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        await _receipts.Received().PrintAsync(
+            Arg.Is<SaleDto>(s => s.DocumentNumber == "S-001-000002"),
+            Arg.Is<ReceiptHeaderDto>(h => h.IsCopy),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>
+    /// A copy is a copy of the original: its time and its cashier, not
+    /// the time it was reprinted and whoever reprinted it.
+    /// </remarks>
+    [Fact]
+    public async Task A_copy_carries_the_original_time_and_cashier()
+    {
+        var soldAt = new DateTime(2026, 9, 30, 7, 15, 0, DateTimeKind.Utc);
+        var earlier = SaleWithOneLine() with
+        {
+            DocumentNumber = "S-001-000002",
+            OccurredAtUtc = soldAt,
+            OperatorName = "joanne.m"
+        };
+
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.LastReceiptNumberAsync().Returns(Result<string>.Ok("S-001-000002"));
+        _view.PromptReceiptNumber("S-001-000002").Returns("S-001-000002");
+        _sales.FindReceiptAsync("S-001-000002").Returns(Result<SaleDto>.Ok(earlier));
+
+        _receipts.PrintAsync(Arg.Any<SaleDto>(), Arg.Any<ReceiptHeaderDto>(),
+                Arg.Any<CancellationToken>())
+            .Returns(PrintOutcome.Printed);
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ReprintRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        await _receipts.Received().PrintAsync(Arg.Any<SaleDto>(),
+            Arg.Is<ReceiptHeaderDto>(h => h.IsCopy
+                && h.PrintedAtLocal == soldAt.ToLocalTime()
+                && h.OperatorName == "joanne.m"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_receipt_that_cannot_be_found_is_reported_and_nothing_prints()
+    {
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.LastReceiptNumberAsync().Returns(Result<string>.Fail("POS-025",
+            "No sale has been completed in this till session yet."));
+        _view.PromptReceiptNumber(null).Returns("S-001-999999");
+        _sales.FindReceiptAsync("S-001-999999").Returns(Result<SaleDto>.Fail(
+            "POS-024", "There is no receipt S-001-999999."));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ReprintRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        _view.Received().PromptReceiptNumber(null);
+        _view.Received().ShowError("There is no receipt S-001-999999.");
+
+        await _receipts.DidNotReceive().PrintAsync(Arg.Any<SaleDto>(),
+            Arg.Any<ReceiptHeaderDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Backing_out_of_the_reprint_prints_nothing()
+    {
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(EmptySale()));
+        _sales.LastReceiptNumberAsync().Returns(Result<string>.Ok("S-001-000005"));
+        _view.PromptReceiptNumber("S-001-000005").Returns((string?)null);
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ReprintRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        await _sales.DidNotReceive().FindReceiptAsync(Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+        await _receipts.DidNotReceive().PrintAsync(Arg.Any<SaleDto>(),
+            Arg.Any<ReceiptHeaderDto>(), Arg.Any<CancellationToken>());
+    }
+
     private static SaleDto EmptySale() => new(
         Guid.NewGuid(), "", Array.Empty<SaleLineDto>(),
         new SaleTotalsDto(0, 0, 0, 0, 0, 0));

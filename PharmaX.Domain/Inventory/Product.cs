@@ -60,6 +60,28 @@ public sealed class Product : AuditableEntity
 
     /// Schedule 0 to 2 sell over the counter; 3 and above need dispensing.
     public bool RequiresPharmacist => Schedule >= 3;
+
+    /// <summary>
+    /// Whether the cost is one somebody should look at before trusting a
+    /// margin worked out from it: none at all, under a tenth of the price,
+    /// or at or above it.
+    /// </summary>
+    /// <remarks>
+    /// A wholesaler's list that gives the cost of one tablet against the
+    /// price of a thousand reads as a 99.9% margin on every report and
+    /// nobody notices: 121 lines of the pharmacy's own list did exactly
+    /// that (OCT-OBS-07). A margin over ninety per cent is not impossible,
+    /// so this asks for a check rather than refusing anything; a product
+    /// with no price has no margin to be wrong about.
+    /// </remarks>
+    public bool CostNeedsChecking =>
+        RetailPrice.Amount > 0m
+        && (CostPrice.Amount <= 0m
+            || CostPrice.Amount < RetailPrice.Amount * CostCheckFraction
+            || CostPrice.Amount >= RetailPrice.Amount);
+
+    /// The share of the price below which a cost is worth a second look.
+    public const decimal CostCheckFraction = 0.10m;
     public bool IsBelowReorderLevel => QuantityOnHand <= ReorderLevel;
 
     private Product() { }

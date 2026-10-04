@@ -1,0 +1,5 @@
+-- SELECT s.ScriptNumber, p.Code, i.Quantity, i.Directions FROM script s JOIN scriptitem i ON i.ScriptId = s.Id JOIN product p ON p.Id = i.ProductId WHERE s.PrescriberName = 'Dr N Moyo' ORDER BY s.ScriptNumber, i.LineNo;
+ScriptNumber	Code	Quantity	Directions
+SC-001-000005	1850	30.000	Take ONE tablet daily in the morning
+SC-001-000005	METF85	60.000	Take ONE tablet twice a day with food
+SC-001-000005	204	30.000	Take ONE tablet three times a day

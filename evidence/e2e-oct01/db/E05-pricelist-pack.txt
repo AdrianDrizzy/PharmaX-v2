@@ -1,0 +1,3 @@
+-- SELECT COUNT(*) AS pricelist_products, SUM(UnitsPerPack IS NULL) AS no_units_per_pack, SUM(Schedule >= 3) AS dispensary FROM product WHERE Code REGEXP '^[0-9]+$';
+pricelist_products	no_units_per_pack	dispensary
+749	749	313

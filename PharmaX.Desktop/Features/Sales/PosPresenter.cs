@@ -440,15 +440,28 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     /// The last finalised sale on this till, for a reprint.
     private Guid? _lastSaleId;
 
+    /// <remarks>
+    /// Offers the last receipt this till printed - the one this window
+    /// finalised, or the last of the till's session, which survives the
+    /// window being closed and opened again - and takes any other number
+    /// typed over it, for a customer back for a copy of an earlier one.
+    /// It used to know only the sale this window had finalised, so a
+    /// reopened till had nothing to reprint (OCT-DEF-05).
+    /// </remarks>
     private Task OnReprintAsync() => GuardAsync(async () =>
     {
-        if (_lastSaleId is not Guid saleId)
-        {
-            View.ShowInfo("No sale has been completed on this till yet.");
-            return;
-        }
+        string? last = null;
 
-        var sale = await _sales.GetAsync(saleId);
+        if (_lastSaleId is Guid saleId
+            && await _sales.GetAsync(saleId) is { IsSuccess: true } recent)
+            last = recent.Value.DocumentNumber;
+        else if (await _sales.LastReceiptNumberAsync() is { IsSuccess: true } session)
+            last = session.Value;
+
+        var number = View.PromptReceiptNumber(last);
+        if (string.IsNullOrWhiteSpace(number)) return;
+
+        var sale = await _sales.FindReceiptAsync(number);
         if (sale.IsFailure)
         {
             View.ShowError(sale.Error.Message);
@@ -456,10 +469,21 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         }
 
         // Marked as a copy, and recorded: the first one has already been
-        // handed over (ADM-DEF-08).
+        // handed over (ADM-DEF-08). Dated and signed as the original was:
+        // a copy of this morning's receipt printed this afternoon carried
+        // the afternoon's time and the name of whoever reprinted it.
+        var header = _headers.Build();
+
         var result = await _receipts.PrintAsync(
             await ForReceiptAsync(sale.Value),
-            _headers.Build() with { IsCopy = true });
+            header with
+            {
+                IsCopy = true,
+                PrintedAtLocal = sale.Value.OccurredAtUtc is DateTime sold
+                    ? sold.ToLocalTime()
+                    : header.PrintedAtLocal,
+                OperatorName = sale.Value.OperatorName ?? header.OperatorName
+            });
 
         if (result.Printed && _particulars is not null)
             await _particulars.RecordReprintAsync(sale.Value);

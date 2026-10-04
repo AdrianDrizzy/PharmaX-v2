@@ -229,6 +229,11 @@ public sealed class PlainDocument : PrintDocument
             if (!string.IsNullOrWhiteSpace(_header.VatNumber))
                 Line($"VAT {_header.VatNumber}", _body);
 
+            // A quotation or a goods received note is taken away and
+            // asked about later, like the receipt and the label.
+            if (!string.IsNullOrWhiteSpace(_header.Telephone))
+                Line($"Tel: {_header.Telephone.Trim()}", _body);
+
             Line($"{_header.BranchAndTill}  {_header.OperatorName}", _body);
             Line(_header.PrintedAtLocal.ToString("dd/MM/yyyy HH:mm",
                 CultureInfo.CurrentCulture), _body);
@@ -271,30 +276,47 @@ public sealed class PlainDocument : PrintDocument
 }
 
 /// <summary>
-/// A dispensing label on a 50 by 70 millimetre stock. Everything a
-/// patient needs to take the medicine correctly, and nothing else.
+/// A dispensing label on a 50 by 70 millimetre stock, laid out as the
+/// pharmacy's own labels are.
 /// </summary>
+/// <remarks>
+/// The medicine and how to take it at the top, in the largest type on
+/// the label, over a rule; then the particulars that settle a query at
+/// the counter - the batch and its expiry, the patient, who dispensed it
+/// and when, who prescribed it, and the script and item numbers; and the
+/// pharmacy itself at the foot with the number to ring it on.
+///
+/// The order is the order a label is read in. A patient reads the top of
+/// one and stops; a pharmacist asked about a container hours later reads
+/// the rest, and every question they can be asked - which batch, whose,
+/// dispensed by whom, against which script - is answered on the label
+/// rather than by looking it up.
+/// </remarks>
 public sealed class LabelDocument : PrintDocument
 {
     private readonly LabelDto _label;
-    private readonly string? _dispensedBy;
-    private readonly Font _body = new("Segoe UI", 8f);
-    private readonly Font _small = new("Segoe UI", 7f);
-    private readonly Font _bold = new("Segoe UI", 9f, FontStyle.Bold);
-    private readonly Font _directions = new("Segoe UI", 10f, FontStyle.Bold);
+    private readonly PharmacyImprint? _pharmacy;
 
-    /// <param name="dispensedBy">
-    /// The pharmacy the medicine came from - its name and address - which
-    /// every dispensed label has to carry. The label printed without it,
-    /// so a container out of its bag said nothing of where it was
-    /// dispensed or who to call about it (ADM-DEF-16).
+    // Sized to the stock rather than to taste: a label with two batches
+    // and directions that wrap has to end inside the frame, and the two
+    // rows the patient actually reads keep the largest type on it.
+    private readonly Font _product = new("Segoe UI", 9f, FontStyle.Bold);
+    private readonly Font _directions = new("Segoe UI", 8f, FontStyle.Bold);
+    private readonly Font _detail = new("Segoe UI", 6.5f);
+    private readonly Font _name = new("Segoe UI", 7f, FontStyle.Bold);
+    private readonly Font _small = new("Segoe UI", 6f);
+
+    /// <param name="pharmacy">
+    /// The pharmacy the medicine came from - its name, its address and
+    /// its telephone number - which every dispensed label has to carry.
+    /// The label printed without it, so a container out of its bag said
+    /// nothing of where it was dispensed or who to call about it
+    /// (ADM-DEF-16).
     /// </param>
-    public LabelDocument(LabelDto label, string? dispensedBy = null)
+    public LabelDocument(LabelDto label, PharmacyImprint? pharmacy = null)
     {
         _label = label;
-        _dispensedBy = string.IsNullOrWhiteSpace(dispensedBy)
-            ? null
-            : dispensedBy.Trim();
+        _pharmacy = pharmacy;
 
         DefaultPageSettings.PaperSize = new PaperSize("Label", 276, 197);
         DefaultPageSettings.Margins = new Margins(8, 8, 8, 8);
@@ -310,35 +332,94 @@ public sealed class LabelDocument : PrintDocument
     }
 
     /// <summary>
-    /// The lines the label carries, top to bottom, as they are printed.
-    /// Public so a test can check the content without a printer.
+    /// The label row by row, as it is printed. Public so a test can read
+    /// what goes on the container without a printer.
     /// </summary>
-    public IReadOnlyList<string> Lines()
+    public IReadOnlyList<LabelRow> Rows()
     {
         var culture = CultureInfo.CurrentCulture;
-        var lines = new List<string>
+        var rows = new List<LabelRow>();
+
+        void Row(string? text, LabelStyle style)
         {
-            _label.PatientName,
-            string.Format(culture, "{0}  x{1:0.##}",
-                _label.ProductDescription, _label.Quantity),
-            _label.Directions
-        };
+            if (!string.IsNullOrWhiteSpace(text))
+                rows.Add(new LabelRow(text!.Trim(), style));
+        }
+
+        // The medicine and how to take it: what the patient reads, and
+        // the only part of the label that has to be read across a room.
+        Row(string.Format(culture, "{0}  x{1:0.##}",
+            _label.ProductDescription, _label.Quantity), LabelStyle.Product);
+
+        Row(_label.Directions, LabelStyle.Directions);
+
+        rows.Add(new LabelRow("", LabelStyle.Rule));
 
         if (_label.BatchNumber is not null)
-            lines.Add(string.Format(culture, "Batch {0}   Exp {1:MM/yyyy}",
-                _label.BatchNumber, _label.Expiry));
+            Row(string.Format(culture, "Batch: {0}   Exp: {1:dd/MM/yyyy}",
+                _label.BatchNumber, _label.Expiry), LabelStyle.Detail);
 
-        lines.AddRange(_label.Cautions);
+        Row(_label.PatientName, LabelStyle.Detail);
 
-        lines.Add(string.Format(culture, "{0:dd/MM/yyyy}   {1}",
-            _label.DispensedOn, _label.PharmacistName));
-        lines.Add(string.Format(culture, "Script {0}", _label.ScriptNumber));
+        Row(string.Format(culture, "Disp by: {0}   {1:dd MMM yy}",
+            _label.PharmacistName, _label.DispensedOn), LabelStyle.Detail);
 
-        // Last, and in the smallest type: the patient reads the top of a
+        Row(_label.PrescriberName is null
+            ? null
+            : $"Doc. {_label.PrescriberName.Trim()}", LabelStyle.Detail);
+
+        Row(Reference(culture), LabelStyle.Detail);
+
+        foreach (var caution in _label.Cautions)
+            Row(caution, LabelStyle.Detail);
+
+        // The pharmacy last and smallest: the patient reads the top of a
         // label, the regulation reads the foot.
-        if (_dispensedBy is not null) lines.Add(_dispensedBy);
+        if (_pharmacy is not null)
+        {
+            rows.Add(new LabelRow("", LabelStyle.Gap));
+            Row(_pharmacy.TradingName, LabelStyle.Pharmacy);
+            Row(string.Join(", ", AddressLines(_pharmacy.Address)),
+                LabelStyle.Imprint);
+            Row(_pharmacy.Telephone, LabelStyle.Imprint);
+        }
 
-        return lines;
+        return rows;
+    }
+
+    /// <summary>
+    /// The lines the label carries, top to bottom. Public so a test can
+    /// check the content without a printer.
+    /// </summary>
+    public IReadOnlyList<string> Lines() =>
+        Rows().Where(row => row.Text.Length > 0)
+              .Select(row => row.Text)
+              .ToList();
+
+    /// <summary>
+    /// The script, which of its items this label is, and the
+    /// prescriber's own number: what the pharmacy is asked for when
+    /// anybody rings about the medicine.
+    /// </summary>
+    private string Reference(CultureInfo culture)
+    {
+        var parts = new List<string>
+        {
+            string.Format(culture, "RxNo: {0}", _label.ScriptNumber),
+
+            // "Item: 2 of 3" only where there is more than one: a single
+            // item counted out of one reads as though something is
+            // missing from the bag.
+            _label.ItemCount > 1
+                ? string.Format(culture, "Item: {0} of {1}",
+                    _label.ItemNumber, _label.ItemCount)
+                : string.Format(culture, "Item: {0}", _label.ItemNumber)
+        };
+
+        if (!string.IsNullOrWhiteSpace(_label.PrescriberNumber))
+            parts.Add($"Prof# {_label.PrescriberNumber!.Trim()}");
+
+        return string.Join("  ", parts);
     }
 
     /// <summary>
@@ -347,67 +428,183 @@ public sealed class LabelDocument : PrintDocument
     /// </summary>
     public static string DispensedBy(string tradingName, string? address) =>
         string.Join(", ", new[] { tradingName }
-            .Concat((address ?? "").Split('\n')
-                .Select(part => part.Trim())
-                .Where(part => part.Length > 0))
+            .Concat(AddressLines(address))
             .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    private static IEnumerable<string> AddressLines(string? address) =>
+        (address ?? "").Split('\n')
+            .Select(part => part.Trim())
+            .Where(part => part.Length > 0);
 
     internal void RenderPage(Graphics g, Rectangle bounds)
     {
         ArgumentNullException.ThrowIfNull(g);
 
-        float y = bounds.Top;
+        // The printed area is boxed, as the pharmacy's own stationery
+        // is, so a label that has crept on the roll is obvious.
+        g.DrawRectangle(Pens.Black, bounds.Left, bounds.Top,
+                        bounds.Width - 1, bounds.Height - 1);
 
-        // Each line advances by the height it actually wrapped to. It used
-        // to advance by one line whatever it wrapped to, so long directions
-        // and a three-batch line overprinted the lines under them on the
-        // label - the one place a patient reads how to take the medicine.
-        void Line(string text, Font font)
+        var area = Rectangle.Inflate(bounds, -4, -4);
+        var rows = Rows();
+
+        // Measured before anything is drawn, and the whole label stepped
+        // down where it does not fit. The stock is 70 by 50 millimetres
+        // and does not grow: a label that ran off the bottom of it lost
+        // the pharmacy's own name and telephone number, which is the
+        // half a patient needs hours later. Smaller type they can still
+        // read beats particulars that are not on the container at all.
+        var height = Lay(g, rows, area, 1f, draw: false);
+
+        var scale = height <= area.Height
+            ? 1f
+            : Math.Max(MinimumScale, area.Height / height);
+
+        Lay(g, rows, area, scale, draw: true);
+    }
+
+    /// <summary>
+    /// Lays the rows out at a scale, drawing them or only measuring, and
+    /// says how tall they came to.
+    /// </summary>
+    private float Lay(Graphics g, IReadOnlyList<LabelRow> rows,
+                      Rectangle area, float scale, bool draw)
+    {
+        var scaled = new Dictionary<LabelStyle, Font>();
+
+        Font For(LabelStyle style)
         {
-            var height = g.MeasureString(text, font, bounds.Width).Height;
+            if (scaled.TryGetValue(style, out var found)) return found;
 
-            g.DrawString(text, font, Brushes.Black,
-                new RectangleF(bounds.Left, y, bounds.Width, height));
-            y += Math.Max(height, font.GetHeight(g));
+            var basis = FontFor(style);
+
+            var font = scale >= 1f
+                ? basis
+                : new Font(basis.FontFamily, basis.Size * scale, basis.Style);
+
+            scaled[style] = font;
+            return font;
         }
 
-        var lines = Lines();
-
-        Line(lines[0], _bold);
-        Line(lines[1], _body);
-
-        y += 4;
-
-        // The directions are the point of the label, so they get the
-        // largest type and the room to wrap onto a second line.
-        Line(lines[2], _directions);
-
-        y += 4;
-
-        foreach (var line in lines.Skip(3)
-                     .Take(lines.Count - 3 - (_dispensedBy is null ? 0 : 1)))
-            Line(line, _body);
-
-        if (_dispensedBy is not null)
+        try
         {
-            y += 2;
-            Line(_dispensedBy, _small);
+            float y = area.Top;
+
+            foreach (var row in rows)
+            {
+                if (row.Style == LabelStyle.Gap)
+                {
+                    y += 4 * scale;
+                    continue;
+                }
+
+                if (row.Style == LabelStyle.Rule)
+                {
+                    y += 2 * scale;
+
+                    if (draw)
+                        g.DrawLine(Pens.Black, area.Left, y, area.Right, y);
+
+                    y += 3 * scale;
+                    continue;
+                }
+
+                var font = For(row.Style);
+
+                // Each row advances by the height it actually wrapped to.
+                // It used to advance by one line whatever it wrapped to,
+                // so long directions and a three-batch line overprinted
+                // the rows under them - the one place a patient reads how
+                // to take the medicine.
+                var height = Math.Max(
+                    g.MeasureString(row.Text, font, area.Width).Height,
+                    font.GetHeight(g));
+
+                if (draw)
+                    g.DrawString(row.Text, font, Brushes.Black,
+                        new RectangleF(area.Left, y, area.Width, height));
+
+                y += height;
+            }
+
+            return y - area.Top;
+        }
+        finally
+        {
+            // Only the scaled ones are this method's to dispose; at full
+            // size they are the document's own.
+            if (scale < 1f)
+            {
+                foreach (var font in scaled.Values) font.Dispose();
+            }
         }
     }
+
+    /// <summary>
+    /// How far the type may be stepped down to make a label fit. Below
+    /// this it stops being a label anybody can read, and a label nobody
+    /// can read is worse than one that has been shortened.
+    /// </summary>
+    private const float MinimumScale = 0.6f;
+
+    private Font FontFor(LabelStyle style) => style switch
+    {
+        LabelStyle.Product => _product,
+        LabelStyle.Directions => _directions,
+        LabelStyle.Pharmacy => _name,
+        LabelStyle.Imprint => _small,
+        _ => _detail
+    };
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            _body.Dispose();
-            _small.Dispose();
-            _bold.Dispose();
+            _product.Dispose();
             _directions.Dispose();
+            _detail.Dispose();
+            _name.Dispose();
+            _small.Dispose();
         }
 
         base.Dispose(disposing);
     }
 }
+
+/// <summary>How a row of a label is printed.</summary>
+public enum LabelStyle
+{
+    /// The medicine, in the largest type on the label.
+    Product,
+
+    /// How to take it, under the medicine.
+    Directions,
+
+    /// The particulars: batch, patient, dispenser, prescriber, script.
+    Detail,
+
+    /// The pharmacy's own name at the foot.
+    Pharmacy,
+
+    /// Its address and telephone number, in the smallest type.
+    Imprint,
+
+    /// The rule under the medicine and its directions.
+    Rule,
+
+    /// The space between the particulars and the pharmacy.
+    Gap
+}
+
+/// <summary>One printed row of a label.</summary>
+public sealed record LabelRow(string Text, LabelStyle Style);
+
+/// <summary>
+/// The pharmacy as it prints at the foot of a dispensing label: who
+/// dispensed the medicine, where, and what to ring about it.
+/// </summary>
+public sealed record PharmacyImprint(string TradingName, string? Address,
+                                     string? Telephone);
 
 public sealed class LabelPrinter : ILabelPrinter
 {
@@ -443,8 +640,8 @@ public sealed class LabelPrinter : ILabelPrinter
 
         using var doc = new LabelDocument(label, _pharmacy is null
             ? null
-            : LabelDocument.DispensedBy(_pharmacy.TradingName,
-                                        _pharmacy.Address));
+            : new PharmacyImprint(_pharmacy.TradingName, _pharmacy.Address,
+                                  _pharmacy.Telephone));
 
         return await Spooler.PrintAsync(doc, _settings,
             WorkstationSettingKey.LabelPrinter, "label",

@@ -1,0 +1,3 @@
+-- SELECT COUNT(*) AS day_end_batches FROM journalbatch WHERE Source = 'PointOfSale';
+day_end_batches
+0

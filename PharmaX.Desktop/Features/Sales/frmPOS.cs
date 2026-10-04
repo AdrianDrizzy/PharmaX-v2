@@ -235,6 +235,13 @@ public partial class frmPOS : PhxFormBase, IPosView
         frmTextPrompt.Ask(this, "Quotation",
             "Quotation number (on the customer's copy)");
 
+    public string? PromptReceiptNumber(string? last) =>
+        frmTextPrompt.Ask(this, "Reprint receipt",
+            last is null
+                ? "Receipt number to print again (Inv RefNo on the receipt)"
+                : "Receipt number to print again - Enter for the last one",
+            last);
+
     public void ClearSale()
     {
         grdLines.Rows.Clear();

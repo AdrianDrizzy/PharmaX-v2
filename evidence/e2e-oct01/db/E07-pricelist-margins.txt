@@ -1,0 +1,3 @@
+-- SELECT SUM(CostPrice > 0 AND CostPrice < RetailPrice * 0.10) AS cost_under_10pct, SUM(CostPrice >= RetailPrice) AS cost_at_or_above_retail, SUM(CostPrice = 0) AS no_cost, COUNT(*) AS priced FROM product WHERE Code REGEXP '^[0-9]+$';
+cost_under_10pct	cost_at_or_above_retail	no_cost	priced
+121	1	0	749

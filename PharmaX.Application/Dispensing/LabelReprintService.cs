@@ -128,8 +128,9 @@ public sealed class LabelReprintService : ILabelReprintService
             ? await _users.GetAsync(id, ct)
             : null;
 
-        IReadOnlyList<LabelDto> labels = dispensing.Lines.Select(l =>
-            new LabelDto(
+        IReadOnlyList<LabelDto> labels = dispensing.Lines
+            .OrderBy(l => l.LineNo)
+            .Select(l => new LabelDto(
                 PatientName: patient?.FullName ?? "",
                 ProductDescription: l.Description,
                 Quantity: l.Quantity,
@@ -139,7 +140,11 @@ public sealed class LabelReprintService : ILabelReprintService
                 PharmacistName: pharmacist?.DisplayName ?? "",
                 ScriptNumber: script?.ScriptNumber ?? "",
                 DispensedOn: issued.Value.DispensedOn,
-                Cautions: Array.Empty<string>())).ToList();
+                Cautions: Array.Empty<string>(),
+                ItemNumber: l.LineNo,
+                ItemCount: dispensing.Lines.Count,
+                PrescriberName: script?.PrescriberName,
+                PrescriberNumber: script?.PrescriberNumber)).ToList();
 
         return Result<IReadOnlyList<LabelDto>>.Ok(labels);
     }

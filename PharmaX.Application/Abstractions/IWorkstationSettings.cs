@@ -74,4 +74,6 @@ public static class PharmacySettingKey
     public const string RegisteredName = "pharmacy.registered-name";
     public const string VatNumber = "pharmacy.vat-number";
     public const string Address = "pharmacy.address";
+    public const string Telephone = "pharmacy.telephone";
+    public const string WhatsApp = "pharmacy.whatsapp";
 }

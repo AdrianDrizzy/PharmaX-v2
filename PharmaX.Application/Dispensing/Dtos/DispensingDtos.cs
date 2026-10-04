@@ -137,11 +137,26 @@ public sealed record DispensingStateDto(
 /// One label to print. A plain record so that the printer adapter needs
 /// no reference to the domain.
 /// </summary>
+/// <param name="ItemNumber">
+/// Which item of the script this label is for, and <paramref
+/// name="ItemCount"/> how many the script has: a patient holding three
+/// containers can see none is missing, and a query at the counter names
+/// the item rather than describing it.
+/// </param>
+/// <param name="PrescriberName">
+/// Who wrote the script, printed as "Doc." on the label. A container
+/// out of its bag said nothing of who prescribed what is in it.
+/// </param>
+/// <param name="PrescriberNumber">
+/// The prescriber's own practice number, printed as "Prof#". What a
+/// medical aid asks for first when a claim is queried.
+/// </param>
 public sealed record LabelDto(
     string PatientName, string ProductDescription, decimal Quantity,
     string Directions, string? BatchNumber, DateOnly? Expiry,
     string PharmacistName, string ScriptNumber, DateOnly DispensedOn,
-    IReadOnlyList<string> Cautions);
+    IReadOnlyList<string> Cautions, int ItemNumber = 1, int ItemCount = 1,
+    string? PrescriberName = null, string? PrescriberNumber = null);
 
 /// <param name="ClaimNumber">
 /// The medical aid claim the issue raised, if the scheme pays any of it,
