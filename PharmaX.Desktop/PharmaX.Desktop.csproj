@@ -27,7 +27,7 @@
          at the first query rather than at build time - which is the
          worst possible place to find out. -->
 
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Company>PharmaX</Company>
     <Product>PharmaX</Product>
   </PropertyGroup>
