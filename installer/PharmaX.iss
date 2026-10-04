@@ -51,6 +51,14 @@ Name: "desktopicon"; Description: "Create a shortcut on the desktop"; \
 Name: "startup"; Description: "Start PharmaX when this computer starts"; \
     GroupDescription: "Shortcuts:"; Flags: unchecked
 
+; Ticked on one machine per pharmacy, the one the tills connect to.
+; Installs MariaDB, makes PharmaX's database login and opens port 3306
+; to the local network - see ServerSetup.cs. Off by default: a till or
+; a single PC needs none of it.
+Name: "mainserver"; \
+    Description: "This is the pharmacy's main computer - install the database the tills share"; \
+    GroupDescription: "Database:"; Flags: unchecked
+
 [Files]
 ; The whole published folder: the executable plus the native libraries
 ; it needs - SQLite, the PDF renderer, the graphics used by printing.
@@ -75,6 +83,12 @@ Source: "..\PharmaX.Desktop\appsettings.json"; DestDir: "{app}"; \
 
 Source: "readme-after-install.txt"; DestDir: "{app}"; Flags: ignoreversion
 
+; MariaDB, downloaded and checked against its published hash by
+; build.ps1. Only unpacked on the main computer, and only for as long as
+; setup runs.
+Source: "redist\mariadb.msi"; DestDir: "{tmp}"; Tasks: mainserver; \
+    Flags: deleteafterinstall
+
 [Dirs]
 ; Created here so that the first-run wizard, and every later upgrade,
 ; find it already there with the right permissions. Users need to write
@@ -94,6 +108,14 @@ Name: "{commonstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
     Tasks: startup
 
 [Run]
+; Before the finish page, elevated, so that the wizard started from it
+; finds the database ready and its details filled in. MariaDB itself is
+; left installed on uninstall: it holds the pharmacy's data.
+Filename: "{app}\{#AppExe}"; \
+    Parameters: "--setup-server ""{tmp}\mariadb.msi"""; \
+    StatusMsg: "Installing the pharmacy's database. This takes a minute or two..."; \
+    Tasks: mainserver; Flags: waituntilterminated
+
 Filename: "{app}\{#AppExe}"; \
     Description: "Set up PharmaX on this computer now"; \
     Flags: nowait postinstall skipifsilent

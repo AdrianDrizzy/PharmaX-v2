@@ -112,6 +112,35 @@ if (-not $iscc) {
     return
 }
 
+# MariaDB for the "main computer" option. Pinned to the series PharmaX's
+# database layer is written against (Persistence: MariaDbServerVersion
+# 10.11), downloaded once into installer\redist and checked against the
+# hash MariaDB publishes, so a corrupt or substituted file never ships.
+$mariaDbVersion = '10.11.19'
+$mariaDbSha256 = '83af9d523bf7ba989ea0031d4ebca7e4dc21e49f435122570ddc87f0620b3a5c'
+$mariaDbMsi = Join-Path $PSScriptRoot 'redist\mariadb.msi'
+
+function Test-MariaDb {
+    (Test-Path $mariaDbMsi) -and
+    ((Get-FileHash $mariaDbMsi -Algorithm SHA256).Hash -eq $mariaDbSha256)
+}
+
+if (-not (Test-MariaDb)) {
+    $url = "https://archive.mariadb.org/mariadb-$mariaDbVersion/" +
+           "winx64-packages/mariadb-$mariaDbVersion-winx64.msi"
+
+    Write-Host "Downloading MariaDB $mariaDbVersion..." -ForegroundColor Cyan
+    New-Item -ItemType Directory -Force (Split-Path $mariaDbMsi) | Out-Null
+    Invoke-WebRequest $url -OutFile $mariaDbMsi -UseBasicParsing
+
+    if (-not (Test-MariaDb)) {
+        Remove-Item $mariaDbMsi -Force
+        throw "The MariaDB download does not match its published hash."
+    }
+}
+
+Write-Host "MariaDB $mariaDbVersion checked." -ForegroundColor Green
+
 Write-Host "Building the installer..." -ForegroundColor Cyan
 
 & $iscc (Join-Path $PSScriptRoot 'PharmaX.iss')

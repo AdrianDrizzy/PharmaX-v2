@@ -11,12 +11,15 @@ WHAT IT WILL ASK
 
     The pharmacy's main computer
         This machine holds the database the tills share. Choose this on
-        the pharmacist's PC. MySQL or MariaDB must already be installed
-        and running on it.
+        the pharmacist's PC. If "This is the pharmacy's main computer"
+        was ticked in the installer, the database is already installed
+        and its details are filled in: just name the pharmacy. When you
+        finish, PharmaX shows the details every till needs - write them
+        down.
 
     A till
         This machine uses the main computer's database. Choose this on
-        each cashier PC, and have the main computer's name to hand.
+        each cashier PC, and enter the details the main computer showed.
 
   Then the database details, the till number, and the pharmacy's name
   and currency.
@@ -54,6 +57,12 @@ WHERE THINGS ARE KEPT
   C:\ProgramData\PharmaX\logs               logs, one file per day
   C:\ProgramData\PharmaX\attachments        scanned prescriptions
   C:\ProgramData\PharmaX\branding           the pharmacy's logo
+
+  On the main computer, when the installer set up the database:
+
+  C:\ProgramData\PharmaX\server.json        the tills' database login
+  C:\ProgramData\PharmaX\database-admin.txt the MariaDB root password
+                                            (administrators only)
 
   None of this is removed by an uninstall, so reinstalling or upgrading
   does not lose anything.

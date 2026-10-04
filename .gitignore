@@ -16,3 +16,6 @@ dist/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Downloaded by installer/build.ps1
+installer/redist/

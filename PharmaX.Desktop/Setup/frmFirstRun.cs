@@ -30,7 +30,21 @@ public sealed partial class frmFirstRun : Form
         // again, so start from what is already there rather than making
         // them retype it. A new machine gets a new identity, generated
         // here and never anywhere else.
-        _profile = WorkstationProvisioning.Read() ?? new WorkstationProfile();
+        // Where the installer set this machine up as the main computer,
+        // its database answers are already known: fill them in and test
+        // them, so all that is left is the pharmacy's name.
+        var installed = ServerSetup.Read();
+
+        _profile = WorkstationProvisioning.Read()
+            ?? (installed is null
+                ? new WorkstationProfile()
+                : new WorkstationProfile
+                {
+                    Kind = WorkstationKind.Server,
+                    ServerPort = installed.Port,
+                    DatabaseName = installed.Database,
+                    DatabaseUser = installed.User
+                });
 
         foreach (var currency in Currencies.All)
             cboCurrency.Items.Add(currency);
@@ -39,6 +53,12 @@ public sealed partial class frmFirstRun : Form
         // is what the list wants to say.
 
         Fill();
+
+        if (installed is not null && _profile.Kind == WorkstationKind.Server)
+        {
+            txtPassword.Text = installed.Password;
+            Shown += (_, _) => _ = TestAsync();
+        }
 
         radStandalone.CheckedChanged += (_, _) => KindChanged();
         radServer.CheckedChanged += (_, _) => KindChanged();
@@ -279,9 +299,29 @@ public sealed partial class frmFirstRun : Form
             return;
         }
 
+        if (Kind == WorkstationKind.Server)
+            ShowTillDetails();
+
         DialogResult = DialogResult.OK;
         Close();
     }
+
+    /// <summary>
+    /// What every till will be asked, said once here so it can be written
+    /// down. Ctrl+C on the message copies it.
+    /// </summary>
+    private void ShowTillDetails() =>
+        MessageBox.Show(this,
+            "This computer is the pharmacy's main computer. Set up each "
+            + "till with these details:\n\n"
+            + $"Main computer:\t{Environment.MachineName}\n"
+            + $"Port:\t\t{_profile.ServerPort}\n"
+            + $"Database:\t{_profile.DatabaseName}\n"
+            + $"Username:\t{_profile.DatabaseUser}\n"
+            + $"Password:\t{_profile.DatabasePassword}\n\n"
+            + "Write them down now: PharmaX does not show them again.",
+            "PharmaX - details for the tills",
+            MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     /// <summary>
     /// Creates the pharmacy's database where the server has not got it.

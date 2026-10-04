@@ -21,9 +21,17 @@ namespace PharmaX.Desktop;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+
+        // The installer, elevated, on the pharmacy's main computer: set
+        // up the database and stop. The wizard runs on the next start.
+        if (args is ["--setup-server", var msi])
+        {
+            Environment.ExitCode = ServerSetup.Run(msi);
+            return;
+        }
 
         // Before anything else, and before any logging: a machine that
         // has never been set up has no database to log to and no
