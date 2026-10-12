@@ -4,9 +4,19 @@ using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Inventory;
 
+/// <summary>
+/// Where a Stocktake menu entry takes the operator: the list, a new
+/// count, or the count in progress at its capture, its variances or its
+/// posting.
+/// </summary>
+public enum StocktakeStep { List, New, Capture, Variance, Post }
+
 public interface IStocktakeListView : IView
 {
     Guid? SelectedId { get; }
+
+    /// The count still being counted, if there is one.
+    Guid? InProgressId { get; }
 
     void ShowStocktakes(IReadOnlyList<StocktakeListItemDto> stocktakes);
     StocktakeScopeDto? PromptScope();
@@ -95,7 +105,27 @@ public sealed class StocktakeListPresenter
         await LoadAsync();
     });
 
-    private Task ContinueAsync(Guid? id) => GuardAsync(async () =>
+    /// <summary>
+    /// Straight to the step a Stocktake menu entry names. Capture,
+    /// Variance and Post all opened this list, so three entries did one
+    /// thing; each now opens the count in progress at its own step.
+    /// </summary>
+    public Task OpenAtAsync(StocktakeStep step) => step switch
+    {
+        StocktakeStep.List => Task.CompletedTask,
+        StocktakeStep.New => OpenNewAsync(),
+        _ => View.InProgressId is Guid id
+            ? ContinueAsync(id, step)
+            : GuardAsync(() =>
+            {
+                View.ShowInfo("No count is in progress. Start one with "
+                              + "F3 New count.");
+                return Task.CompletedTask;
+            })
+    };
+
+    private Task ContinueAsync(Guid? id,
+        StocktakeStep step = StocktakeStep.Capture) => GuardAsync(async () =>
     {
         if (id is not Guid stocktakeId)
         {
@@ -105,6 +135,7 @@ public sealed class StocktakeListPresenter
 
         using var capture = _views.Create<frmStocktakeCapture>();
         capture.LoadStocktake(stocktakeId);
+        capture.StartAt = step;
         capture.ShowDialog((Form)View);
 
         await LoadAsync();
@@ -228,6 +259,9 @@ public sealed class StocktakeCapturePresenter
             && string.IsNullOrWhiteSpace(_current.VarianceReason))
         {
             var reason = View.PromptVarianceReason(_current.NetVarianceValue);
+
+            // Cancelled: back to the count, nothing said.
+            if (reason is null) return;
 
             if (string.IsNullOrWhiteSpace(reason))
             {

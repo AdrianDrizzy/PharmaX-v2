@@ -176,7 +176,7 @@ public partial class frmJournal : PhxFormBase, IJournalView
                 : $"out by {Format.Money(Math.Abs(debits - credits))}");
 
         lblTotals.ForeColor = balanced
-            ? PhxTheme.Accent
+            ? PhxTheme.Title
             : PhxTheme.ProblemText;
 
         // Post is unavailable until the journal balances, which is
@@ -238,6 +238,6 @@ public partial class frmJournal : PhxFormBase, IJournalView
             return;
         }
 
-        ShowInfo($"Exported to {saved}");
+        ShowSaved(saved);
     }
 }

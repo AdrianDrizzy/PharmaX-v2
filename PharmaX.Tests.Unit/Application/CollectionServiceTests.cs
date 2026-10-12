@@ -175,7 +175,8 @@ public class CollectionServiceTests
 
         sale.AddLine(PharmaX.Domain.Sales.SaleLine.Create(
             product.Id, "Amoxicillin 500mg x 21", 1m, Money.Of(30m), 15m,
-            "A", PharmaX.Domain.Sales.PriceSource.MedicalAidTariff));
+            "A", PharmaX.Domain.Sales.PriceSource.MedicalAidTariff,
+            isScript: true));
 
         await stock.ApplyIssueAsync(sale);
 
@@ -256,12 +257,12 @@ public class CollectionServiceTests
     }
 
     /// <remarks>
-    /// A collection is the co-payment for one script and nothing else.
-    /// A bottle of shampoo scanned onto it would move stock through a
-    /// sale that deliberately moves none.
+    /// Whatever else the patient picks up at the counter goes on the same
+    /// sale and is paid for in one go; the script's own line stays the
+    /// pharmacist's to change.
     /// </remarks>
     [Fact]
-    public async Task Nothing_else_can_be_scanned_onto_a_collection()
+    public async Task Counter_items_join_a_collection_but_the_script_line_stays_put()
     {
         var builder = new SaleServiceBuilder();
 
@@ -271,13 +272,18 @@ public class CollectionServiceTests
             builder.User.TillSessionId!.Value, builder.User.Id, Noon);
 
         sale.CollectFor(Guid.NewGuid());
+        sale.AddLine(PharmaX.Domain.Sales.SaleLine.Create(Guid.NewGuid(),
+            "Amoxicillin 500mg x 21", 1m, PharmaX.Domain.Primitives.Money.Of(30m),
+            0m, "A", PharmaX.Domain.Sales.PriceSource.StandardRetail, isScript: true));
         await builder.Sales.AddAsync(sale);
 
-        var result = await builder.Build()
-            .AddLineAsync(sale.Id, "PAR0500", 1m);
+        var service = builder.Build();
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("POS-014");
+        var added = await service.AddLineAsync(sale.Id, "PAR0500", 1m);
+        added.IsSuccess.Should().BeTrue(added.Error.Message);
+
+        var voided = await service.VoidLineAsync(sale.Id, 1, "Changed mind");
+        voided.Error.Code.Should().Be("POS-014");
     }
 }
 

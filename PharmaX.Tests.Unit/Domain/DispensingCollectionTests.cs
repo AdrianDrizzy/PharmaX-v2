@@ -134,9 +134,8 @@ public class DispensingCollectionTests
     }
 
     /// <summary>
-    /// The stock behind a collection has already left the shelf and the
-    /// stock behind a scanned item has not, so one sale cannot account
-    /// for both.
+    /// The script's lines go on first, so they are the ones marked as the
+    /// script's; over-the-counter items follow them.
     /// </summary>
     [Fact]
     public void A_basket_with_items_in_it_cannot_become_a_collection()
@@ -149,7 +148,7 @@ public class DispensingCollectionTests
         var act = () => sale.CollectFor(Guid.NewGuid());
 
         act.Should().Throw<DomainException>()
-           .WithMessage("*cannot be mixed*");
+           .WithMessage("*empty sale*");
     }
 
     // ---- Builders --------------------------------------------------------

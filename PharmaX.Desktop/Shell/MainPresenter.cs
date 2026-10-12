@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Alerts;
+using PharmaX.Application.Home;
 using PharmaX.Application.Offline;
 using PharmaX.Application.Reference;
 using PharmaX.Application.Sales;
@@ -47,6 +48,15 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     protected override void Subscribe()
     {
         View.MenuSelected += (_, key) => Enqueue(() => OnMenuAsync(key));
+
+        // Kept for this till, and read back before the next sign-in.
+        View.ThemeChosen += (_, id) => Enqueue(() => GuardAsync(async () =>
+        {
+            using var scope = _scopes.CreateScope();
+            await scope.ServiceProvider
+                .GetRequiredService<IWorkstationSettings>()
+                .SetAsync(WorkstationSettingKey.Theme, id);
+        }));
         // Not queued: each count reads through its own scope, and the
         // queue is held for as long as a menu screen is open - a tick
         // every fifteen seconds would pile up behind it all afternoon.
@@ -78,6 +88,54 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 
         await ShowWaitingAsync();
         await ShowAlertsAsync();
+        await ShowCountsAsync();
+    }
+
+    /// <summary>
+    /// The pharmacy in numbers on the home tiles, each figure only on a
+    /// tile this user may open: a cashier sees how many products the shop
+    /// sells, and no patient count on a Patients tile they cannot use.
+    /// </summary>
+    /// <remarks>
+    /// Its own scope and silent on failure, as the status bar counts are:
+    /// figures on a home screen are not worth a message box.
+    /// </remarks>
+    /// A figure on a tile, where this user may open it.
+    private void Show(string tile, string? count) =>
+        View.SetTileCount(tile,
+            ScreenAccess.CanOpen(tile, _permissions) ? count : null);
+
+    private static string Number(int value) =>
+        value.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
+
+    private async Task ShowCountsAsync()
+    {
+        try
+        {
+            using var scope = _scopes.CreateScope();
+
+            var c = await scope.ServiceProvider
+                .GetRequiredService<IHomeCounts>()
+                .ReadAsync(_permissions.ProductScope());
+
+            // Each on the tile it belongs to. Nothing for a figure that is
+            // nought and means "nothing to do", as the status bar does.
+            Show("patients", Number(c.Patients));
+            Show("products", Number(c.Products));
+            Show("pos", $"{Number(c.SalesToday)} today");
+            Show("dispensing", $"{Number(c.ScriptsToday)} today");
+            Show("purchase-orders", c.OpenPurchaseOrders == 0
+                ? null : $"{Number(c.OpenPurchaseOrders)} open");
+        }
+        catch (InvalidOperationException)
+        {
+            // The database is unreachable, which the connectivity label
+            // is already reporting.
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // As above.
+        }
     }
 
     /// <summary>
@@ -118,6 +176,8 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 1 => "1 stock alert",
                 var many => $"{many} stock alerts"
             });
+
+            Show("alerts", critical == 0 ? null : $"{Number(critical)} urgent");
         }
         catch (InvalidOperationException)
         {
@@ -169,6 +229,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 1 => "1 script waiting",
                 var many => $"{many} scripts waiting"
             });
+
+            Show("collect", result.Value.Count == 0
+                ? null : $"{Number(result.Value.Count)} waiting");
         }
         catch (InvalidOperationException)
         {
@@ -222,17 +285,20 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 _views.ShowDialog<frmPurchaseOrderList>((Form)View);
                 break;
 
-            // The guide's menu lists new, capture, variance and post as
-            // four entries. They are four views of one count, so they
-            // all reach the same hub; only "new" skips straight to the
-            // scope prompt.
+            // Four views of one count, through the same hub, each opened
+            // at its own step: three entries that all showed the list
+            // read as one screen under three names.
             case "stocktake-new":
-                ShowStocktakes(startNew: true);
+                ShowStocktakes(StocktakeStep.New);
                 break;
             case "stocktake-capture":
+                ShowStocktakes(StocktakeStep.Capture);
+                break;
             case "stocktake-variance":
+                ShowStocktakes(StocktakeStep.Variance);
+                break;
             case "stocktake-post":
-                ShowStocktakes(startNew: false);
+                ShowStocktakes(StocktakeStep.Post);
                 break;
             case "reports":
                 ShowReport(preset: null);
@@ -250,6 +316,16 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // reported on (ADM-DEF-05).
             case "stock-adjust":
                 _views.ShowDialog<frmStockAdjustment>((Form)View);
+                break;
+            case "supplier-return":
+            case "move-stock":
+                using (var adjust = _views.Create<frmStockAdjustment>())
+                {
+                    adjust.Preselect(key == "move-stock"
+                        ? Application.Inventory.StockAdjustmentKind.MoveToItem
+                        : Application.Inventory.StockAdjustmentKind.ReturnToSupplier);
+                    adjust.ShowDialog((Form)View);
+                }
                 break;
             case "trial-balance":
                 _views.ShowDialog<frmTrialBalance>((Form)View);
@@ -304,6 +380,15 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 break;
             case "schemes":
                 ShowReferenceList(ReferenceKind.MedicalAidScheme);
+                break;
+            case "prescribers":
+                ShowReferenceList(ReferenceKind.Prescriber);
+                break;
+            case "to-follow":
+                _views.ShowDialog<Features.Dispensing.frmToFollow>((Form)View);
+                break;
+            case "dosage-codes":
+                ShowReferenceList(ReferenceKind.DosageCode);
                 break;
             case "tariffs":
                 _views.ShowDialog<frmTariffList>((Form)View);
@@ -363,6 +448,18 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "printer-setup":
                 _views.ShowDialog<Features.Admin.frmPrinterSetup>((Form)View);
                 return;
+            case "backup":
+                BackUpNow();
+                return;
+            case "rsi-import":
+                _views.ShowDialog<Features.Admin.frmRsiImport>((Form)View);
+                return;
+            case "mass-price":
+                await MassPriceChangeAsync();
+                return;
+            case "rsi-history":
+                _views.ShowDialog<Features.Reports.frmLegacyHistory>((Form)View);
+                return;
             case "system-setup":
                 _views.ShowDialog<Features.Admin.frmSystemSetup>((Form)View);
 
@@ -389,6 +486,10 @@ public sealed class MainPresenter : PresenterBase<IMainView>
 
         var session = await _sessions.CurrentAsync();
         View.SetSession(session is null ? "No open session" : "Session open");
+
+        // Whatever the screen just closed changed - a patient added, a
+        // sale rung up - shows on the way back.
+        await ShowCountsAsync();
     });
 
     /// <summary>
@@ -411,6 +512,76 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         // The till session deliberately survives: the drawer is still
         // open and the next operator inherits it.
         View.LogOff();
+    }
+
+    /// <summary>
+    /// A copy of the database now - before a stocktake, an import, an
+    /// upgrade done by hand. The nightly copy is the scheduled task's.
+    /// </summary>
+    /// Every price in a department, or all of them, by a percentage.
+    private async Task MassPriceChangeAsync()
+    {
+        using var scope = _scopes.CreateScope();
+        var reference = scope.ServiceProvider.GetRequiredService<IReferenceDataService>();
+        var products = scope.ServiceProvider.GetRequiredService<Application.Inventory.IProductService>();
+
+        var departments = await reference.ListAsync(ReferenceKind.Department, includeInactive: false);
+        var choices = new List<(string Text, Guid Value)> { ("Every department", Guid.Empty) };
+        if (departments.IsSuccess)
+            choices.AddRange(departments.Value.Select(d => (d.Name, d.Id)));
+
+        if (Controls.frmChoicePrompt.Ask((Form)View, "Mass price change", "Whose prices", choices) is not Guid department)
+            return;
+
+        if (Controls.frmNumberPrompt.Ask((Form)View, "Mass price change",
+                "Percentage to put the prices up by", 0m, decimals: 2) is not decimal percent
+            || percent == 0m)
+            return;
+
+        var which = choices.First(c => c.Value == department).Text.ToLowerInvariant();
+        if (!Confirmed($"Put every price in {which} up by {percent:0.##}%, rounded as System setup says?"))
+            return;
+
+        var result = await products.RepriceAsync(department == Guid.Empty ? null : department, percent);
+
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+        else View.ShowInfo($"{result.Value} prices changed. They are on the Price Changes report.");
+    }
+
+    private async void BackUpNow()
+    {
+        using var scope = _scopes.CreateScope();
+        var backup = scope.ServiceProvider.GetRequiredService<IDatabaseBackup>();
+
+        if (!backup.HoldsTheDatabase)
+        {
+            View.ShowInfo("The database is on the pharmacy's main computer. "
+                          + "Back it up from there.");
+            return;
+        }
+
+        View.SetBusy(true);
+
+        try
+        {
+            var file = await backup.BackUpAsync("manual");
+
+            View.ShowInfo($"Backed up to {file}." + Environment.NewLine
+                + Environment.NewLine
+                + "The copy is on this computer's own disk. Copy it to a USB "
+                + "drive or a cloud folder as well: a dead disk takes both.");
+        }
+#pragma warning disable CA1031 // Shown to the operator; the log has the detail.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            ErrorHandler.Log(ex);
+            View.ShowError("The backup did not finish: " + ex.Message);
+        }
+        finally
+        {
+            View.SetBusy(false);
+        }
     }
 
     private void ChangeOwnPassword()
@@ -479,10 +650,10 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                          PharmacyHeading.Particulars(details));
     }
 
-    private void ShowStocktakes(bool startNew)
+    private void ShowStocktakes(StocktakeStep step)
     {
         using var list = _views.Create<frmStocktakeList>();
-        list.StartNewImmediately = startNew;
+        list.OpenAt = step;
         list.ShowDialog((Form)View);
     }
 

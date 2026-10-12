@@ -232,14 +232,6 @@ public sealed class SaleService : ISaleService
         if (sale is null)
             return Result<SaleLineDto>.Fail("POS-000", "Sale not found.");
 
-        // A collection is the co-payment for one script and nothing
-        // else. Scanning a bottle of shampoo onto it would put stock
-        // through a sale that deliberately does not move any.
-        if (sale.IsCollection)
-            return Result<SaleLineDto>.Fail("POS-014",
-                "This sale is collecting a script. Take the co-payment, "
-                + "then start a new sale for anything else.");
-
         // The till sells what this user may see. A cashier's catalogue is
         // the over-the-counter one, filtered in the query itself, so an
         // exact dispensary code reads as "no product" rather than as a
@@ -384,11 +376,9 @@ public sealed class SaleService : ISaleService
     private async Task<Error?> RefuseUnsellableAsync(Sale sale,
         CancellationToken ct)
     {
-        // A collection carries the dispensed items, whose stock moved
-        // when the script was issued.
-        if (sale.IsCollection) return null;
-
-        foreach (var group in sale.Lines.Where(l => !l.IsVoided)
+        // A collection's script lines are the dispensed items, whose
+        // stock moved when the script was issued.
+        foreach (var group in sale.Lines.Where(l => !l.IsVoided && !l.IsScript)
                      .GroupBy(l => l.ProductId))
         {
             var product = await _products.GetAsync(group.Key, ct);
@@ -467,6 +457,8 @@ public sealed class SaleService : ISaleService
         if (quantity <= 0m)
             return Result.Fail("POS-005", "The quantity must be more than zero.");
 
+        if (line.IsScript) return ScriptLine();
+
         // Re-run FEFO before accepting the change: a larger quantity may
         // need more unexpired stock than the batch originally picked
         // holds, and then it comes from the next batch on a line of its
@@ -508,7 +500,7 @@ public sealed class SaleService : ISaleService
         {
             var product = await _products.GetAsync(line.ProductId, ct);
 
-            if (product is not null && !sale.IsCollection
+            if (product is not null
                 && RefuseShortStock(sale, product, quantity, exceptLine: line)
                     is Error shortStock)
                 return Result.Fail(shortStock.Code, shortStock.Message);
@@ -526,6 +518,9 @@ public sealed class SaleService : ISaleService
         var sale = await _sales.GetAsync(saleId, ct);
         if (sale is null) return Result.Fail("POS-000", "Sale not found.");
 
+        if (sale.Lines.SingleOrDefault(l => l.LineNo == lineNo) is { IsScript: true })
+            return ScriptLine();
+
         sale.VoidLine(lineNo, reason, _user.Id);
 
         var line = sale.Lines.Single(l => l.LineNo == lineNo);
@@ -542,6 +537,7 @@ public sealed class SaleService : ISaleService
         if (sale is null) return Result.Fail("POS-000", "Sale not found.");
 
         var line = sale.Lines.Single(l => l.LineNo == lineNo);
+        if (line.IsScript) return ScriptLine();
 
         // Over the operator's own limit, the supervisor who authorised it
         // must actually hold the authority - checked here rather than
@@ -962,6 +958,12 @@ public sealed class SaleService : ISaleService
     }
 
     /// <summary>
+    /// A collected script is priced by the pharmacist, so it is changed
+    /// in the dispensary, not at the till.
+    private static Result ScriptLine() =>
+        Result.Fail("POS-014", "That line is the dispensed script. Send the "
+                               + "patient back to the pharmacist to change it.");
+
     /// Ties a finalised collection back to the dispensing it paid for.
     /// </summary>
     /// <remarks>

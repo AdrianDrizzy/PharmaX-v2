@@ -280,17 +280,17 @@ public sealed class PlainDocument : PrintDocument
 /// pharmacy's own labels are.
 /// </summary>
 /// <remarks>
-/// The medicine and how to take it at the top, in the largest type on
-/// the label, over a rule; then the particulars that settle a query at
-/// the counter - the batch and its expiry, the patient, who dispensed it
-/// and when, who prescribed it, and the script and item numbers; and the
-/// pharmacy itself at the foot with the number to ring it on.
+/// Every label carries the patient's name; the medicine and its
+/// strength; the directions in plain words; the quantity and the date;
+/// the warnings for the medicine and "Keep out of reach of children";
+/// and the pharmacy's name, address and telephone number at the foot.
 ///
-/// The order is the order a label is read in. A patient reads the top of
-/// one and stops; a pharmacist asked about a container hours later reads
-/// the rest, and every question they can be asked - which batch, whose,
-/// dispensed by whom, against which script - is answered on the label
-/// rather than by looking it up.
+/// Whose it is comes first, so the right bag reaches the right person.
+/// The medicine and how to take it follow in the largest type, over a
+/// rule; then the particulars that settle a query at the counter - the
+/// quantity and date, the batch and its expiry, who dispensed it, who
+/// prescribed it, and the script and item numbers; then the warnings in
+/// bold; and the pharmacy itself at the foot with the number to ring.
 /// </remarks>
 public sealed class LabelDocument : PrintDocument
 {
@@ -305,6 +305,7 @@ public sealed class LabelDocument : PrintDocument
     private readonly Font _detail = new("Segoe UI", 6.5f);
     private readonly Font _name = new("Segoe UI", 7f, FontStyle.Bold);
     private readonly Font _small = new("Segoe UI", 6f);
+    private readonly Font _warning = new("Segoe UI", 6.5f, FontStyle.Bold);
 
     /// <param name="pharmacy">
     /// The pharmacy the medicine came from - its name, its address and
@@ -346,23 +347,30 @@ public sealed class LabelDocument : PrintDocument
                 rows.Add(new LabelRow(text!.Trim(), style));
         }
 
+        // Whose it is: a pre-pack made up for the shelf has nobody's name.
+        Row(_label.PatientName, LabelStyle.Patient);
+
         // The medicine and how to take it: what the patient reads, and
         // the only part of the label that has to be read across a room.
-        Row(string.Format(culture, "{0}  x{1:0.##}",
-            _label.ProductDescription, _label.Quantity), LabelStyle.Product);
-
-        Row(_label.Directions, LabelStyle.Directions);
+        // The directions in plain words, the dose and how often in
+        // capitals, however they were typed.
+        Row(_label.ProductDescription, LabelStyle.Product);
+        Row(LabelWording.Directions(_label.Directions), LabelStyle.Directions);
 
         rows.Add(new LabelRow("", LabelStyle.Rule));
+
+        // The quantity and the date spelt out: "x21" beside the name was
+        // read as part of the pack size.
+        Row(string.Format(culture, "Qty: {0:0.##}   Date: {1:dd/MM/yyyy}",
+            _label.Quantity, _label.DispensedOn), LabelStyle.Detail);
 
         if (_label.BatchNumber is not null)
             Row(string.Format(culture, "Batch: {0}   Exp: {1:dd/MM/yyyy}",
                 _label.BatchNumber, _label.Expiry), LabelStyle.Detail);
 
-        Row(_label.PatientName, LabelStyle.Detail);
-
-        Row(string.Format(culture, "Disp by: {0}   {1:dd MMM yy}",
-            _label.PharmacistName, _label.DispensedOn), LabelStyle.Detail);
+        Row(string.IsNullOrWhiteSpace(_label.PharmacistName)
+            ? null
+            : $"Disp by: {_label.PharmacistName.Trim()}", LabelStyle.Detail);
 
         Row(_label.PrescriberName is null
             ? null
@@ -370,8 +378,16 @@ public sealed class LabelDocument : PrintDocument
 
         Row(Reference(culture), LabelStyle.Detail);
 
-        foreach (var caution in _label.Cautions)
-            Row(caution, LabelStyle.Detail);
+        // The warnings the caller gave, or those that go with the
+        // medicine; never none. Every label was printed without any.
+        var warnings = _label.Cautions.Count > 0
+            ? _label.Cautions
+            : LabelWording.Warnings(_label.ProductDescription);
+
+        foreach (var warning in warnings)
+            Row(warning, LabelStyle.Warning);
+
+        Row(LabelWording.KeepOutOfReach, LabelStyle.Warning);
 
         // The pharmacy last and smallest: the patient reads the top of a
         // label, the regulation reads the foot.
@@ -381,7 +397,9 @@ public sealed class LabelDocument : PrintDocument
             Row(_pharmacy.TradingName, LabelStyle.Pharmacy);
             Row(string.Join(", ", AddressLines(_pharmacy.Address)),
                 LabelStyle.Imprint);
-            Row(_pharmacy.Telephone, LabelStyle.Imprint);
+            Row(string.IsNullOrWhiteSpace(_pharmacy.Telephone)
+                ? null
+                : $"Tel: {_pharmacy.Telephone.Trim()}", LabelStyle.Imprint);
         }
 
         return rows;
@@ -552,7 +570,9 @@ public sealed class LabelDocument : PrintDocument
         LabelStyle.Product => _product,
         LabelStyle.Directions => _directions,
         LabelStyle.Pharmacy => _name,
+        LabelStyle.Patient => _name,
         LabelStyle.Imprint => _small,
+        LabelStyle.Warning => _warning,
         _ => _detail
     };
 
@@ -565,6 +585,7 @@ public sealed class LabelDocument : PrintDocument
             _detail.Dispose();
             _name.Dispose();
             _small.Dispose();
+            _warning.Dispose();
         }
 
         base.Dispose(disposing);
@@ -574,6 +595,9 @@ public sealed class LabelDocument : PrintDocument
 /// <summary>How a row of a label is printed.</summary>
 public enum LabelStyle
 {
+    /// Whose medicine it is, at the top.
+    Patient,
+
     /// The medicine, in the largest type on the label.
     Product,
 
@@ -582,6 +606,9 @@ public enum LabelStyle
 
     /// The particulars: batch, patient, dispenser, prescriber, script.
     Detail,
+
+    /// The warnings and "Keep out of reach of children", in bold.
+    Warning,
 
     /// The pharmacy's own name at the foot.
     Pharmacy,
@@ -661,7 +688,8 @@ public sealed class LabelPrinter : ILabelPrinter
         using var doc = new TrailerLabelDocument(trailer, _pharmacy is null
             ? null
             : LabelDocument.DispensedBy(_pharmacy.TradingName,
-                                        _pharmacy.Address));
+                                        _pharmacy.Address),
+            _pharmacy?.Telephone);
 
         return await Spooler.PrintAsync(doc, _settings,
             WorkstationSettingKey.LabelPrinter, "label",

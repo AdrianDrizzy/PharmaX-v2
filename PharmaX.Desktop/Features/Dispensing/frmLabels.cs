@@ -160,7 +160,7 @@ public partial class frmLabels : PhxFormBase
             text.AppendLine("Trailer label:");
 
             foreach (var line in Adapters.Printing.TrailerLabelDocument
-                         .Lines(trailer.Value, _pharmacy))
+                         .Lines(trailer.Value, _pharmacy, _imprint?.Telephone))
                 text.AppendLine("  " + line);
         }
 
@@ -234,7 +234,8 @@ public partial class frmLabels : PhxFormBase
             "Reverse dispensing",
             $"Why is {row?.DocumentNumber} being reversed? The medicine goes "
             + "back into stock, the repeat back to the script, and any "
-            + "claim on the medical aid is withdrawn.");
+            + "claim on the medical aid is withdrawn.",
+            hint: "e.g. Wrong strength dispensed");
 
         if (string.IsNullOrWhiteSpace(reason)) return;
 

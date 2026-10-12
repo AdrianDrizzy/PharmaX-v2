@@ -16,8 +16,11 @@ public partial class frmSupervisorPrompt : Form
     public Guid? AuthoriserId { get; private set; }
 
     public frmSupervisorPrompt(IAuthenticationService auth, string reason,
-                               string requiredRole = "Manager")
+                               string requiredRole = "Manager",
+                               string? username = null)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         InitializeComponent();
 
         // A plain Form rather than PhxFormBase, so branded here.
@@ -25,6 +28,14 @@ public partial class frmSupervisorPrompt : Form
         _auth = auth;
         _requiredRole = requiredRole;
         lblReason.Text = reason;
+
+        // One person's own sign-in, as unlocking their till is.
+        if (username is not null)
+        {
+            txtUsername.Text = username;
+            txtUsername.ReadOnly = true;
+            ActiveControl = txtPassword;
+        }
 
         AcceptButton = btnOk;
         CancelButton = btnCancel;
@@ -59,6 +70,7 @@ public partial class frmSupervisorPrompt : Form
     private string PermissionForRole() => _requiredRole switch
     {
         "Pharmacist" => Domain.Security.PermissionCode.ScriptAuthorise,
+        "Cashier" => Domain.Security.PermissionCode.SaleCreate,
         _ => Domain.Security.PermissionCode.SaleDiscountAboveLimit
     };
 }

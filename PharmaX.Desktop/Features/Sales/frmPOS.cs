@@ -79,12 +79,10 @@ public partial class frmPOS : PhxFormBase, IPosView
         // Everything but paying and closing is meaningless on a script
         // the pharmacist has already priced, and a key that silently
         // did nothing would be worse than one that says why.
-        if (_collecting
-            && key is not (PosKeyMap.Payment or PosKeyMap.Close))
+        if (_collecting && !OnCollection(key))
         {
-            ShowInfo("This is a dispensed script. Take the payment, or "
-                     + "send the patient back to the pharmacist to change "
-                     + "it.");
+            ShowInfo("This sale is collecting a script: add anything else "
+                     + "the patient is buying, then take the payment.");
             return true;
         }
 
@@ -112,6 +110,10 @@ public partial class frmPOS : PhxFormBase, IPosView
                 CloseRequested?.Invoke(this, EventArgs.Empty); break;
             case PosKeyMap.VoidLine:
                 VoidLineRequested?.Invoke(this, EventArgs.Empty); break;
+            case PosKeyMap.Lock:
+                LockRequested?.Invoke(this, EventArgs.Empty); break;
+            case PosKeyMap.NoSale:
+                NoSaleRequested?.Invoke(this, EventArgs.Empty); break;
             default:
                 return false;
         }
@@ -156,7 +158,7 @@ public partial class frmPOS : PhxFormBase, IPosView
                 // Struck through rather than removed: the operator needs
                 // to see that the line was voided, and so does the audit.
                 var row = grdLines.Rows[index];
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
                 row.DefaultCellStyle.Font =
                     new Font(grdLines.Font, FontStyle.Strikeout);
             }
@@ -233,14 +235,15 @@ public partial class frmPOS : PhxFormBase, IPosView
 
     public string? PromptQuotationNumber() =>
         frmTextPrompt.Ask(this, "Quotation",
-            "Quotation number (on the customer's copy)");
+            "Quotation number (on the customer's copy)",
+            hint: "e.g. Q-001-000001");
 
     public string? PromptReceiptNumber(string? last) =>
         frmTextPrompt.Ask(this, "Reprint receipt",
             last is null
                 ? "Receipt number to print again (Inv RefNo on the receipt)"
                 : "Receipt number to print again - Enter for the last one",
-            last);
+            last, hint: "e.g. S-001-000001");
 
     public void ClearSale()
     {
@@ -277,6 +280,12 @@ public partial class frmPOS : PhxFormBase, IPosView
         ShowCollection(patientName);
     }
 
+    /// What a collection can do: everything but changing the customer,
+    /// holding it or bringing a quotation onto it.
+    private static bool OnCollection(Keys key) =>
+        key is not (PosKeyMap.Customer or PosKeyMap.Hold or PosKeyMap.Recall
+                    or PosKeyMap.Quotation);
+
     private void ShowCollection(string patientName)
     {
         _collecting = true;
@@ -285,18 +294,14 @@ public partial class frmPOS : PhxFormBase, IPosView
             ? "PharmaX - Collect script"
             : $"PharmaX - Collect script  -  {patientName}";
 
-        // The basket is the script's, and it is not editable here: the
-        // items came off the shelf in the dispensary and what is owed
-        // was worked out against the medical aid tariff. A cashier who
-        // needs to change any of that sends the patient back to the
-        // pharmacist, which is the correct answer.
-        scanBar.Visible = false;
-
+        // The script's lines are not editable here - the till refuses
+        // them - but whatever else the patient picks up at the counter
+        // goes on the same sale and is paid for in one go.
         foreach (var button in pnlFunctions.Controls.OfType<Button>())
         {
             if (button.Tag is not Keys key) continue;
 
-            button.Enabled = key is PosKeyMap.Payment or PosKeyMap.Close;
+            button.Enabled = OnCollection(key);
         }
 
         // Whether the co-payment rests on a tariff is the lines' to say,
@@ -356,9 +361,32 @@ public partial class frmPOS : PhxFormBase, IPosView
             : null;
     }
 
+    public string? PromptNoSaleReason() =>
+        frmTextPrompt.Ask(this, "No sale",
+                          "Why is the drawer being opened without a sale?",
+                          hint: "e.g. Change for the float");
+
+    public void PromptUnlock(string username)
+    {
+        if (_auth is null) return;
+
+        // The operator's own password, or a supervisor's when the
+        // operator has gone: Cancel on one offers the other.
+        for (var own = true; ; own = !own)
+        {
+            using var dialog = own
+                ? new frmSupervisorPrompt(_auth, $"The till is locked. {username}, sign in to unlock it.",
+                                          "Cashier", username)
+                : new frmSupervisorPrompt(_auth, $"The till is locked by {username}. A supervisor can unlock it.");
+
+            if (dialog.ShowDialog(this) == DialogResult.OK) return;
+        }
+    }
+
     public string? PromptVoidReason() =>
         frmTextPrompt.Ask(this, "Void line",
-                          "Why is this line being voided?");
+                          "Why is this line being voided?",
+                          hint: "e.g. Customer changed their mind");
 
     /// <summary>
     /// The product list, in picker mode, rather than a lookup grid built
@@ -392,4 +420,6 @@ public partial class frmPOS : PhxFormBase, IPosView
     public event EventHandler? QuotationRequested;
     public event EventHandler? ReprintRequested;
     public event EventHandler? CloseRequested;
+    public event EventHandler? LockRequested;
+    public event EventHandler? NoSaleRequested;
 }

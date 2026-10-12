@@ -38,23 +38,25 @@ public partial class frmStocktakeList : PhxFormBase, IStocktakeListView
     }
 
     /// <summary>
-    /// Set by the shell when the menu entry was "New Stocktake" rather
-    /// than one of the others, so the screen opens straight into the
-    /// scope prompt.
+    /// Set by the shell from the menu entry chosen, so the screen opens
+    /// at that step: the scope prompt for "New Stocktake", the count in
+    /// progress for the others.
     /// </summary>
-    public bool StartNewImmediately { get; set; }
+    public StocktakeStep OpenAt { get; set; }
 
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        if (_presenter is not null) await _presenter.InitialiseAsync();
+        if (_presenter is null) return;
 
-        if (StartNewImmediately)
-            OpenNewRequested?.Invoke(this, EventArgs.Empty);
+        await _presenter.InitialiseAsync();
+        await _presenter.OpenAtAsync(OpenAt);
     }
 
     public Guid? SelectedId => grdStocktakes.CurrentRow?.DataBoundItem
         is StocktakeListItemDto dto ? dto.Id : null;
+
+    public Guid? InProgressId { get; private set; }
 
     public void ShowStocktakes(IReadOnlyList<StocktakeListItemDto> stocktakes)
     {
@@ -69,12 +71,13 @@ public partial class frmStocktakeList : PhxFormBase, IStocktakeListView
             // A count still open is the one that needs attention, and
             // the one blocking any new count from being started.
             if (item.Status == "Counting")
-                row.DefaultCellStyle.BackColor = Color.FromArgb(255, 244, 214);
+                row.DefaultCellStyle.BackColor = PhxTheme.Attention;
             else if (item.Status == "Cancelled")
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         var open = stocktakes.Count(s => s.Status == "Counting");
+        InProgressId = stocktakes.FirstOrDefault(s => s.Status == "Counting")?.Id;
 
         lblSummary.Text = open > 0
             ? "A count is in progress. Post or cancel it before starting "
@@ -96,7 +99,8 @@ public partial class frmStocktakeList : PhxFormBase, IStocktakeListView
     public string? PromptCancelReason() =>
         frmTextPrompt.Ask(this, "Cancel stocktake",
             "Why is this count being abandoned? The count is kept and "
-            + "marked cancelled; nothing it recorded is posted.");
+            + "marked cancelled; nothing it recorded is posted.",
+            hint: "e.g. Counted the wrong shelf");
 
     public event EventHandler? RefreshRequested;
     public event EventHandler? OpenNewRequested;
@@ -117,6 +121,8 @@ public sealed class frmStocktakeScope : Form
 
     public frmStocktakeScope()
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         Controls.Add(new Label
         {
             AutoSize = false,
@@ -128,9 +134,10 @@ public sealed class frmStocktakeScope : Form
 
         Add("&Description", _description, 0, 300);
         _description.MaxLength = 200;
+        _description.PlaceholderText = "e.g. Shelf 4, cough and cold";
 
         Add("Product &filter", _searchTerm, 1, 220);
-        _searchTerm.PlaceholderText = "blank counts everything";
+        _searchTerm.PlaceholderText = "Code or name, or blank for all";
 
         _batchTrackedOnly.AutoSize = true;
         _batchTrackedOnly.Location = new Point(150, 60 + 2 * 34);
@@ -174,9 +181,15 @@ public sealed class frmStocktakeScope : Form
         // of whoever reads the report.
         FormClosing += (_, e) =>
         {
-            if (DialogResult == DialogResult.OK
-                && string.IsNullOrWhiteSpace(_description.Text))
-                e.Cancel = true;
+            if (DialogResult != DialogResult.OK
+                || !string.IsNullOrWhiteSpace(_description.Text)) return;
+
+            // Kept open, and told why: it used to stay put without a word.
+            e.Cancel = true;
+            frmMessage.Show(this, "Give the count a description. It is "
+                + "printed on the variance report.",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _description.Focus();
         };
     }
 

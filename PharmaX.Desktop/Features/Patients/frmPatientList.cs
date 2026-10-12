@@ -42,15 +42,22 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
             if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
         };
 
-        // An address kept over two lines reads as one on the list.
+        // An address kept over two lines reads as one on the list, and an
+        // imported file without its "RSI-".
         grdPatients.CellFormatting += (_, e) =>
         {
-            if (e.ColumnIndex >= 0
-                && grdPatients.Columns[e.ColumnIndex].DataPropertyName == "Address"
-                && e.Value is string address)
+            if (e.ColumnIndex < 0 || e.Value is not string value) return;
+
+            switch (grdPatients.Columns[e.ColumnIndex].DataPropertyName)
             {
-                e.Value = Suggest.OneLine(address);
-                e.FormattingApplied = true;
+                case "Address":
+                    e.Value = Suggest.OneLine(value);
+                    e.FormattingApplied = true;
+                    break;
+                case "FileNumber":
+                    e.Value = Format.FileNumber(value);
+                    e.FormattingApplied = true;
+                    break;
             }
         };
 
@@ -66,9 +73,14 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         btnDeactivate.Click += (_, _) =>
             DeactivateRequested?.Invoke(this, EventArgs.Empty);
         btnDocuments.Click += (_, _) => ShowDocuments();
+        btnExport.Click += (_, _) => Export();
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
+        btnPrevious.Click += (_, _) =>
+            PreviousPageRequested?.Invoke(this, EventArgs.Empty);
+        btnNext.Click += (_, _) =>
+            NextPageRequested?.Invoke(this, EventArgs.Empty);
 
         grdPatients.DoubleClick += (_, _) =>
         {
@@ -78,12 +90,36 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     }
 
     /// Runtime. Resolved by the container.
-    public frmPatientList(PatientListPresenter presenter, ViewFactory views)
+    public frmPatientList(PatientListPresenter presenter, ViewFactory views,
+        Application.Reporting.IWorkbookWriter workbooks,
+        Application.Abstractions.ICurrentUser user)
         : this()
     {
         _presenter = presenter;
         _views = views;
+        _workbooks = workbooks;
+        _user = user;
         _presenter.Attach(this);
+    }
+
+    private readonly Application.Reporting.IWorkbookWriter? _workbooks;
+    private readonly Application.Abstractions.ICurrentUser? _user;
+
+    /// <summary>
+    /// The page on screen to a workbook, as every other list exports:
+    /// what is shown, with the search and the page it came from.
+    /// </summary>
+    private void Export()
+    {
+        if (_workbooks is null || _user is null) return;   // designer
+
+        var saved = GridExport.Offer(this, _workbooks, grdPatients, "Patients",
+            $"{(SearchText.Length == 0 ? "All patients" : $"\"{SearchText}\"")}, "
+            + lblCount.Text, _user.Username);
+
+        if (saved is not null) ShowSaved(saved);
+        else if (grdPatients.Rows.Count == 0)
+            ShowInfo("There is nothing on the screen to export.");
     }
 
     /// <summary>
@@ -125,6 +161,7 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         btnChoose.Visible = true;
         AcceptButton = btnChoose;
         btnDeactivate.Visible = false;
+        btnExport.Visible = false;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -158,20 +195,57 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
             // An allergy flag on the list is the earliest point a
             // pharmacist can see it, which is where it belongs.
             if (patient.HasAllergies)
-                row.DefaultCellStyle.BackColor = Color.FromArgb(255, 244, 214);
+                row.DefaultCellStyle.BackColor = PhxTheme.Attention;
 
             if (!patient.IsActive)
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         _suggestions.Offer(patients.Select(Suggest.Patient));
     }
 
-    public void ShowCount(int count) =>
-        lblCount.Text = string.Format(CultureInfo.CurrentCulture,
-            "{0:N0} patient(s)", count);
+    public void ShowPage(int page, int pageSize, int shown, int total)
+    {
+        var first = page * pageSize + 1;
+        var pages = Math.Max(1, (total + pageSize - 1) / pageSize);
+
+        lblCount.Text = total == 0
+            ? "No patients match"
+            : string.Format(CultureInfo.CurrentCulture,
+                "{0:N0} to {1:N0} of {2:N0}", first, first + shown - 1, total);
+
+        lblPage.Text = string.Format(CultureInfo.CurrentCulture,
+            "Page {0:N0} of {1:N0}", page + 1, pages);
+
+        btnPrevious.Enabled = page > 0;
+        btnNext.Enabled = page + 1 < pages;
+    }
+
+    /// <summary>
+    /// Ctrl+Page Down and Ctrl+Page Up turn the page from anywhere on the
+    /// screen, as on the product list.
+    /// </summary>
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        var button = keyData switch
+        {
+            Keys.Control | Keys.PageDown => btnNext,
+            Keys.Control | Keys.PageUp => btnPrevious,
+            _ => null
+        };
+
+        if (button is { Enabled: true })
+        {
+            button.PerformClick();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
 
     public event EventHandler? SearchChanged;
+    public event EventHandler? NextPageRequested;
+    public event EventHandler? PreviousPageRequested;
     public event EventHandler? AddRequested;
     public event EventHandler? EditRequested;
     public event EventHandler? DeactivateRequested;

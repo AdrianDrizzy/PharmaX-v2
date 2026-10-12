@@ -231,7 +231,7 @@ public partial class frmClaims : PhxFormBase, IClaimsView
             Format.Money(owed), Format.Money(paying),
             Format.Money(writingOff));
 
-        lblTotals.ForeColor = paying > 0m ? PhxTheme.Accent : PhxTheme.Muted;
+        lblTotals.ForeColor = paying > 0m ? PhxTheme.Title : PhxTheme.Muted;
     }
 
     public IReadOnlyList<RemittanceLineDto> CollectRemittance()
@@ -302,7 +302,8 @@ public partial class frmClaims : PhxFormBase, IClaimsView
 
     public string? PromptRejectReason() =>
         frmTextPrompt.Ask(this, "Reject claim",
-            "Why is the scheme refusing this claim?");
+            "Why is the scheme refusing this claim?",
+            hint: "e.g. Rejected: member not on file");
 
     public void ClearRemittance()
     {
@@ -398,6 +399,6 @@ public partial class frmClaims : PhxFormBase, IClaimsView
             return;
         }
 
-        ShowInfo($"Exported to {saved}");
+        ShowSaved(saved);
     }
 }

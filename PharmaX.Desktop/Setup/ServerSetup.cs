@@ -50,7 +50,7 @@ public static class ServerSetup
         Path.Combine(WorkstationProvisioning.Folder, "logs",
                      "server-setup.log");
 
-    public static int Run(string msiPath)
+    public static async Task<int> RunAsync(string msiPath)
     {
         try
         {
@@ -73,7 +73,7 @@ public static class ServerSetup
             var login = new ServerLogin("PharmaX", "pharmax", NewPassword());
 
             InstallMariaDb(msiPath, root);
-            CreateLoginAsync(root, login).GetAwaiter().GetResult();
+            await CreateLoginAsync(root, login);
             OpenFirewall();
             Save(login, root);
 

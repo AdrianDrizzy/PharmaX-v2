@@ -16,6 +16,8 @@ partial class frmMain
     private Label lblHomeContext = null!;
     private Label lblHomeCaption = null!;
     private FlowLayoutPanel flpTiles = null!;
+    private Panel pnlCaption = null!;
+    private TextBox txtGoTo = null!;
     private ToolStripStatusLabel lblUser = null!;
     private ToolStripStatusLabel lblTill = null!;
     private ToolStripStatusLabel lblSession = null!;
@@ -82,6 +84,9 @@ partial class frmMain
                 Item("Tariffs", "tariffs"),
                 Item("Merge Patient Files", "merge-patients"),
                 Item("Medical Aid Societies", "schemes"),
+                Item("Prescribers", "prescribers"),
+                Item("Dosage Codes", "dosage-codes"),
+                Item("To Follow", "to-follow"),
                 Item("Drug Returns", "drug-returns")),
 
             Menu("&Point of Sale", "pos",
@@ -105,10 +110,13 @@ partial class frmMain
                 Item("Products", "products", Keys.F6),
                 Item("Stock", "stock"),
                 Item("Stock Adjustments", "stock-adjust"),
+                Item("Return to Supplier", "supplier-return"),
+                Item("Move Stock and Pre-packs", "move-stock"),
                 Item("Transfers", "transfers"),
                 Item("Breakages", "breakages"),
                 Item("Expired Stock", "expired-stock"),
-                Item("Price Changes", "price-changes")),
+                Item("Price Changes", "price-changes"),
+                Item("Mass Price Change", "mass-price")),
 
             // The pharmacy's own books. Its own heading rather than a
             // corner of Administration: a manager doing the month end is
@@ -127,7 +135,8 @@ partial class frmMain
                 Item("Day-End Posting", "day-end")),
 
             Menu("&Reports", "reports",
-                Item("Reports", "reports", Keys.F9)),
+                Item("Reports", "reports", Keys.F9),
+                Item("RSI History", "rsi-history")),
 
             Menu("&Stocktake", "stocktake",
                 Item("New Stocktake", "stocktake-new"),
@@ -145,6 +154,8 @@ partial class frmMain
                 Item("Branches", "branches"),
                 Item("Stock Transactions", "transaction-types"),
                 Item("System Setup", "system-setup"),
+                Item("Import from RSI", "rsi-import"),
+                Item("Back Up Now", "backup"),
                 Item("System Console", "system-console"),
                 Item("Control Variables", "control-variables")),
 
@@ -187,7 +198,7 @@ partial class frmMain
         // "0 waiting" is something the eye stops reading by Tuesday.
         lblWaiting.Name = "lblWaiting";
         lblWaiting.Font = PhxTheme.Emphasis;
-        lblWaiting.ForeColor = PhxTheme.Accent;
+        lblWaiting.ForeColor = PhxTheme.Title;
         lblWaiting.Size = new Size(160, 19);
         lblWaiting.BorderSides = ToolStripStatusLabelBorderSides.Right;
         lblWaiting.Visible = false;
@@ -252,6 +263,7 @@ partial class frmMain
             AutoSize = false,
             Dock = DockStyle.Top,
             Font = PhxTheme.Display,
+            ForeColor = PhxTheme.Title,
             Height = 42,
             Name = "lblHomeTitle",
             Text = ""
@@ -296,20 +308,48 @@ partial class frmMain
         pnlHomeText.Controls.Add(lblHomeTitle);
 
         // The logo is added last so it claims the left edge before the
-        // text panel fills what is left.
-        pnlHomeHeader = new Panel { Dock = DockStyle.Top, Height = 96 };
+        // text panel fills what is left. White, because a logo comes on a
+        // white ground and on the tinted surface it showed as a box.
+        pnlHomeHeader = new Panel
+        {
+            BackColor = PhxTheme.Card,
+            Dock = DockStyle.Top,
+            Height = 108,
+            Padding = new Padding(12, 6, 12, 6)
+        };
         pnlHomeHeader.Controls.Add(pnlHomeText);
         pnlHomeHeader.Controls.Add(pnlHomeLogo);
 
         lblHomeCaption = new Label
         {
             AutoSize = false,
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             Font = PhxTheme.Subheading,
-            Height = 42,
             Padding = new Padding(0, 16, 0, 0),
             Text = "What would you like to do?"
         };
+
+        // Any screen by name, for the menu entry nobody can find: typed
+        // into, it offers what matches, and Enter opens the first.
+        txtGoTo = new TextBox
+        {
+            AccessibleName = "Go to a screen",
+            Dock = DockStyle.Top,
+            Name = "txtGoTo",
+            PlaceholderText = "Go to any screen, e.g. patients, cash up, receive   (Ctrl+K)"
+        };
+
+        var goToHolder = new Panel
+        {
+            Dock = DockStyle.Right,
+            Padding = new Padding(0, 12, 0, 0),
+            Width = 460
+        };
+        goToHolder.Controls.Add(txtGoTo);
+
+        pnlCaption = new Panel { Dock = DockStyle.Top, Height = 42 };
+        pnlCaption.Controls.Add(lblHomeCaption);
+        pnlCaption.Controls.Add(goToHolder);
 
         flpTiles = new FlowLayoutPanel
         {
@@ -340,13 +380,21 @@ partial class frmMain
             ("Till session", "Ctrl+T   Float and cash up", "till", "till")
         })
         {
-            flpTiles.Controls.Add(new HomeTile(title, hint, key, group));
+            flpTiles.Controls.Add(new HomeTile(title, hint, key, group,
+                MenuIcons.GetValueOrDefault(key, PhxIcon.File)));
         }
 
         // Added bottom-up: docking is resolved from the highest child
-        // index down, so the title added last is the one at the top.
+        // index down, so the title added last is the one at the top. The
+        // orange rule under the header is the logo's.
         pnlContent.Controls.Add(flpTiles);
-        pnlContent.Controls.Add(lblHomeCaption);
+        pnlContent.Controls.Add(pnlCaption);
+        pnlContent.Controls.Add(new Panel
+        {
+            BackColor = PhxTheme.Highlight,
+            Dock = DockStyle.Top,
+            Height = 3
+        });
         pnlContent.Controls.Add(pnlHomeHeader);
     }
 

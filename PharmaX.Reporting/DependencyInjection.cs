@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IReportDefinition, StockMovementsReport>();
         services.AddScoped<IReportDefinition, PriceChangesReport>();
         services.AddScoped<IReportDefinition, CostCheckReport>();
+        services.AddScoped<IReportDefinition, HistoryReport>();
 
         // A default the desktop layer overrides with the real logo.
         // Registered here so that a host without a UI - the test

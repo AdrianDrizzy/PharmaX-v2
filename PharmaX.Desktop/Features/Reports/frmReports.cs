@@ -191,15 +191,17 @@ public partial class frmReports : PhxFormBase, IReportsView
                     Size = new Size(20, 22)
                 },
 
-                // A lookup with no options is one whose values load at run
-                // time; it falls back to free text rather than an empty
-                // dropdown the operator cannot get past.
-                "lookup" when slicer.Options.Count > 0 =>
-                    BuildCombo(slicer, gutter, y),
+                // Staff are a list like any other: the report is sent the
+                // person's id, which nobody could type. A user slicer was
+                // a text box, so a name typed into it filtered nothing.
+                "lookup" or "user" => BuildCombo(slicer, gutter, y),
 
                 _ => new TextBox
                 {
                     Location = new Point(gutter, y),
+                    PlaceholderText = slicer.Kind == "number"
+                        ? "e.g. 90"
+                        : "Words to look for, or blank for all",
                     Size = new Size(200, 23)
                 }
             };
@@ -283,6 +285,15 @@ public partial class frmReports : PhxFormBase, IReportsView
 
         // A blank first entry, so "any" is reachable after a choice.
         combo.Items.Add(new Choice("", ""));
+
+        // Nothing on file yet - no departments, no sessions. Said, and
+        // greyed out, rather than a box to type into that could only
+        // ever filter on something that does not exist.
+        if (slicer.Options.Count == 0)
+        {
+            combo.Items[0] = new Choice("", "None on file");
+            combo.Enabled = false;
+        }
 
         foreach (var option in slicer.Options)
             combo.Items.Add(new Choice(option.Value, option.Label));
@@ -386,7 +397,8 @@ public partial class frmReports : PhxFormBase, IReportsView
             FileName = suggestedName,
             Filter = "Excel workbook (*.xlsx)|*.xlsx",
             OverwritePrompt = true,
-            Title = "Export report"
+            Title = "Export report",
+            InitialDirectory = GridExport.Downloads
         };
 
         return save.ShowDialog(this) == DialogResult.OK ? save.FileName : null;

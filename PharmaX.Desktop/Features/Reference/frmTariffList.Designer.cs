@@ -69,7 +69,7 @@ partial class frmTariffList
 
         txtSearch.Location = new Point(413, 13);
         txtSearch.Name = "txtSearch";
-        txtSearch.PlaceholderText = "Product code or description";
+        txtSearch.PlaceholderText = "Product code, description or society";
         txtSearch.Size = new Size(300, 23);
         txtSearch.TabIndex = 1;
 

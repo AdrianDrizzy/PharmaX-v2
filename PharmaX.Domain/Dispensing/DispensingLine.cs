@@ -22,6 +22,11 @@ public sealed class DispensingLine : Entity
     public string Description { get; private set; } = "";
     public decimal Quantity { get; private set; }
     public string Directions { get; private set; } = "";
+
+    /// What the shelf was short of: charged and claimed with the rest,
+    /// handed over when the stock comes in. Null when nothing is owed.
+    public decimal? Owed { get; private set; }
+    public DateTime? OwedGivenAtUtc { get; private set; }
     public bool IsSubstitution { get; private set; }
     public Guid? SubstitutedForProductId { get; private set; }
 
@@ -135,10 +140,10 @@ public sealed class DispensingLine : Entity
 
         var total = ordered.Sum(a => a.Quantity);
 
-        if (total != Quantity)
+        if (total != Quantity - (Owed ?? 0m))
             throw new DomainException(
                 $"{Description}: the batches supply {total:0.###} but "
-                + $"{Quantity:0.###} is being dispensed.");
+                + $"{Quantity - (Owed ?? 0m):0.###} is being dispensed.");
 
         _batches.Clear();
 
@@ -155,6 +160,28 @@ public sealed class DispensingLine : Entity
     /// prescribed. The original product is kept, because the substitution
     /// itself is a fact the pharmacist may have to account for.
     /// </summary>
+    internal void Owe(decimal owed)
+    {
+        if (owed < 0m || owed > Quantity)
+            throw new DomainException(
+                $"{Description}: between 0 and {Quantity:0.###} can be owed.");
+
+        Owed = owed == 0m ? null : owed;
+    }
+
+    /// The owed quantity handed over, with the batches it came off.
+    public void GiveOwed(IEnumerable<BatchAllocation>? allocations,
+                         DateTime nowUtc)
+    {
+        if (Owed is null || OwedGivenAtUtc is not null)
+            throw new DomainException($"{Description}: nothing is owed.");
+
+        foreach (var allocation in allocations ?? Enumerable.Empty<BatchAllocation>())
+            _batches.Add(DispensingLineBatch.Create(Id, allocation));
+
+        OwedGivenAtUtc = nowUtc;
+    }
+
     public void MarkSubstitution(Guid substitutedForProductId)
     {
         IsSubstitution = true;

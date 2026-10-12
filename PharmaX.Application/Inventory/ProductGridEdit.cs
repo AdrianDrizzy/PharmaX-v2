@@ -114,16 +114,41 @@ public sealed partial class ProductService
         _permissions.Demand(PermissionCode.ProductMaintain);
         _permissions.Demand(PermissionCode.PriceChange);
 
-        _audit.Applied("inv.price.change", "Product", product.Id,
-            $"{product.RetailPrice} to {Money.Of(price)}");
-
-        product.ChangeRetailPrice(Money.Of(price));
-
-        _outbox.Append("ProductPrice", product.Id,
-            $"{{\"productId\":\"{product.Id}\",\"retail\":{price.ToString(CultureInfo.InvariantCulture)}}}");
+        Pricing.ChangeRetail(product, price, _audit, _outbox);
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();
+    }
+
+    public async Task<Result<int>> RepriceAsync(Guid? departmentId,
+        decimal percent, CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ProductMaintain);
+        _permissions.Demand(PermissionCode.PriceChange);
+
+        if (percent <= -100m)
+            return Result<int>.Fail("INV-031", "A price cannot come down by 100% or more.");
+
+        var (_, step) = await Pricing.ReadAsync(_settings, ct);
+        var changed = 0;
+
+        // ponytail: every active product in memory; fine for a pharmacy's
+        // few thousand lines.
+        foreach (var product in await _products.SearchAsync("", int.MaxValue, ct: ct))
+        {
+            if (departmentId is Guid d && product.DepartmentId != d) continue;
+            if (product.RetailPrice.Amount <= 0m) continue;
+
+            var price = Pricing.RoundUp(product.RetailPrice.Amount * (1m + percent / 100m), step);
+            if (price == product.RetailPrice.Amount) continue;
+
+            Pricing.ChangeRetail(product, price, _audit, _outbox,
+                $" ({percent:+0.##;-0.##}% across the board)");
+            changed++;
+        }
+
+        await _uow.SaveChangesAsync(ct);
+        return Result<int>.Ok(changed);
     }
 
     private async Task<Result> EditScheduleAsync(Product product,

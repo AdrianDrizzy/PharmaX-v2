@@ -30,7 +30,23 @@
     <Version>1.0.1</Version>
     <Company>PharmaX</Company>
     <Product>PharmaX</Product>
+
+    <!-- The capsule from the BethRapha logo, on the logo's navy. -->
+    <ApplicationIcon>Resources\pharmax.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- Compiled in rather than installed: the icons are drawn from the
+       Tabler icon font (MIT, see tabler-icons-LICENSE.txt), which no
+       Windows has, and the window icon is the same file the executable
+       carries. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\tabler-icons.ttf"
+                      LogicalName="PharmaX.Desktop.Resources.tabler-icons.ttf" />
+    <EmbeddedResource Include="Resources\pharmax.ico"
+                      LogicalName="PharmaX.Desktop.Resources.pharmax.ico" />
+    <None Include="Resources\tabler-icons-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <!-- Section 4.1: Desktop references the infrastructure projects because
        Program.cs registers their implementations in the container. No form,

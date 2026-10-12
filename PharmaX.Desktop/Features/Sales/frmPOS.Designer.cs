@@ -210,6 +210,18 @@ partial class frmPOS
             x += 117;
         }
 
+        // Shared out across the width the till has, so every key stays on
+        // screen however many there are and whatever the display scaling.
+        pnlFunctions.Resize += (_, _) =>
+        {
+            var keys = pnlFunctions.Controls.OfType<Button>().ToList();
+            var width = (pnlFunctions.ClientSize.Width - 2 * PhxTheme.Gutter) / keys.Count;
+
+            for (var i = 0; i < keys.Count; i++)
+                keys[i].SetBounds(PhxTheme.Gutter + i * width, keys[i].Top,
+                                  width - 5, keys[i].Height);
+        };
+
         // Paying is what the screen is for, so it is the one that looks
         // like it.
         PhxTheme.MakePrimary(pnlFunctions.Controls
@@ -266,7 +278,7 @@ partial class frmPOS
             AutoSize = false,
             Dock = DockStyle.Fill,
             Font = emphasise ? PhxTheme.FigureLarge : PhxTheme.Figure,
-            ForeColor = emphasise ? PhxTheme.Accent : SystemColors.ControlText,
+            ForeColor = emphasise ? PhxTheme.Title : SystemColors.ControlText,
 
             // Through the formatter even when it is zero, so the screen
             // does not open showing a figure in a different currency

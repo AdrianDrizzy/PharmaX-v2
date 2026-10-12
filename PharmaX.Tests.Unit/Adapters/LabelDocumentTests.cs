@@ -22,34 +22,76 @@ public class LabelDocumentTests
     private const int Height = 197;
 
     [Fact]
-    public void The_label_reads_medicine_first_and_pharmacy_last()
+    public void The_label_reads_patient_and_medicine_first_and_pharmacy_last()
     {
         using var document = new LabelDocument(Label(), Pharmacy);
 
         var rows = document.Rows();
 
-        // What the patient reads, in the largest type, over a rule.
-        rows[0].Style.Should().Be(LabelStyle.Product);
-        rows[0].Text.Should().Be("Amoxicillin 500mg capsules 21s  x21");
-        rows[1].Style.Should().Be(LabelStyle.Directions);
-        rows[1].Text.Should().Be("One capsule three times a day");
-        rows[2].Style.Should().Be(LabelStyle.Rule);
+        // Whose it is, then what it is and how to take it, in plain
+        // words with the dose and how often in capitals, over a rule.
+        rows[0].Should().Be(new LabelRow("Priya Naidoo", LabelStyle.Patient));
+        rows[1].Should().Be(new LabelRow("Amoxicillin 500mg capsules 21s",
+                                         LabelStyle.Product));
+        rows[2].Should().Be(new LabelRow("Take ONE capsule THREE times a day",
+                                         LabelStyle.Directions));
+        rows[3].Style.Should().Be(LabelStyle.Rule);
 
-        // Then what the pharmacy is asked about afterwards.
+        // Then the quantity and date, what the pharmacy is asked about
+        // afterwards, and the warnings.
         document.Lines().Should().ContainInOrder(
+            "Qty: 21   Date: 23/09/2026",
             "Batch: AMOX50-A x4, AMOX50-B x17   Exp: 31/01/2027",
-            "Priya Naidoo",
-            "Disp by: Test Pharmacist   23 Sept 26",
+            "Disp by: Test Pharmacist",
             "Doc. Dr N Moyo",
-            "RxNo: SC-001-000003  Item: 2 of 3  Prof# 370");
+            "RxNo: SC-001-000003  Item: 2 of 3  Prof# 370",
+            "Finish the whole course, even if you feel better.",
+            "Keep out of reach of children.");
 
         // And who dispensed it, with the number to ring, at the foot.
         rows[^3].Should().Be(new LabelRow("Riverside Pharmacy",
                                           LabelStyle.Pharmacy));
         rows[^2].Should().Be(new LabelRow("1 Example Street, Harare",
                                           LabelStyle.Imprint));
-        rows[^1].Should().Be(new LabelRow("+263 78 376 6260",
+        rows[^1].Should().Be(new LabelRow("Tel: +263 78 376 6260",
                                           LabelStyle.Imprint));
+    }
+
+    /// <remarks>
+    /// Every label carries a warning and "Keep out of reach of children",
+    /// whatever the medicine and however it was printed: every label
+    /// used to go out with none.
+    /// </remarks>
+    [Fact]
+    public void Every_label_carries_a_warning_and_keep_out_of_reach_of_children()
+    {
+        using var document = new LabelDocument(Label() with
+        {
+            ProductDescription = "COTTON WOOL 125G",
+            Directions = "Use as directed"
+        });
+
+        var warnings = document.Rows()
+            .Where(row => row.Style == LabelStyle.Warning)
+            .Select(row => row.Text)
+            .ToList();
+
+        warnings.Should().Equal(
+            "Use only as directed. Do not share this medicine.",
+            "Keep out of reach of children.");
+    }
+
+    [Fact]
+    public void Warnings_given_with_the_label_are_the_ones_printed()
+    {
+        using var document = new LabelDocument(Label() with
+        {
+            Cautions = new[] { "Keep in the fridge." }
+        });
+
+        document.Rows().Where(row => row.Style == LabelStyle.Warning)
+            .Select(row => row.Text)
+            .Should().Equal("Keep in the fridge.", "Keep out of reach of children.");
     }
 
     /// <remarks>

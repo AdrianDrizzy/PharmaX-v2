@@ -109,7 +109,7 @@ public partial class frmQuotation : PhxFormBase
             $"{_current.CustomerName}, valid until "
             + $"{_current.ValidUntil:dd/MM/yyyy}", _user.Username);
 
-        if (saved is not null) ShowInfo($"Exported to {saved}");
+        if (saved is not null) ShowSaved(saved);
     }
 
     /// <summary>
@@ -121,7 +121,8 @@ public partial class frmQuotation : PhxFormBase
         if (_quotations is null) return;
 
         var number = frmTextPrompt.Ask(this, "Open quotation",
-            "Quotation number (on the customer's copy)");
+            "Quotation number (on the customer's copy)",
+            hint: "e.g. Q-001-000001");
 
         if (string.IsNullOrWhiteSpace(number)) return;
 
@@ -237,7 +238,8 @@ public partial class frmQuotation : PhxFormBase
         }
 
         var notes = frmTextPrompt.Ask(this, "Quotation",
-            "Anything to add to the quotation? (optional)");
+            "Anything to add to the quotation? (optional)",
+            hint: "e.g. Stock to be ordered in");
 
         var result = await _quotations.IssueAsync(_current.Id, notes);
 

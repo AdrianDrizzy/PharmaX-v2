@@ -20,7 +20,13 @@ public interface IProductListView : IView
 
     void ShowProducts(IReadOnlyList<ProductListItemDto> products);
     void ShowBatches(IReadOnlyList<ProductBatchListItemDto> rows);
-    void ShowCount(int shown, int total);
+    /// <summary>
+    /// Which page of the matches is showing, so the screen can say "101
+    /// to 200 of 4,318" and offer the pages either side.
+    /// </summary>
+    /// <param name="page">From nought.</param>
+    /// <param name="shown">Products on this page.</param>
+    void ShowPage(int page, int pageSize, int shown, int total);
 
     /// <summary>
     /// The cell just committed, when the operator may edit the list.
@@ -35,6 +41,8 @@ public interface IProductListView : IView
     event EventHandler? ChooseRequested;
     event EventHandler? ViewModeChanged;
     event EventHandler? CellEdited;
+    event EventHandler? NextPageRequested;
+    event EventHandler? PreviousPageRequested;
 }
 
 public interface IProductEditView : IView

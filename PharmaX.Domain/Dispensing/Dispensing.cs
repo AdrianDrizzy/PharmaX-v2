@@ -132,6 +132,15 @@ public sealed class Dispensing : AuditableEntity
         _warnings.RemoveAll(w => w.DispensingLineId == line.Id);
     }
 
+    /// Part of an item the shelf is short of, owed to the patient.
+    public void Owe(int lineNo, decimal owed)
+    {
+        EnsureInProgress();
+
+        (_lines.SingleOrDefault(l => l.LineNo == lineNo)
+         ?? throw new DomainException($"Item {lineNo} not found.")).Owe(owed);
+    }
+
     public ClinicalWarning RaiseWarning(ClinicalWarning warning)
     {
         ArgumentNullException.ThrowIfNull(warning);

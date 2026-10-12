@@ -18,6 +18,8 @@ public sealed class frmNumberPrompt : Form
     private frmNumberPrompt(string title, string prompt, decimal current,
                             int decimals, decimal? percentOf = null)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         _decimals = decimals;
         _percentOf = percentOf;
         _input.AllowsPercent = percentOf is not null;
@@ -37,6 +39,13 @@ public sealed class frmNumberPrompt : Form
         _input.Size = new Size(320, 26);
         _input.Text = current.ToString($"N{decimals}",
                                        CultureInfo.CurrentCulture);
+
+        // Seen once the box is cleared to type over the current value.
+        _input.PlaceholderText = percentOf is not null
+            ? "An amount, or a percentage such as 10%"
+            : decimals == 0
+                ? "A whole number, e.g. 3"
+                : $"A number, e.g. {1.5m.ToString($"N{decimals}", CultureInfo.CurrentCulture)}";
 
         var ok = new Button
         {
@@ -186,8 +195,11 @@ public sealed class frmTextPrompt : Form
 {
     private readonly TextBox _input = new();
 
-    private frmTextPrompt(string title, string prompt, string? initial)
+    private frmTextPrompt(string title, string prompt, string? initial,
+                          string? hint)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         // Named, so that assistive technology and the end-to-end suite
         // can find them (DEF-0030).
         Name = "frmTextPrompt";
@@ -214,6 +226,7 @@ public sealed class frmTextPrompt : Form
         _input.Name = "txtPromptInput";
         _input.Size = new Size(400, 23);
         _input.Text = initial ?? "";
+        _input.PlaceholderText = hint ?? "Type here, then press Enter";
 
         var ok = new Button
         {
@@ -256,10 +269,15 @@ public sealed class frmTextPrompt : Form
         };
     }
 
+    /// <param name="hint">
+    /// Shown in the empty box: an example of a good answer, such as
+    /// "e.g. Customer changed their mind".
+    /// </param>
     public static string? Ask(IWin32Window owner, string title,
-                              string prompt, string? initial = null)
+                              string prompt, string? initial = null,
+                              string? hint = null)
     {
-        using var dialog = new frmTextPrompt(title, prompt, initial);
+        using var dialog = new frmTextPrompt(title, prompt, initial, hint);
 
         return dialog.ShowDialog(owner) == DialogResult.OK
             ? dialog._input.Text.Trim()
@@ -287,6 +305,8 @@ public sealed class frmPasswordPrompt : Form
 
     private frmPasswordPrompt(string title, string prompt)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         Name = "frmPasswordPrompt";
 
         var label = new Label
@@ -316,6 +336,7 @@ public sealed class frmPasswordPrompt : Form
         _password.Location = new Point(140, top);
         _password.MaxLength = 128;
         _password.Name = "txtPassword";
+        _password.PlaceholderText = "The new password";
         _password.Size = new Size(276, 23);
         _password.UseSystemPasswordChar = true;
 
@@ -331,6 +352,7 @@ public sealed class frmPasswordPrompt : Form
         _confirm.Location = new Point(140, top + 32);
         _confirm.MaxLength = 128;
         _confirm.Name = "txtConfirmPassword";
+        _confirm.PlaceholderText = "The same password again";
         _confirm.Size = new Size(276, 23);
         _confirm.UseSystemPasswordChar = true;
 
@@ -422,6 +444,8 @@ public sealed class frmTextViewer : Form
     private frmTextViewer(string title, string body,
         IReadOnlyList<(string Text, Action Run)>? actions = null)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         var text = new TextBox
         {
             Dock = DockStyle.Fill,
@@ -513,6 +537,8 @@ public sealed class frmChoicePrompt : Form
     private frmChoicePrompt(string title, string prompt,
                             IEnumerable<string> choices)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         var label = new Label
         {
             AutoSize = false,
@@ -579,4 +605,190 @@ public sealed class frmChoicePrompt : Form
             ? choices[index].Value
             : null;
     }
+}
+
+/// <summary>
+/// A message box in the theme's colours, for the modes where Windows'
+/// own would open as a white slab on a dark screen.
+/// </summary>
+/// <remarks>
+/// Windows' own box in the light mode, where it is already the right
+/// colour - and where the end-to-end scripts find it by its window class,
+/// #32770, which no Windows Forms window can carry. In the others it keeps
+/// what people rely on in Windows' box: the icon and its sound, the first
+/// button pressed by Enter, Escape where Windows allows it, Y and N, and
+/// Ctrl+C to copy the message into a support email.
+/// </remarks>
+public sealed class frmMessage : Form
+{
+    private readonly string _message;
+
+    private frmMessage(string message, string caption,
+                       MessageBoxButtons buttons, MessageBoxIcon icon)
+    {
+        PhxTheme.Follow(this);
+        _message = message;
+        Name = "frmMessage";
+
+        // Laid out by measuring rather than at fixed points, so a long
+        // message and a display at 150 per cent both fit.
+        var layout = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Padding = new Padding(LogicalToDeviceUnits(12)),
+            RowCount = 2
+        };
+
+        if (Glyph(icon) is Icon glyph)
+        {
+            var image = glyph.ToBitmap();
+            Disposed += (_, _) => image.Dispose();
+
+            layout.Controls.Add(new PictureBox
+            {
+                Image = image,
+                Margin = new Padding(0, 0, LogicalToDeviceUnits(12), 0),
+                SizeMode = PictureBoxSizeMode.AutoSize
+            }, 0, 0);
+        }
+
+        layout.Controls.Add(new Label
+        {
+            AutoSize = true,
+            Margin = new Padding(0, LogicalToDeviceUnits(6), 0,
+                                 LogicalToDeviceUnits(18)),
+            MaximumSize = new Size(LogicalToDeviceUnits(440), 0),
+            Name = "lblMessage",
+            Text = message,
+            UseMnemonic = false
+        }, 1, 0);
+
+        var pressed = Choices(buttons).Select((choice, i) => new Button
+        {
+            AutoSize = true,
+            DialogResult = choice.Result,
+            MinimumSize = new Size(LogicalToDeviceUnits(80),
+                                   LogicalToDeviceUnits(28)),
+            Name = "btn" + choice.Result,
+            TabIndex = i,
+            Text = choice.Text,
+            UseVisualStyleBackColor = true
+        }).ToList();
+
+        var row = new FlowLayoutPanel
+        {
+            Anchor = AnchorStyles.Right,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.RightToLeft,
+            Margin = Padding.Empty,
+            WrapContents = false
+        };
+
+        // Right to left, so added last to first to read Yes, No.
+        for (var i = pressed.Count - 1; i >= 0; i--) row.Controls.Add(pressed[i]);
+
+        layout.Controls.Add(row, 0, 1);
+        layout.SetColumnSpan(row, 2);
+        Controls.Add(layout);
+
+        // As Windows does it: Escape is Cancel where there is one, OK on a
+        // box with only OK, and nothing on Yes/No, which has no close box.
+        AcceptButton = pressed[0];
+        ActiveControl = pressed[0];
+        CancelButton = pressed.Find(b => b.DialogResult == DialogResult.Cancel)
+                       ?? (buttons == MessageBoxButtons.OK ? pressed[0] : null);
+        ControlBox = CancelButton is not null;
+
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        KeyPreview = true;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowIcon = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.CenterParent;
+        Text = caption;
+
+        Shown += (_, _) => Sound(icon).Play();
+    }
+
+    /// <summary>
+    /// Says something and waits for an answer: Windows' own box in the
+    /// light mode, this one in the others.
+    /// </summary>
+    public static DialogResult Show(IWin32Window? owner, string message,
+        MessageBoxButtons buttons, MessageBoxIcon icon, string? caption = null)
+    {
+        caption ??= WindowTitles.Caption;
+
+        if (PhxTheme.Mode == ThemeMode.Light
+            || buttons is not (MessageBoxButtons.OK or MessageBoxButtons.OKCancel
+                or MessageBoxButtons.YesNo or MessageBoxButtons.YesNoCancel))
+            return MessageBox.Show(owner, message, caption, buttons, icon);
+
+        using var dialog = new frmMessage(message, caption, buttons, icon);
+        return dialog.ShowDialog(owner);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (e.Control && e.KeyCode == Keys.C)
+        {
+            try
+            {
+                Clipboard.SetText(Text + Environment.NewLine
+                                  + Environment.NewLine + _message);
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                // Another program has the clipboard: nothing is copied,
+                // as nothing would be from Windows' own box.
+            }
+
+            e.Handled = true;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    private static (string Text, DialogResult Result)[] Choices(
+        MessageBoxButtons buttons) => buttons switch
+    {
+        MessageBoxButtons.OKCancel =>
+            new[] { ("OK", DialogResult.OK), ("Cancel", DialogResult.Cancel) },
+        MessageBoxButtons.YesNo =>
+            new[] { ("&Yes", DialogResult.Yes), ("&No", DialogResult.No) },
+        MessageBoxButtons.YesNoCancel => new[]
+        {
+            ("&Yes", DialogResult.Yes), ("&No", DialogResult.No),
+            ("Cancel", DialogResult.Cancel)
+        },
+        _ => new[] { ("OK", DialogResult.OK) }
+    };
+
+    // Error is also Hand and Stop, Warning also Exclamation, Information
+    // also Asterisk: the same values under other names.
+    private static Icon? Glyph(MessageBoxIcon icon) => icon switch
+    {
+        MessageBoxIcon.Error => SystemIcons.Error,
+        MessageBoxIcon.Question => SystemIcons.Question,
+        MessageBoxIcon.Warning => SystemIcons.Warning,
+        MessageBoxIcon.Information => SystemIcons.Information,
+        _ => null
+    };
+
+    private static System.Media.SystemSound Sound(MessageBoxIcon icon) => icon switch
+    {
+        MessageBoxIcon.Error => System.Media.SystemSounds.Hand,
+        MessageBoxIcon.Question => System.Media.SystemSounds.Question,
+        MessageBoxIcon.Warning => System.Media.SystemSounds.Exclamation,
+        MessageBoxIcon.Information => System.Media.SystemSounds.Asterisk,
+        _ => System.Media.SystemSounds.Beep
+    };
 }

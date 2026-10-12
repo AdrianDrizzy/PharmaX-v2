@@ -330,7 +330,7 @@ partial class frmTillSession
         if (!readOnly && format is null)
         {
             column.DefaultCellStyle.Font = PhxTheme.Emphasis;
-            column.DefaultCellStyle.BackColor = Color.FromArgb(255, 253, 240);
+            column.DefaultCellStyle.BackColor = PhxTheme.Focus;
         }
 
         grid.Columns.Add(column);

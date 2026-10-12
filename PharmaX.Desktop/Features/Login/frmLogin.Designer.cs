@@ -70,6 +70,7 @@ partial class frmLogin
         lblTitle.Anchor = AnchorStyles.None;
         lblTitle.AutoSize = true;
         lblTitle.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
+        lblTitle.ForeColor = PhxTheme.Title;
         lblTitle.Margin = new Padding(0, 0, 0, 2);
         lblTitle.MaximumSize = new Size(360, 0);
         lblTitle.Name = "lblTitle";
@@ -95,6 +96,7 @@ partial class frmLogin
         // txtUsername
         txtUsername.Anchor = AnchorStyles.Left | AnchorStyles.Right;
         txtUsername.Name = "txtUsername";
+        txtUsername.PlaceholderText = "Your username, e.g. tmoyo";
         txtUsername.Width = 250;
 
         // lblPassword
@@ -106,6 +108,7 @@ partial class frmLogin
         // txtPassword
         txtPassword.Anchor = AnchorStyles.Left | AnchorStyles.Right;
         txtPassword.Name = "txtPassword";
+        txtPassword.PlaceholderText = "Your password";
         txtPassword.UseSystemPasswordChar = true;
         txtPassword.Width = 250;
 
@@ -116,7 +119,7 @@ partial class frmLogin
         btnLogin.MinimumSize = new Size(80, 30);
         btnLogin.Name = "btnLogin";
         btnLogin.Text = "&Log in";
-        btnLogin.UseVisualStyleBackColor = true;
+        PhxTheme.MakePrimary(btnLogin);
 
         btnCancel.AutoSize = true;
         btnCancel.AutoSizeMode = AutoSizeMode.GrowAndShrink;

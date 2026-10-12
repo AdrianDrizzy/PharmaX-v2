@@ -19,6 +19,7 @@ public sealed class frmStockAdjustment : PhxFormBase
 {
     private readonly IStockAdjustmentService? _adjustments;
     private readonly IReferenceDataService? _reference;
+    private readonly Application.Dispensing.ILabelPrinter? _labels;
 
     private readonly ComboBox _kind = new();
     private readonly TextBox _code = new();
@@ -75,9 +76,11 @@ public sealed class frmStockAdjustment : PhxFormBase
     /// Runtime. Resolved by the container.
     public frmStockAdjustment(IStockAdjustmentService adjustments,
                               IReferenceDataService reference,
-                              Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
+                              Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes,
+                              Application.Dispensing.ILabelPrinter labels)
         : this()
     {
+        _labels = labels;
         _adjustments = adjustments;
         _reference = reference;
         _suggestions.Source = Suggest.Products(scopes);
@@ -121,7 +124,9 @@ public sealed class frmStockAdjustment : PhxFormBase
         (StockAdjustmentKind.Breakage, "Breakage - damaged and thrown away"),
         (StockAdjustmentKind.ExpiredWriteOff, "Expired stock written off"),
         (StockAdjustmentKind.TransferOut, "Transfer out to another branch"),
-        (StockAdjustmentKind.TransferIn, "Transfer in from another branch")
+        (StockAdjustmentKind.TransferIn, "Transfer in from another branch"),
+        (StockAdjustmentKind.ReturnToSupplier, "Returned to the supplier"),
+        (StockAdjustmentKind.MoveToItem, "Moved into another item or pre-packs")
     };
 
     /// Shows the fields this kind of adjustment asks for, and no others.
@@ -134,8 +139,15 @@ public sealed class frmStockAdjustment : PhxFormBase
         foreach (var control in _inOnly) control.Visible = incoming && tracked;
 
         foreach (var control in _transferOnly)
-            control.Visible = Kind is StockAdjustmentKind.TransferOut
-                                  or StockAdjustmentKind.TransferIn;
+            control.Visible = Kind is not (StockAdjustmentKind.Breakage
+                                           or StockAdjustmentKind.ExpiredWriteOff);
+
+        _transferOnly[0].Text = Kind switch
+        {
+            StockAdjustmentKind.ReturnToSupplier => "&Supplier",
+            StockAdjustmentKind.MoveToItem => "Into &item (code)",
+            _ => "Other &branch"
+        };
     }
 
     private Task FindAsync() => GuardAsync(async () =>
@@ -155,7 +167,7 @@ public sealed class frmStockAdjustment : PhxFormBase
         }
 
         _found = result.Value;
-        _product.ForeColor = SystemColors.ControlText;
+        _product.ForeColor = PhxTheme.Ink;
         _product.Text = string.Format(CultureInfo.CurrentCulture,
             "{0}   {1:0.###} on hand{2}", _found.Description,
             _found.QuantityOnHand,
@@ -188,7 +200,9 @@ public sealed class frmStockAdjustment : PhxFormBase
             BatchId: (_batch.SelectedItem as BatchChoice)?.Batch.BatchId,
             OtherBranch: _branch.Text.Trim().Length == 0
                 ? null
-                : _branch.Text.Trim().Split(' ')[0],
+                : Kind == StockAdjustmentKind.ReturnToSupplier
+                    ? _branch.Text.Trim()
+                    : _branch.Text.Trim().Split(' ')[0],
             BatchNumber: _batchNumber.Text.Trim().Length == 0
                 ? null
                 : _batchNumber.Text.Trim(),
@@ -209,6 +223,11 @@ public sealed class frmStockAdjustment : PhxFormBase
         ShowInfo(string.Format(CultureInfo.CurrentCulture,
             "Recorded. {0} now has {1:0.###} on hand.",
             result.Value.Description, result.Value.QuantityOnHand));
+
+        if (result.Value is { PrePack: { } label, PrePacks: > 0 } && _labels is not null
+            && Confirm($"Print {result.Value.PrePacks} pre-pack labels for {label.ProductDescription}?"))
+            for (var i = 0; i < result.Value.PrePacks; i++)
+                await _labels.PrintAsync(label);
 
         _found = null;
         _code.Clear();
@@ -255,7 +274,7 @@ public sealed class frmStockAdjustment : PhxFormBase
         Row("&What happened", _kind, 300);
 
         _code.Name = "txtProductCode";
-        _code.PlaceholderText = "Scan or type the code, then Enter";
+        _code.PlaceholderText = "Scan a barcode, or type a code or name";
         Row("&Product", _code, 200);
 
         _find.Location = new Point(378, y - 36);
@@ -277,6 +296,7 @@ public sealed class frmStockAdjustment : PhxFormBase
         Row("&Batch", _batch, 300, _outOnly);
 
         _batchNumber.Name = "txtBatchNumber";
+        _batchNumber.PlaceholderText = "e.g. BN24051";
         Row("Batch &number", _batchNumber, 200, _inOnly);
 
         _expiry.Format = DateTimePickerFormat.Short;
@@ -285,6 +305,7 @@ public sealed class frmStockAdjustment : PhxFormBase
         Row("&Expires", _expiry, 140, _inOnly);
 
         _quantity.Name = "txtQuantity";
+        _quantity.PlaceholderText = "e.g. 30";
         Row("&Quantity (packs)", _quantity, 120);
 
         _branch.DropDownStyle = ComboBoxStyle.DropDown;

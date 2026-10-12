@@ -72,8 +72,9 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
         // blank on purpose - an address removed, a sole trader with no
         // company name - is kept blank.
         return new PharmacyDetails(
-            TradingName: string.IsNullOrWhiteSpace(name)
-                ? installed.TradingName : name,
+            TradingName: !string.IsNullOrWhiteSpace(name) ? name
+                : !string.IsNullOrWhiteSpace(registered) ? registered
+                : installed.TradingName,
             RegisteredName: registered ?? installed.RegisteredName,
             VatNumber: vat ?? installed.VatNumber,
             Address: address ?? installed.Address,

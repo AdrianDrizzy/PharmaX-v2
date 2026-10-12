@@ -48,6 +48,14 @@ public static class WorkstationSettingKey
     /// The pharmacy's logo, as a path to a file PharmaX keeps its own
     /// copy of, so that moving the original does not blank the shell.
     public const string LogoPath = "pharmacy.logo";
+
+    /// The colours of the windows: "logo", or nothing, to take them from
+    /// the logo - the default - or the id of one of the named palettes.
+    public const string Palette = "theme.palette";
+
+    /// Light, dark or one of the other modes, by id: chosen from the
+    /// shell's Theme menu, per till. Nothing means light.
+    public const string Theme = "theme.mode";
 }
 
 /// <summary>
@@ -76,4 +84,17 @@ public static class PharmacySettingKey
     public const string Address = "pharmacy.address";
     public const string Telephone = "pharmacy.telephone";
     public const string WhatsApp = "pharmacy.whatsapp";
+
+    /// The logo image itself, base64, so every till can draw it: a file
+    /// path would mean nothing on another machine. Blank once removed.
+    public const string LogoImage = "pharmacy.logo-image";
+
+    /// The windows' colour palette, the same for every till and user.
+    public const string Palette = "pharmacy.palette";
+
+    /// Percent on cost for an item with no price yet (Pricing).
+    public const string Markup = "pricing.markup";
+
+    /// The step every worked-out price is rounded up to, e.g. 0.05.
+    public const string Rounding = "pricing.rounding";
 }

@@ -140,7 +140,7 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
         if (_workbooks is null)
         {
             var written = await _runner.ExportAsync(request, ExportFormat.Excel);
-            View.ShowInfo("Exported to " + written);
+            View.ShowSaved(written);
             return;
         }
 
@@ -159,7 +159,7 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
         if (path is null) return;
 
         _workbooks.WriteTo(result, path);
-        View.ShowInfo("Exported to " + path);
+        View.ShowSaved(path);
     });
 
     private ReportRequest? BuildRequest()

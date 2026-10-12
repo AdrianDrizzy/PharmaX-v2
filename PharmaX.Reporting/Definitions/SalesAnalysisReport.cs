@@ -116,8 +116,8 @@ public sealed class SalesAnalysisReport : IReportDefinition
                     // day with a few scripts on it read as a day the
                     // pharmacy had traded at a loss. Daily Sales (Line
                     // Items) leaves the same lines out of its cost.
-                    s.IsCollection,
-                    s.IsCollection ? 0m : Cost(costs, l.ProductId, l.Quantity),
+                    l.IsScript,
+                    l.IsScript ? 0m : Cost(costs, l.ProductId, l.Quantity),
                     IsRefund: false)))
             .Concat(returns.SelectMany(x => x.Lines
                 .Where(l => !filtered || inScope.Contains(l.ProductId))
@@ -445,6 +445,18 @@ public sealed class ReversedScriptsReport : IReportDefinition
 
         if (r.Guid("pharmacist") is Guid pharmacistId)
             query = query.Where(d => d.PharmacistId == pharmacistId);
+
+        // Word by word, like every search box: "wrong strength" finds
+        // "Dispensed the wrong strength". The slicer was on the screen
+        // and read by nothing, so whatever was typed in it was ignored.
+        foreach (var word in Application.Abstractions.SearchTerms.Words(
+                     r.String("reason")))
+        {
+            var pattern = $"%{word}%";
+
+            query = query.Where(d => d.ReversalReason != null
+                && EF.Functions.Like(d.ReversalReason, pattern));
+        }
 
         var dispensings = await query
             .OrderBy(d => d.ReversedAtUtc ?? d.UpdatedAtUtc)

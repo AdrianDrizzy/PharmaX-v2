@@ -35,6 +35,11 @@ public sealed class SaleLine : Entity
     public Guid? OverrideAuthoriserId { get; private set; }
     public bool IsRated => PriceSource == PriceSource.MedicalAidTariff;
     public bool IsVoided { get; private set; }
+
+    /// A collected script's co-payment: its stock moved at the issue, and
+    /// only the pharmacist changes it. Anything else on the same sale is
+    /// sold over the counter like any other line.
+    public bool IsScript { get; private set; }
     public string? VoidReason { get; private set; }
 
     public Money GrossBeforeDiscount => UnitPrice * Quantity;
@@ -50,13 +55,14 @@ public sealed class SaleLine : Entity
         decimal quantity, Money unitPrice, decimal vatRatePercent,
         string taxCode, PriceSource priceSource,
         Guid? batchId = null, DateOnly? batchExpiry = null,
-        string? batchNumber = null)
+        string? batchNumber = null, bool isScript = false)
     {
         if (quantity <= 0m)
             throw new DomainException("Quantity must be greater than zero.");
 
         return new SaleLine
         {
+            IsScript = isScript,
             ProductId = productId,
             Description = description,
             Quantity = quantity,

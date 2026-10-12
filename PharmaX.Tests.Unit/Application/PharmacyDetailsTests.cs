@@ -143,6 +143,16 @@ public class PharmacyDetailsTests
         details.RegisteredName.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task A_pharmacy_with_only_a_registered_name_is_known_by_it()
+    {
+        _settings.Values[PharmacySettingKey.RegisteredName] = "BethRapha Pharmacy (Pvt) Ltd";
+
+        var details = await CreateSut().LoadAsync();
+
+        details.TradingName.Should().Be("BethRapha Pharmacy (Pvt) Ltd");
+    }
+
     // ---- save -------------------------------------------------------------
 
     [Fact]

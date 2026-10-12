@@ -150,7 +150,7 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             "{0} account(s)     {1} owed", accounts.Count,
             Format.Money(owed));
 
-        _totals.ForeColor = owed > 0m ? PhxTheme.Accent : PhxTheme.Muted;
+        _totals.ForeColor = owed > 0m ? PhxTheme.Title : PhxTheme.Muted;
 
         ShowSelectionState();
     }
@@ -199,7 +199,8 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
         if (tender is null) return null;
 
         var reference = frmTextPrompt.Ask(this, "Payment on account",
-            "Receipt or reference number");
+            "Receipt or reference number",
+            hint: "e.g. Receipt 4512 or the EcoCash reference");
 
         return (paid, tender.Value.ToString(), reference);
     }
@@ -216,7 +217,7 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     public string? PromptHoldReason() =>
         frmTextPrompt.Ask(this, "Put the account on hold",
             "Why? The cashier who has to refuse the customer will be "
-            + "asked.");
+            + "asked.", hint: "e.g. Over the limit until the employer pays");
 
     public void ShowStatement(StatementDto statement, Action? print = null,
                               Action? saveAs = null)
@@ -425,6 +426,6 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             return;
         }
 
-        ShowInfo($"Exported to {saved}");
+        ShowSaved(saved);
     }
 }

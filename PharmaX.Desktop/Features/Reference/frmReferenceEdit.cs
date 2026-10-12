@@ -53,6 +53,33 @@ public partial class frmReferenceEdit : PhxFormBase, IReferenceEditView
             : $"PharmaX - Edit {labels.Singular}";
 
         lblDetail.Text = $"&{labels.DetailCaption}";
+
+        // One made-up entry of the kind being kept, shown while a box is
+        // empty. The detail is optional on every kind.
+        (txtCode.PlaceholderText, txtName.PlaceholderText,
+         txtDetail.PlaceholderText) = Kind switch
+        {
+            ReferenceKind.Department =>
+                ("e.g. OTC", "e.g. Over the counter", "(optional)"),
+            ReferenceKind.Category =>
+                ("e.g. ANALG", "e.g. Pain and fever", "(optional)"),
+            ReferenceKind.Manufacturer =>
+                ("e.g. ACME", "e.g. Acme Pharmaceuticals",
+                 "e.g. Acme Agencies, 0242 123456 (optional)"),
+            ReferenceKind.Branch =>
+                ("e.g. MAIN", "e.g. Main Street",
+                 "e.g. 12 Main Street, Harare (optional)"),
+            ReferenceKind.MedicalAidScheme =>
+                ("e.g. ALPHA", "e.g. Alpha Medical Aid",
+                 "e.g. Alpha Administrators (optional)"),
+            ReferenceKind.Prescriber =>
+                ("e.g. TMOYO", "e.g. Dr T Moyo",
+                 "e.g. PR012345, 0242 123456 (optional)"),
+            ReferenceKind.DosageCode =>
+                ("e.g. 1TDS", "e.g. Take one three times a day",
+                 "(optional)"),
+            _ => ("e.g. ABC", "", "(optional)")
+        };
     }
 
     public void ShowItem(ReferenceItemDto item)

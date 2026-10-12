@@ -33,6 +33,9 @@ public static class PosKeyMap
     /// Prints the last receipt again, for the customer who needs a copy
     /// or the printer that jammed.
     public const Keys Reprint = Keys.F12;
+
+    public const Keys Lock = Keys.F1;
+    public const Keys NoSale = Keys.F11;
     public const Keys VoidLine = Keys.Escape;
 
     /// <summary>
@@ -51,6 +54,8 @@ public static class PosKeyMap
         (Recall, "F9 Recall"),
         (Quotation, "F10 Quotation"),
         (Reprint, "F12 Reprint"),
+        (Lock, "F1 Lock"),
+        (NoSale, "F11 No sale"),
         (VoidLine, "Esc Void line")
     };
 }

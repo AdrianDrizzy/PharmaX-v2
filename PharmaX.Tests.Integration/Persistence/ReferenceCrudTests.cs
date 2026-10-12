@@ -95,6 +95,34 @@ public class ReferenceCrudTests : IClassFixture<PharmaXFixture>
     }
 
     /// <remarks>
+    /// The practice number is kept in the detail, and it is often the one
+    /// thing on a script that is legible. The search read only the code
+    /// and the name, so it could not be found by it.
+    /// </remarks>
+    [Fact]
+    public async Task A_prescriber_is_found_by_the_practice_number_in_its_detail()
+    {
+        await SignInAsync();
+
+        using (var scope = _fixture.NewScope())
+        {
+            var created = await PharmaXFixture.Resolve<IReferenceDataService>(scope)
+                .CreateAsync(ReferenceKind.Prescriber,
+                    new ReferenceEditDto("PRNUM", "Dr Practice Number",
+                        "PR0099123, 0242 555 000"));
+
+            created.IsSuccess.Should().BeTrue(created.Error.Message);
+        }
+
+        using var check = _fixture.NewScope();
+
+        var found = await PharmaXFixture.Resolve<IReferenceDataService>(check)
+            .ListAsync(ReferenceKind.Prescriber, "PR0099123");
+
+        found.Value.Should().ContainSingle(p => p.Code == "PRNUM");
+    }
+
+    /// <remarks>
     /// The list screen keeps one scope open while the edit dialog saves in
     /// another. The list kept showing the old name after Refresh, and
     /// retiring the entry straight after the edit failed as a concurrency

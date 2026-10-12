@@ -30,6 +30,7 @@ partial class ScanBar
         txtScan.Font = new Font("Consolas", 14F);
         txtScan.Location = new Point(90, 0);
         txtScan.Name = "txtScan";
+        txtScan.PlaceholderText = "Barcode, product code, name or generic name";
         txtScan.Size = new Size(510, 29);
         txtScan.TabIndex = 1;
 

@@ -165,6 +165,10 @@ public sealed class ReferenceDataService : IReferenceDataService
             Branch.Create(e.Code, e.Name, e.Detail),
         ReferenceKind.MedicalAidScheme =>
             MedicalAidScheme.Create(e.Code, e.Name, e.Detail),
+        ReferenceKind.Prescriber =>
+            Prescriber.Create(e.Code, e.Name, e.Detail),
+        ReferenceKind.DosageCode =>
+            DosageCode.Create(e.Code, e.Name, e.Detail),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 

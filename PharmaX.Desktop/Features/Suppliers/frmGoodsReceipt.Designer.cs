@@ -105,6 +105,7 @@ partial class frmGoodsReceipt
         txtInvoiceNumber.Location = new Point(670, 12);
         txtInvoiceNumber.MaxLength = 50;
         txtInvoiceNumber.Name = "txtInvoiceNumber";
+        txtInvoiceNumber.PlaceholderText = "e.g. INV-10452";
         txtInvoiceNumber.Size = new Size(160, 23);
 
         Caption(pnlHeader, 580, 48, "Received on");
@@ -230,6 +231,7 @@ partial class frmGoodsReceipt
 
         txtInvoiceTotal.Location = new Point(580, 38);
         txtInvoiceTotal.Name = "txtInvoiceTotal";
+        txtInvoiceTotal.PlaceholderText = "0.00";
         txtInvoiceTotal.Size = new Size(120, 26);
 
         Caption(pnlTotals, 720, 42, "Variance");

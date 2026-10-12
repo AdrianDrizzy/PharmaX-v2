@@ -132,7 +132,7 @@ public sealed class ProductRepository : IProductRepository
     /// first word, so "amox" puts Amoxicillin ahead of Co-Amoxiclav.
     /// </remarks>
     public async Task<IReadOnlyList<Product>> SearchAsync(string term,
-        int take = 200, ProductScope scope = ProductScope.All,
+        int take = 200, ProductScope scope = ProductScope.All, int skip = 0,
         CancellationToken ct = default)
     {
         var words = SearchTerms.Words(term);
@@ -144,6 +144,11 @@ public sealed class ProductRepository : IProductRepository
             .ThenBy(p => start != null
                          && EF.Functions.Like(p.Description, start) ? 0 : 1)
             .ThenBy(p => p.Description)
+
+            // The code last, so that two products with the same name
+            // keep their order from one page to the next.
+            .ThenBy(p => p.Code)
+            .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
     }
@@ -287,7 +292,40 @@ public sealed class PatientRepository : IPatientRepository
     /// lives there.
     /// </remarks>
     public async Task<IReadOnlyList<Patient>> SearchAsync(string term,
-        int take = 100, CancellationToken ct = default)
+        int take = 100, int skip = 0, CancellationToken ct = default)
+    {
+        var (query, number) = Matching(term);
+
+        // The counter types the surname first and the first name after
+        // it, so a patient whose surname starts with the first word - and
+        // whose first name starts with the second - comes top, ahead of
+        // one who merely has the letters somewhere in their details.
+        var words = number is null ? SearchTerms.Words(term) : [];
+        var surname = words.Count > 0 ? $"{words[0]}%" : null;
+        var firstName = words.Count > 1 ? $"{words[1]}%" : null;
+
+        return await query
+            .OrderBy(p => surname != null
+                          && EF.Functions.Like(p.Surname, surname) ? 0 : 1)
+            .ThenBy(p => firstName != null
+                         && EF.Functions.Like(p.FirstNames, firstName) ? 0 : 1)
+            .ThenBy(p => p.Surname).ThenBy(p => p.FirstNames)
+
+            // The file last, so two of the same name keep their order
+            // from one page to the next.
+            .ThenBy(p => p.FileNumber)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CountAsync(string term,
+        CancellationToken ct = default) =>
+        await Matching(term).Query.CountAsync(ct);
+
+    /// The active patients the search matches, and the telephone or ID
+    /// number it was read as, where it was read as one.
+    private (IQueryable<Patient> Query, string? Number) Matching(string term)
     {
         var query = _db.Patients.AsNoTracking().Where(p => p.IsActive);
 
@@ -340,22 +378,7 @@ public sealed class PatientRepository : IPatientRepository
             }
         }
 
-        // The counter types the surname first and the first name after
-        // it, so a patient whose surname starts with the first word - and
-        // whose first name starts with the second - comes top, ahead of
-        // one who merely has the letters somewhere in their details.
-        var words = number is null ? SearchTerms.Words(term) : [];
-        var surname = words.Count > 0 ? $"{words[0]}%" : null;
-        var firstName = words.Count > 1 ? $"{words[1]}%" : null;
-
-        return await query
-            .OrderBy(p => surname != null
-                          && EF.Functions.Like(p.Surname, surname) ? 0 : 1)
-            .ThenBy(p => firstName != null
-                         && EF.Functions.Like(p.FirstNames, firstName) ? 0 : 1)
-            .ThenBy(p => p.Surname).ThenBy(p => p.FirstNames)
-            .Take(take)
-            .ToListAsync(ct);
+        return (query, number);
     }
 
     public async Task<IReadOnlyList<Patient>> LikelySameAsync(string surname,
@@ -590,6 +613,21 @@ public sealed class DispensingRepository : IDispensingRepository
 
         return issued.Where(d => d.AwaitsCollection).ToList();
     }
+
+    public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
+        OwingAsync(CancellationToken ct = default) =>
+        await _db.Dispensings
+            .Include(d => d.Lines).ThenInclude(l => l.Batches)
+            .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Issued
+                        && d.Lines.Any(l => l.Owed != null && l.OwedGivenAtUtc == null))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
+        InProgressAsync(CancellationToken ct = default) =>
+        await _db.Dispensings
+            .Include(d => d.Lines)
+            .Where(d => d.Status == Domain.Dispensing.DispensingStatus.InProgress)
+            .ToListAsync(ct);
 
     public async Task AddAsync(Domain.Dispensing.Dispensing dispensing,
         CancellationToken ct = default) =>

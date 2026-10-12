@@ -80,8 +80,10 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
 
     private Task DeclareAsync() => GuardAsync(async () =>
     {
+        if (Statements() is not { } statements) return;
+
         var declaration = await _cashUp.DeclareAsync(
-            View.CountedDenominations, Statements());
+            View.CountedDenominations, statements);
 
         View.ShowVariance(declaration.Variances);
     });
@@ -94,17 +96,32 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
     /// Left out where nothing was entered, and the service then declares
     /// EcoCash as nothing received: a blank is not a statement, and
     /// taking the till's own figure for it would balance every session
-    /// whether or not the money arrived.
+    /// whether or not the money arrived. Null, with the operator told,
+    /// for a statement below zero: the service refuses one, and that
+    /// refusal reached the operator as "something went wrong".
     /// </remarks>
-    private Dictionary<TenderType, decimal> Statements() =>
-        View.EcoCashStatement is decimal ecoCash
-            ? new Dictionary<TenderType, decimal> { [TenderType.EcoCash] = ecoCash }
-            : new Dictionary<TenderType, decimal>();
+    private Dictionary<TenderType, decimal>? Statements()
+    {
+        if (View.EcoCashStatement is not decimal ecoCash)
+            return new Dictionary<TenderType, decimal>();
+
+        if (ecoCash < 0m)
+        {
+            View.ShowError("The EcoCash statement cannot be less than "
+                           + "zero. Enter the amount it shows received, or "
+                           + "leave it blank if nothing came in.");
+            return null;
+        }
+
+        return new Dictionary<TenderType, decimal> { [TenderType.EcoCash] = ecoCash };
+    }
 
     private Task CloseAsync() => GuardAsync(async () =>
     {
+        if (Statements() is not { } statements) return;
+
         var declaration = await _cashUp.DeclareAsync(
-            View.CountedDenominations, Statements());
+            View.CountedDenominations, statements);
 
         string? reason = null;
         var worst = declaration.Variances
@@ -116,6 +133,9 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
         {
             reason = View.PromptVarianceReason(worst.TenderType,
                                                worst.Variance);
+
+            // Cancelled: back to the count, nothing said.
+            if (reason is null) return;
 
             if (string.IsNullOrWhiteSpace(reason))
             {

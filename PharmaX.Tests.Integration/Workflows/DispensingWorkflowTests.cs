@@ -253,19 +253,15 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
 
     /// <summary>
     /// DEF-0006: penicillin-allergic patient, amoxicillin on the script. A
-    /// hard stop; an assistant cannot pass it alone; a pharmacist's
-    /// authority with a reason can, and both are kept.
+    /// hard stop, passed only with a written reason, which is kept.
     /// </summary>
     [Fact]
-    public async Task A_penicillin_allergy_stops_amoxicillin_until_a_pharmacist_overrides_it()
+    public async Task A_penicillin_allergy_stops_amoxicillin_until_it_is_overridden_with_a_reason()
     {
         await _steps.OpenTillAsync();
         await _steps.ProductAsync("WFAMOX", "Amoxicillin 500mg capsules 21s",
             118m, schedule: 4, unitsPerPack: 21m,
             batches: new[] { ("WFAMOX-A", 6, 50m) });
-
-        var pharmacistId = await _steps.UserAsync("wf.pharm3",
-            Role.Standard.Pharmacist);
 
         await _steps.SignInAsync("wf.assist3", Role.Standard.PharmacistAssistant);
 
@@ -285,17 +281,16 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
         warning.IsHardStop.Should().BeTrue();
         warning.Message.Should().Contain("Penicillin").And.Contain("penicillin");
 
+        // An assistant releases it on their own written reason: no
+        // pharmacist's credentials since 12 October 2026.
         (await dispensing.OverrideNeedsPharmacistAsync(warning.Id))
-            .Should().BeTrue();
+            .Should().BeFalse();
 
-        var alone = await dispensing.AcknowledgeWarningAsync(warning.Id,
-            "Tolerated before");
-        alone.IsFailure.Should().BeTrue();
-        alone.Error.Code.Should().Be("DSP-032");
+        (await dispensing.AcknowledgeWarningAsync(warning.Id, null))
+            .Error.Code.Should().Be("DSP-033", "a hard stop still needs a reason");
 
         var released = await dispensing.AcknowledgeWarningAsync(warning.Id,
-            "Tolerated amoxicillin in 2024; prescriber consulted",
-            pharmacistId);
+            "Tolerated amoxicillin in 2024; prescriber consulted");
         released.IsSuccess.Should().BeTrue(released.Error.Message);
 
         var issued = await dispensing.IssueAsync(begun.Value.Id);
@@ -308,7 +303,7 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
             .SingleAsync(w => w.Id == warning.Id);
 
         stored.IsAcknowledged.Should().BeTrue();
-        stored.AuthorisedBy.Should().Be(pharmacistId);
+        stored.AuthorisedBy.Should().BeNull();
         stored.OverrideReason.Should().Contain("prescriber consulted");
 
         (await db.AuditEntries.AsNoTracking()
@@ -319,18 +314,17 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
     }
 
     /// <summary>
-    /// A controlled medicine is the genuine exception: an assistant needs a
-    /// pharmacist to authorise it, and the authoriser's grant is checked.
+    /// An assistant issues a controlled medicine on their own authority
+    /// since 12 October 2026, but an authoriser named on the issue is
+    /// still checked.
     /// </summary>
     [Fact]
-    public async Task A_controlled_medicine_needs_a_pharmacist_to_authorise_the_issue()
+    public async Task An_assistant_issues_a_controlled_medicine_without_a_pharmacist()
     {
         await _steps.OpenTillAsync();
         await _steps.ProductAsync("WFCTRL", "Codeine phosphate 30mg 20s",
             55m, schedule: 6, batches: new[] { ("WFCTRL-A", 6, 40m) });
 
-        var pharmacistId = await _steps.UserAsync("wf.pharm4",
-            Role.Standard.Pharmacist);
         var otherAssistant = await _steps.UserAsync("wf.assist5",
             Role.Standard.PharmacistAssistant);
 
@@ -347,16 +341,12 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
         await dispensing.AddScriptItemsAsync(begun.Value.Id);
 
         var authority = await dispensing.IssueAuthorityAsync(begun.Value.Id);
-        authority.Value.OperatorMayIssue.Should().BeFalse();
-        authority.Value.Reason.Should().Contain("controlled");
-
-        (await dispensing.IssueAsync(begun.Value.Id)).Error.Code
-            .Should().Be("DSP-030");
+        authority.Value.OperatorMayIssue.Should().BeTrue();
 
         (await dispensing.IssueAsync(begun.Value.Id, otherAssistant)).Error.Code
             .Should().Be("DSP-031", "another assistant is not a pharmacist");
 
-        var issued = await dispensing.IssueAsync(begun.Value.Id, pharmacistId);
+        var issued = await dispensing.IssueAsync(begun.Value.Id);
         issued.IsSuccess.Should().BeTrue(issued.Error.Message);
     }
 

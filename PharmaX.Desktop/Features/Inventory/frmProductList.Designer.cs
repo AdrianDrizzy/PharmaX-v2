@@ -17,7 +17,11 @@ partial class frmProductList
     private Button btnEdit = null!;
     private Button btnRefresh = null!;
     private Button btnChoose = null!;
+    private Button btnExport = null!;
     private Button btnClose = null!;
+    private Button btnPrevious = null!;
+    private Button btnNext = null!;
+    private Label lblPage = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -50,8 +54,16 @@ partial class frmProductList
         btnRefresh.Name = "btnRefresh";
         btnChoose = new Button();
         btnChoose.Name = "btnChoose";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnClose = new Button();
         btnClose.Name = "btnClose";
+        btnPrevious = new Button();
+        btnPrevious.Name = "btnPrevious";
+        btnNext = new Button();
+        btnNext.Name = "btnNext";
+        lblPage = new Label();
+        lblPage.Name = "lblPage";
         SuspendLayout();
 
         lblSearch.AutoSize = true;
@@ -60,14 +72,14 @@ partial class frmProductList
 
         txtSearch.Location = new Point(70, 13);
         txtSearch.Name = "txtSearch";
-        txtSearch.PlaceholderText = "Code or description";
+        txtSearch.PlaceholderText = "Code, description or generic name";
         txtSearch.Size = new Size(360, 23);
         txtSearch.TabIndex = 0;
 
         lblCount.AutoSize = false;
         lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        lblCount.Location = new Point(660, 17);
-        lblCount.Size = new Size(160, 20);
+        lblCount.Location = new Point(620, 17);
+        lblCount.Size = new Size(200, 20);
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
         // Off by default: the product list is what this screen is for,
@@ -139,6 +151,14 @@ partial class frmProductList
         btnChoose.UseVisualStyleBackColor = true;
         btnChoose.Visible = false;
 
+        // In Choose's place on the maintenance screen; UseAsPicker swaps
+        // them over.
+        btnExport.Location = new Point(300, 8);
+        btnExport.Size = new Size(110, 30);
+        btnExport.TabIndex = 4;
+        btnExport.Text = "Ex&port";
+        btnExport.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(730, 8);
         btnClose.Size = new Size(90, 30);
@@ -146,8 +166,32 @@ partial class frmProductList
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
 
+        // The pages either side, after the other buttons. Not anchored
+        // right like Close: PhxTheme seats every right-anchored control
+        // that starts off the edge at the same spot, so three of them
+        // would land on top of each other.
+        btnPrevious.Enabled = false;
+        btnPrevious.Location = new Point(432, 8);
+        btnPrevious.Size = new Size(86, 30);
+        btnPrevious.TabIndex = 6;
+        btnPrevious.Text = "Pre&vious";
+        btnPrevious.UseVisualStyleBackColor = true;
+
+        lblPage.AutoSize = false;
+        lblPage.Location = new Point(522, 8);
+        lblPage.Size = new Size(110, 30);
+        lblPage.TextAlign = ContentAlignment.MiddleCenter;
+
+        btnNext.Enabled = false;
+        btnNext.Location = new Point(636, 8);
+        btnNext.Size = new Size(86, 30);
+        btnNext.TabIndex = 7;
+        btnNext.Text = "Ne&xt";
+        btnNext.UseVisualStyleBackColor = true;
+
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnChoose, btnRefresh, btnEdit, btnAdd });
+            { btnClose, btnNext, lblPage, btnPrevious, btnExport, btnChoose, btnRefresh,
+              btnEdit, btnAdd });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
         pnlBottom.Name = "pnlBottom";

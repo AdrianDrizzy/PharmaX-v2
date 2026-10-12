@@ -264,10 +264,9 @@ public class PrintingTests
         var lines = label.Lines();
 
         lines.Should().Contain("Priya Naidoo");
-        lines.Should().Contain(l => l.Contains("Amoxicillin 500mg capsules 21s",
-                                               StringComparison.Ordinal)
-                                    && l.Contains("x21", StringComparison.Ordinal));
-        lines.Should().Contain("One capsule three times a day");
+        lines.Should().Contain("Amoxicillin 500mg capsules 21s");
+        lines.Should().Contain(l => l.StartsWith("Qty: 21", StringComparison.Ordinal));
+        lines.Should().Contain("Take ONE capsule THREE times a day");
         lines.Should().Contain(l => l.Contains("AMOX50-A x4, AMOX50-B x17",
                                                StringComparison.Ordinal)
                                     && l.Contains("01/2027", StringComparison.Ordinal));

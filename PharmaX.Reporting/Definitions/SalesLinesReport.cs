@@ -172,7 +172,7 @@ public sealed class SalesLinesReport : IReportDefinition
                     l.LineTotal.Amount,
                     // A collection's line is the patient's share, not the
                     // item's price, so no cost can be set against it.
-                    sale.IsCollection ? null : UnitCost(l.ProductId) * l.Quantity))
+                    l.IsScript ? null : UnitCost(l.ProductId) * l.Quantity))
                 .ToList();
 
             if (lines.Count == 0) continue;

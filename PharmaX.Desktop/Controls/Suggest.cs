@@ -23,7 +23,7 @@ public static class Suggest
 
         return new Suggestion(patient.Id,
             $"{patient.Surname}, {patient.FirstNames}",
-            Details(patient.FileNumber, patient.Telephone,
+            Details(Format.FileNumber(patient.FileNumber), patient.Telephone,
                     OneLine(patient.Address)));
     }
 
@@ -97,6 +97,30 @@ public static class Suggest
     /// <remarks>
     /// Looked up in a scope of their own, as the scan bars' are.
     /// </remarks>
+    /// <summary>
+    /// Doctors and clinics from the Prescribers list, by name, code or
+    /// practice number, with the practice number beside each.
+    /// </summary>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> Prescribers(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            var found = await scope.ServiceProvider
+                .GetRequiredService<PharmaX.Application.Reference.IReferenceRepository>()
+                .ListAsync(PharmaX.Application.Reference.ReferenceKind.Prescriber, term,
+                           includeInactive: false, ct);
+
+            return found.Take(8)
+                .Select(p => new Suggestion(p, p.Name, p.Detail ?? p.Code))
+                .ToList();
+        };
+    }
+
     public static Func<string, CancellationToken,
         Task<IReadOnlyList<Suggestion>>> ProductsInFull(IServiceScopeFactory scopes)
     {
@@ -108,7 +132,7 @@ public static class Suggest
 
             var found = await scope.ServiceProvider
                 .GetRequiredService<IProductService>()
-                .SearchAsync(term, take: 30, ct);
+                .SearchAsync(term, take: 30, ct: ct);
 
             return found.IsSuccess
                 ? found.Value.Items
@@ -136,7 +160,7 @@ public static class Suggest
 
         var found = await scope.ServiceProvider
             .GetRequiredService<IProductService>()
-            .SearchAsync(wanted, take: 10, ct);
+            .SearchAsync(wanted, take: 10, ct: ct);
 
         return found.IsSuccess
             ? found.Value.Items.FirstOrDefault(p => p.IsActive
@@ -172,7 +196,7 @@ public static class Suggest
 
             // More than are shown, so the ones left out do not leave the
             // list short.
-            var found = await products.SearchAsync(term, take: 30, ct);
+            var found = await products.SearchAsync(term, take: 30, ct: ct);
 
             return found.IsSuccess
                 ? found.Value.Items

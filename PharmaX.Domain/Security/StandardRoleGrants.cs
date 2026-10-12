@@ -78,9 +78,10 @@ public static class StandardRoleGrants
         },
 
         // Captures patients and scripts, prepares and issues the
-        // dispensing and books deliveries in. A hard-stop clinical
-        // override or a controlled medicine still needs a pharmacist's
-        // own credentials at the moment it happens.
+        // dispensing and books deliveries in - hard-stop overrides and
+        // controlled medicines included, without a pharmacist signing in
+        // (DispensingService.ActsOnOwnAuthority). Merging patient files
+        // stays a pharmacist's.
         Role.Standard.PharmacistAssistant => new[]
         {
             PermissionCode.SaleCreate,

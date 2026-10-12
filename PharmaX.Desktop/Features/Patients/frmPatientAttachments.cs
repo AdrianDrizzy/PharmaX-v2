@@ -165,8 +165,7 @@ public sealed class frmPatientAttachments : PhxFormBase
             // A row whose image is on another workstation is a record of
             // something that exists, not something this till can show.
             if (!a.IsOnThisWorkstation)
-                _grid.Rows[index].DefaultCellStyle.ForeColor =
-                    SystemColors.GrayText;
+                _grid.Rows[index].DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         _open.Enabled = _remove.Enabled = _rows.Count > 0;

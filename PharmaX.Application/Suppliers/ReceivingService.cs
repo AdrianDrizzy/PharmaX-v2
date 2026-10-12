@@ -60,14 +60,17 @@ public sealed class ReceivingService : IReceivingService
     private readonly IUnitOfWork _uow;
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
+    private readonly IPharmacySettings _settings;
 
     public ReceivingService(IGoodsReceiptRepository receipts,
         ISupplierRepository suppliers, IPurchaseOrderRepository orders,
         IProductRepository products, IJournalPoster journals,
         IStockService stock, IDocumentNumbering numbering,
         IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow, ICurrentUser user, IClock clock)
+        IUnitOfWork uow, ICurrentUser user, IClock clock,
+        IPharmacySettings settings)
     {
+        _settings = settings;
         _receipts = receipts;
         _suppliers = suppliers;
         _orders = orders;
@@ -219,6 +222,18 @@ public sealed class ReceivingService : IReceivingService
         // Posting is the point at which stock moves, and it happens
         // inside this transaction: a receipt that fails to save leaves
         // no batches and no movements behind.
+        // A dearer delivery puts the price up to keep the margin, and an
+        // item with no price yet takes the default markup. Before the
+        // receipt moves the cost, so the old cost is still there to see.
+        var (markup, step) = await Pricing.ReadAsync(_settings, ct);
+
+        foreach (var line in receipt.Lines)
+            if (await _products.GetAsync(line.ProductId, ct) is { } product
+                && Pricing.NewRetail(product.RetailPrice.Amount, product.CostPrice.Amount,
+                       line.UnitCost.Amount, markup, step) is decimal retail)
+                Pricing.ChangeRetail(product, retail, _audit, _outbox,
+                    $" (delivery {number} at {line.UnitCost})");
+
         await _stock.ApplyReceiptAsync(receipt, ct);
 
         // Stock bought on credit, expensed on arrival. Same transaction

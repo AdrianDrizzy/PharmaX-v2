@@ -27,6 +27,14 @@ OutputBaseFilename=PharmaX-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+
+; The capsule from the logo: on setup.exe, beside PharmaX in Apps and
+; Features, and down the side of the wizard. Each image at the sizes Inno
+; picks between for 100, 150 and 200 per cent display scaling.
+SetupIconFile=..\PharmaX.Desktop\Resources\pharmax.ico
+UninstallDisplayIcon={app}\{#AppExe}
+WizardImageFile=wizard-large-100.bmp,wizard-large-150.bmp,wizard-large-200.bmp
+WizardSmallImageFile=wizard-small-100.bmp,wizard-small-150.bmp,wizard-small-200.bmp
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 
@@ -116,9 +124,24 @@ Filename: "{app}\{#AppExe}"; \
     StatusMsg: "Installing the pharmacy's database. This takes a minute or two..."; \
     Tasks: mainserver; Flags: waituntilterminated
 
+; A copy of the database every night at half past nine, on the main
+; computer, as SYSTEM so it runs whoever is signed in or nobody is.
+; Fourteen are kept in ProgramData\PharmaX\backups (DatabaseBackup.cs).
+; /F replaces the task an earlier install made, so an upgrade keeps one.
+Filename: "{sys}\schtasks.exe"; \
+    Parameters: "/Create /F /SC DAILY /ST 21:30 /RU SYSTEM /RL HIGHEST /TN ""PharmaX nightly backup"" /TR ""\""{app}\{#AppExe}\"" --backup"""; \
+    StatusMsg: "Scheduling the nightly backup..."; \
+    Tasks: mainserver; Flags: runhidden waituntilterminated
+
 Filename: "{app}\{#AppExe}"; \
     Description: "Set up PharmaX on this computer now"; \
     Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; The schedule goes with the program; the backups it made stay.
+Filename: "{sys}\schtasks.exe"; \
+    Parameters: "/Delete /F /TN ""PharmaX nightly backup"""; \
+    Flags: runhidden; RunOnceId: "DeleteBackupTask"
 
 [UninstallDelete]
 ; Nothing under ProgramData is removed. It holds the pharmacy's logs,

@@ -25,6 +25,8 @@ public sealed class frmJournalLinePrompt : Form
     private frmJournalLinePrompt(
         IReadOnlyList<(string Code, string Label)> accounts)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         Name = "frmJournalLinePrompt";
 
         Label Caption(string text, int y) => new()
@@ -58,12 +60,14 @@ public sealed class frmJournalLinePrompt : Form
         _amount.AccessibleName = "Amount";
         _amount.Location = new Point(110, 84);
         _amount.Name = "txtAmount";
+        _amount.PlaceholderText = "0.00";
         _amount.Size = new Size(160, 26);
 
         _note.AccessibleName = "Note";
         _note.Location = new Point(110, 120);
         _note.MaxLength = 300;
         _note.Name = "txtNote";
+        _note.PlaceholderText = "e.g. Bank charges for October (optional)";
         _note.Size = new Size(300, 23);
 
         _problem.AutoSize = false;

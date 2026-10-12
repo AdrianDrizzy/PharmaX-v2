@@ -33,10 +33,16 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         IPermissionService permissions, IReceiptPrinter receipts,
         ICashDrawer drawer, ReceiptHeaderFactory headers,
         Application.Abstractions.ICurrentUser user,
-        IReceiptParticularsService particulars)
+        IReceiptParticularsService particulars,
+        Application.Tills.ITillSessionService tills)
         : this(sales, collections, permissions, receipts, drawer, headers,
-               user) =>
+               user)
+    {
         _particulars = particulars;
+        _tills = tills;
+    }
+
+    private readonly Application.Tills.ITillSessionService? _tills;
 
     public PosPresenter(ISaleService sales, ICollectionService collections,
         IPermissionService permissions, IReceiptPrinter receipts,
@@ -77,6 +83,8 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         View.QuotationRequested += (_, _) => Enqueue(OnQuotationAsync);
         View.ReprintRequested += (_, _) => Enqueue(OnReprintAsync);
         View.CloseRequested += (_, _) => Enqueue(OnCloseAsync);
+        View.LockRequested += (_, _) => Enqueue(OnLockAsync);
+        View.NoSaleRequested += (_, _) => Enqueue(OnNoSaleAsync);
     }
 
     public override Task InitialiseAsync() =>
@@ -233,9 +241,24 @@ public sealed class PosPresenter : PresenterBase<IPosView>
         await RefreshAsync();
     }
 
+    /// <summary>
+    /// The line F4, F5 and Esc act on. They returned without a word when
+    /// none was chosen, which reads as a till that ignores its keys.
+    /// </summary>
+    private int? ChosenLine()
+    {
+        if (View.SelectedLineNo is int lineNo) return lineNo;
+
+        View.ShowInfo(_sale is { Lines.Count: > 0 }
+            ? "Choose a line on the sale first."
+            : "There is nothing on this sale yet.");
+
+        return null;
+    }
+
     private Task OnQuantityAsync() => GuardAsync(async () =>
     {
-        if (View.SelectedLineNo is not int lineNo) return;
+        if (ChosenLine() is not int lineNo) return;
 
         var line = _sale!.Lines.Single(l => l.LineNo == lineNo);
         var quantity = View.PromptQuantity(line.Quantity);
@@ -251,7 +274,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
     private Task OnDiscountAsync() => GuardAsync(async () =>
     {
-        if (View.SelectedLineNo is not int lineNo) return;
+        if (ChosenLine() is not int lineNo) return;
 
         // Off the line before any discount, so "10%" means a tenth of
         // what the goods are priced at rather than of what is left.
@@ -295,7 +318,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
     private Task OnVoidAsync() => GuardAsync(async () =>
     {
-        if (View.SelectedLineNo is not int lineNo) return;
+        if (ChosenLine() is not int lineNo) return;
 
         var reason = View.PromptVoidReason();
         if (string.IsNullOrWhiteSpace(reason)) return;
@@ -448,6 +471,32 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     /// It used to know only the sale this window had finalised, so a
     /// reopened till had nothing to reprint (OCT-DEF-05).
     /// </remarks>
+    /// The till held for the operator, the session suspended meanwhile.
+    private Task OnLockAsync() => GuardAsync(async () =>
+    {
+        if (_tills is null || _user is null) return;
+
+        await _tills.SuspendAsync();
+        View.PromptUnlock(_user.Username);
+        await _tills.ResumeAsync();
+    });
+
+    /// The drawer opened with nothing sold, and why, on the audit trail.
+    private Task OnNoSaleAsync() => GuardAsync(async () =>
+    {
+        if (_tills is null || View.PromptNoSaleReason() is not { } reason) return;
+
+        var logged = await _tills.NoSaleAsync(reason);
+
+        if (logged.IsFailure)
+        {
+            View.ShowError(logged.Error.Message);
+            return;
+        }
+
+        await _drawer.OpenAsync();
+    });
+
     private Task OnReprintAsync() => GuardAsync(async () =>
     {
         string? last = null;

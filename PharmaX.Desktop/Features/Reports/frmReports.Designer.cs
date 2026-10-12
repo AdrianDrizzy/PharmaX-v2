@@ -69,6 +69,7 @@ partial class frmReports
 
         txtBranch.Location = new Point(80, 10);
         txtBranch.Name = "txtBranch";
+        txtBranch.PlaceholderText = "e.g. 1";
         txtBranch.Size = new Size(60, 23);
         txtBranch.TabIndex = 1;
 

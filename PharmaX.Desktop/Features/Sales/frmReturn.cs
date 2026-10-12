@@ -107,7 +107,7 @@ public partial class frmReturn : PhxFormBase, IReturnView
             if (line.Returnable <= 0m)
             {
                 row.ReadOnly = true;
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
             }
             else if (line.IsExpired)
             {
@@ -196,7 +196,8 @@ public partial class frmReturn : PhxFormBase, IReturnView
     public string? PromptReason() =>
         frmTextPrompt.Ask(this, "Reason for return",
             "Why is this coming back? Without a reason the pattern of "
-            + "returns tells a manager nothing.");
+            + "returns tells a manager nothing.",
+            hint: "e.g. Wrong strength bought");
 
     public Guid? PromptSupervisor(string reason)
     {

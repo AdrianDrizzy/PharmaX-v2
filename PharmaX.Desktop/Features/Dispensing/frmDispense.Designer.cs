@@ -16,6 +16,7 @@ partial class frmDispense
     private ListBox lstWarnings = null!;
     private Label lblPatient = null!;
     private Label lblAllergies = null!;
+    private Label lblConditions = null!;
     private Label lblScript = null!;
     private Label lblWarningsCaption = null!;
     private Label lblTariffValue = null!;
@@ -27,6 +28,7 @@ partial class frmDispense
     private Button btnReprint = null!;
     private Button btnRemove = null!;
     private Button btnClose = null!;
+    private Button btnSuspended = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -47,6 +49,7 @@ partial class frmDispense
         lstWarnings = new ListBox();
         lblPatient = new Label();
         lblAllergies = new Label();
+        lblConditions = new Label();
         lblScript = new Label();
         lblWarningsCaption = new Label();
         btnFindScript = new Button();
@@ -61,6 +64,8 @@ partial class frmDispense
         btnRemove.Name = "btnRemove";
         btnClose = new Button();
         btnClose.Name = "btnClose";
+        btnSuspended = new Button();
+        btnSuspended.Name = "btnSuspended";
         ((System.ComponentModel.ISupportInitialize)splMain).BeginInit();
         splMain.Panel1.SuspendLayout();
         splMain.Panel2.SuspendLayout();
@@ -80,13 +85,22 @@ partial class frmDispense
         lblAllergies.Name = "lblAllergies";
         lblAllergies.Size = new Size(600, 22);
 
+        // Beside the allergies: the chronic conditions a pharmacist checks
+        // a new item against, which were loaded and never shown.
+        lblConditions.AutoSize = false;
+        lblConditions.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        lblConditions.ForeColor = PhxTheme.Title;
+        lblConditions.Location = new Point(620, 40);
+        lblConditions.Name = "lblConditions";
+        lblConditions.Size = new Size(600, 22);
+
         lblScript.AutoSize = false;
         lblScript.Location = new Point(12, 66);
         lblScript.Name = "lblScript";
         lblScript.Size = new Size(800, 22);
 
         pnlHeader.Controls.AddRange(new Control[]
-            { lblScript, lblAllergies, lblPatient });
+            { lblScript, lblConditions, lblAllergies, lblPatient });
         pnlHeader.Dock = DockStyle.Top;
         pnlHeader.Height = 94;
         pnlHeader.Name = "pnlHeader";
@@ -187,6 +201,12 @@ partial class frmDispense
         btnQuote.Text = "&Quote";
         btnQuote.UseVisualStyleBackColor = true;
 
+        // Scripts kept to finish later, picked up where they were left.
+        btnSuspended.Location = new Point(742, 8);
+        btnSuspended.Size = new Size(140, 32);
+        btnSuspended.Text = "S&uspended";
+        btnSuspended.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(910, 8);
         btnClose.Size = new Size(100, 32);
@@ -194,7 +214,7 @@ partial class frmDispense
         btnClose.UseVisualStyleBackColor = true;
 
         pnlButtons.Controls.AddRange(new Control[]
-            { btnClose, btnQuote, btnRemove, btnReprint, btnIssue, btnFindScript });
+            { btnClose, btnSuspended, btnQuote, btnRemove, btnReprint, btnIssue, btnFindScript });
         pnlButtons.Dock = DockStyle.Bottom;
         pnlButtons.Height = 50;
         pnlButtons.Name = "pnlButtons";
@@ -241,7 +261,7 @@ partial class frmDispense
             AutoSize = false,
             Dock = DockStyle.Fill,
             Font = emphasise ? PhxTheme.FigureLarge : PhxTheme.Figure,
-            ForeColor = emphasise ? PhxTheme.Accent : SystemColors.ControlText,
+            ForeColor = emphasise ? PhxTheme.Title : SystemColors.ControlText,
             Text = emphasise ? Format.Money(0m) : Format.Amount(0m),
             TextAlign = ContentAlignment.MiddleRight
         };

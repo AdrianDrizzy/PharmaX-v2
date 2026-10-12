@@ -50,7 +50,7 @@ public sealed record DispensingLineDto(
     int LineNo, Guid ProductId, string Description, decimal Quantity,
     string Directions, string? BatchNumber, DateOnly? Expiry,
     decimal Tariff, decimal Contribution, decimal CoPayment,
-    bool IsSubstitution)
+    bool IsSubstitution, decimal? Owed = null)
 {
     public static DispensingLineDto From(DispensingLine l)
     {
@@ -60,7 +60,7 @@ public sealed record DispensingLineDto(
             l.LineNo, l.ProductId, l.Description, l.Quantity, l.Directions,
             l.BatchSummary, l.BatchExpiry, l.TariffAmount.Amount,
             l.SchemeContribution.Amount, l.CoPayment.Amount,
-            l.IsSubstitution);
+            l.IsSubstitution, l.Owed);
     }
 }
 
@@ -170,3 +170,12 @@ public sealed record IssueResultDto(
     string ScriptNumber, string DocumentNumber, decimal CoPayment,
     IReadOnlyList<LabelDto> Labels, string? ClaimNumber = null,
     TrailerLabelDto? Trailer = null);
+
+/// Medicine owed to a patient because the shelf was short when it was issued.
+public sealed record ToFollowDto(Guid DispensingId, int LineNo, string Patient,
+    string Telephone, string Description, decimal Owed, DateTime Since,
+    string DocumentNumber);
+
+/// A script begun and kept to finish later.
+public sealed record SuspendedDispensingDto(Guid PatientId, Guid ScriptId,
+    string Patient, string ScriptNumber, int Items);

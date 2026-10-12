@@ -76,6 +76,7 @@ partial class frmPayment
 
         txtAmount.Location = new Point(100, 86);
         txtAmount.Name = "txtAmount";
+        txtAmount.PlaceholderText = "0.00";
         txtAmount.Size = new Size(160, 26);
         txtAmount.TabIndex = 1;
 
@@ -123,7 +124,7 @@ partial class frmPayment
         lblOutstandingValue.TextAlign = ContentAlignment.MiddleRight;
 
         lblError.AutoSize = false;
-        lblError.ForeColor = Color.FromArgb(168, 32, 32);
+        lblError.ForeColor = Mvp.PhxTheme.ProblemText;
         lblError.Location = new Point(16, 342);
         lblError.Size = new Size(464, 34);
 

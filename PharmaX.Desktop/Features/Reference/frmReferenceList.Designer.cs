@@ -56,7 +56,7 @@ partial class frmReferenceList
 
         txtSearch.Location = new Point(70, 13);
         txtSearch.Name = "txtSearch";
-        txtSearch.PlaceholderText = "Code or name";
+        txtSearch.PlaceholderText = "Code, name or details";
         txtSearch.Size = new Size(360, 23);
         txtSearch.TabIndex = 0;
 

@@ -252,6 +252,25 @@ public sealed class Product : AuditableEntity
 
     public void ChangeCostPrice(Money price) => CostPrice = price;
 
+    /// <summary>
+    /// The VAT the price includes, and the code the VAT return groups it
+    /// under: 15 and "A" for standard-rated, 0 and "Z" for zero-rated.
+    /// </summary>
+    public void SetVat(decimal ratePercent, string taxCode)
+    {
+        if (ratePercent is < 0m or > 100m)
+            throw new DomainException("A VAT rate must be between 0 and 100 per cent.");
+
+        if (string.IsNullOrWhiteSpace(taxCode))
+            throw new DomainException("A product requires a tax code.");
+
+        VatRatePercent = ratePercent;
+        TaxCode = taxCode.Trim().ToUpperInvariant();
+    }
+
+    /// The supplier PharmaX orders the product from by default.
+    public void SetDefaultSupplier(Guid? supplierId) => DefaultSupplierId = supplierId;
+
     public void SetReorderLevel(decimal level)
     {
         if (level < 0m)

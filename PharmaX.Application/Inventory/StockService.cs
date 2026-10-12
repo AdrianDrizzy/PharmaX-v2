@@ -24,6 +24,11 @@ public interface IStockService
     Task ApplyDispensingAsync(Domain.Dispensing.Dispensing dispensing,
                               CancellationToken ct = default);
 
+    /// Hands over what a line owed, off the shelf as the issue would.
+    Task ApplyOwedAsync(Domain.Dispensing.Dispensing dispensing,
+                        Domain.Dispensing.DispensingLine line,
+                        CancellationToken ct = default);
+
     /// <summary>
     /// Puts the restockable lines of a return back on the shelf and
     /// writes the rest off. Called inside the return's transaction.
@@ -79,14 +84,12 @@ public sealed class StockService : IStockService
     {
         ArgumentNullException.ThrowIfNull(sale);
 
-        // A collection takes money for medicine that already left the
-        // shelf when the pharmacist issued the dispensing. Applying the
-        // lines again here would issue the same stock twice and leave
-        // every one of those products short by the amount dispensed -
-        // a discrepancy nobody could explain at the next stocktake.
-        if (sale.IsCollection) return;
-
-        foreach (var line in sale.Lines.Where(l => !l.IsVoided))
+        // A collection's script lines take money for medicine that already
+        // left the shelf when the pharmacist issued the dispensing.
+        // Applying them again here would issue the same stock twice and
+        // leave every one of those products short by the amount dispensed
+        // - a discrepancy nobody could explain at the next stocktake.
+        foreach (var line in sale.Lines.Where(l => !l.IsVoided && !l.IsScript))
         {
             var product = await _products.GetAsync(line.ProductId, ct);
             if (product is null) continue;
@@ -117,96 +120,121 @@ public sealed class StockService : IStockService
     {
         ArgumentNullException.ThrowIfNull(dispensing);
 
+        // What is owed stays on the shelf's books until it is handed over.
         foreach (var line in dispensing.Lines)
         {
-            var product = await _products.GetAsync(line.ProductId, ct)
-                ?? throw new Domain.Exceptions.DomainException(
-                    $"{line.Description} is no longer in the catalogue.");
+            var now = line.Quantity - (line.Owed ?? 0m);
+            if (now <= 0m) continue;
 
-            // A dispensing is counted in tablets, capsules or millilitres
-            // and the shelf in packs (ADM-DEF-15).
-            if (!product.IsBatchTracked)
-            {
-                var packs = product.PacksFor(line.Quantity);
-                var after = product.QuantityOnHand - packs;
-                product.SetQuantityOnHand(after);
-
-                _movements.Add(StockMovement.Record(
-                    productId: product.Id,
-                    batchId: null,
-                    movementType: MovementType.Issue,
-                    quantity: packs,
-                    balanceAfter: after,
-                    occurredAtUtc: _clock.UtcNow,
-                    sourceDocumentType: "Dispensing",
-                    sourceDocumentId: dispensing.Id));
-
-                continue;
-            }
-
-            // Allocated again against the stock as it is now, inside the
-            // transaction. The batches are tracked, so a second line of
-            // the same product sees what the first has already taken.
-            var batches = await _batches.ForProductAsync(product.Id, ct);
-
-            IReadOnlyList<Allocation> allocations;
-
-            // In the dispensing's own units, so the label's batch split
-            // reads in tablets; each batch then gives up the packs that
-            // many tablets come to.
-            try
-            {
-                allocations = FefoAllocator.Allocate(batches, line.Quantity,
-                    _clock.Today, product.UnitsInPack);
-            }
-            catch (Domain.Exceptions.DomainException)
-            {
-                var held = batches.Where(b => b.IsAvailableOn(_clock.Today))
-                                  .Sum(b => b.QuantityOnHand)
-                           * product.UnitsInPack;
-
-                throw new Domain.Exceptions.DomainException(
-                    $"{line.Description}: only {held:0.###} unexpired in "
-                    + $"stock, so {line.Quantity:0.###} cannot be issued.");
-            }
-
-            line.AllocateBatches(allocations.Select(a =>
-            {
-                var batch = batches.Single(b => b.Id == a.BatchId);
-                return new Domain.Dispensing.BatchAllocation(batch.Id,
-                    batch.BatchNumber, batch.ExpiryDate, a.Quantity);
-            }));
-
-            var balance = product.QuantityOnHand;
-
-            foreach (var allocation in allocations)
-            {
-                var batch = batches.Single(b => b.Id == allocation.BatchId);
-
-                // A batch emptied gives up exactly what it held, so no
-                // thousandth of a pack is left behind by the rounding.
-                var packs = allocation.Quantity
-                            >= batch.QuantityOnHand * product.UnitsInPack
-                    ? batch.QuantityOnHand
-                    : product.PacksFor(allocation.Quantity);
-
-                batch.Issue(packs);
-
-                balance -= packs;
-
-                _movements.Add(StockMovement.Record(
-                    productId: product.Id,
-                    batchId: batch.Id,
-                    movementType: MovementType.Issue,
-                    quantity: packs,
-                    balanceAfter: balance,
-                    occurredAtUtc: _clock.UtcNow,
-                    sourceDocumentType: "Dispensing",
-                    sourceDocumentId: dispensing.Id));
-            }
-
-            product.SetQuantityOnHand(balance);
+            if (await IssueAsync(dispensing.Id, line, now, ct) is { } batches)
+                line.AllocateBatches(batches);
         }
+    }
+
+    public async Task ApplyOwedAsync(Domain.Dispensing.Dispensing dispensing,
+        Domain.Dispensing.DispensingLine line, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dispensing);
+        ArgumentNullException.ThrowIfNull(line);
+
+        line.GiveOwed(await IssueAsync(dispensing.Id, line, line.Owed ?? 0m, ct),
+                      _clock.UtcNow);
+    }
+
+    /// Takes a dispensed quantity off the shelf: the batches it came from
+    /// for a batch-tracked product, null for one that is not.
+    private async Task<IReadOnlyList<Domain.Dispensing.BatchAllocation>?> IssueAsync(
+        Guid dispensingId, Domain.Dispensing.DispensingLine line,
+        decimal quantity, CancellationToken ct)
+    {
+        var product = await _products.GetAsync(line.ProductId, ct)
+            ?? throw new Domain.Exceptions.DomainException(
+                $"{line.Description} is no longer in the catalogue.");
+
+        // A dispensing is counted in tablets, capsules or millilitres
+        // and the shelf in packs (ADM-DEF-15).
+        if (!product.IsBatchTracked)
+        {
+            var packs = product.PacksFor(quantity);
+            var after = product.QuantityOnHand - packs;
+            product.SetQuantityOnHand(after);
+
+            _movements.Add(StockMovement.Record(
+                productId: product.Id,
+                batchId: null,
+                movementType: MovementType.Issue,
+                quantity: packs,
+                balanceAfter: after,
+                occurredAtUtc: _clock.UtcNow,
+                sourceDocumentType: "Dispensing",
+                sourceDocumentId: dispensingId));
+
+            return null;
+        }
+
+        // Allocated again against the stock as it is now, inside the
+        // transaction. The batches are tracked, so a second line of
+        // the same product sees what the first has already taken.
+        var batches = await _batches.ForProductAsync(product.Id, ct);
+
+        IReadOnlyList<Allocation> allocations;
+
+        // In the dispensing's own units, so the label's batch split
+        // reads in tablets; each batch then gives up the packs that
+        // many tablets come to.
+        try
+        {
+            allocations = FefoAllocator.Allocate(batches, quantity,
+                _clock.Today, product.UnitsInPack);
+        }
+        catch (Domain.Exceptions.DomainException)
+        {
+            var held = batches.Where(b => b.IsAvailableOn(_clock.Today))
+                              .Sum(b => b.QuantityOnHand)
+                       * product.UnitsInPack;
+
+            throw new Domain.Exceptions.DomainException(
+                $"{line.Description}: only {held:0.###} unexpired in "
+                + $"stock, so {quantity:0.###} cannot be issued.");
+        }
+
+        var taken = allocations.Select(a =>
+        {
+            var batch = batches.Single(b => b.Id == a.BatchId);
+            return new Domain.Dispensing.BatchAllocation(batch.Id,
+                batch.BatchNumber, batch.ExpiryDate, a.Quantity);
+        }).ToList();
+
+        var balance = product.QuantityOnHand;
+
+        foreach (var allocation in allocations)
+        {
+            var batch = batches.Single(b => b.Id == allocation.BatchId);
+
+            // A batch emptied gives up exactly what it held, so no
+            // thousandth of a pack is left behind by the rounding.
+            var packs = allocation.Quantity
+                        >= batch.QuantityOnHand * product.UnitsInPack
+                ? batch.QuantityOnHand
+                : product.PacksFor(allocation.Quantity);
+
+            batch.Issue(packs);
+
+            balance -= packs;
+
+            _movements.Add(StockMovement.Record(
+                productId: product.Id,
+                batchId: batch.Id,
+                movementType: MovementType.Issue,
+                quantity: packs,
+                balanceAfter: balance,
+                occurredAtUtc: _clock.UtcNow,
+                sourceDocumentType: "Dispensing",
+                sourceDocumentId: dispensingId));
+        }
+
+        product.SetQuantityOnHand(balance);
+        return taken;
     }
 
     /// <remarks>

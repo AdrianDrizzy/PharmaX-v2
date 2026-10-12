@@ -12,7 +12,9 @@ namespace PharmaX.Application.Inventory;
 
 public interface IProductService
 {
+    /// <param name="skip">Matches passed over first, for a later page.</param>
     Task<Result<ProductPageDto>> SearchAsync(string term, int take = 200,
+                                             int skip = 0,
                                              CancellationToken ct = default);
 
     /// <summary>
@@ -20,7 +22,7 @@ public interface IProductService
     /// which batch it came in on, how much is left and when it expires.
     /// </summary>
     Task<Result<ProductBatchPageDto>> SearchBatchesAsync(string term,
-        int take = 200, CancellationToken ct = default);
+        int take = 200, int skip = 0, CancellationToken ct = default);
 
     Task<Result<ProductDto>> GetAsync(Guid id, CancellationToken ct = default);
 
@@ -41,6 +43,11 @@ public interface IProductService
     /// </summary>
     Task<Result> ApplyCellEditAsync(ProductCellEditDto edit,
                                      CancellationToken ct = default);
+
+    /// Every price in a department - or all of them - up or down by a
+    /// percentage, rounded as System setup says. How many changed.
+    Task<Result<int>> RepriceAsync(Guid? departmentId, decimal percent,
+                                   CancellationToken ct = default);
 }
 
 public sealed partial class ProductService : IProductService
@@ -53,12 +60,14 @@ public sealed partial class ProductService : IProductService
     private readonly IOutbox _outbox;
     private readonly IUnitOfWork _uow;
     private readonly IClock _clock;
+    private readonly IPharmacySettings _settings;
 
     public ProductService(IProductRepository products,
         IBatchRepository batches, IStockMovementWriter movements,
         IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow, IClock clock)
+        IUnitOfWork uow, IClock clock, IPharmacySettings settings)
     {
+        _settings = settings;
         _products = products;
         _batches = batches;
         _movements = movements;
@@ -70,7 +79,7 @@ public sealed partial class ProductService : IProductService
     }
 
     public async Task<Result<ProductPageDto>> SearchAsync(string term,
-        int take = 200, CancellationToken ct = default)
+        int take = 200, int skip = 0, CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
@@ -78,7 +87,8 @@ public sealed partial class ProductService : IProductService
         // the query rather than on the screen.
         var scope = _permissions.ProductScope();
 
-        var products = await _products.SearchAsync(term, take, scope, ct);
+        var products = await _products.SearchAsync(term, take, scope,
+                                                   skip, ct);
         var total = await _products.CountAsync(term, scope, ct);
 
         IReadOnlyList<ProductListItemDto> items =
@@ -88,13 +98,15 @@ public sealed partial class ProductService : IProductService
     }
 
     public async Task<Result<ProductBatchPageDto>> SearchBatchesAsync(
-        string term, int take = 200, CancellationToken ct = default)
+        string term, int take = 200, int skip = 0,
+        CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
         var scope = _permissions.ProductScope();
 
-        var products = await _products.SearchAsync(term, take, scope, ct);
+        var products = await _products.SearchAsync(term, take, scope,
+                                                   skip, ct);
         var total = await _products.CountAsync(term, scope, ct);
 
         var batches = await _batches.ForProductsAsync(
@@ -181,6 +193,7 @@ public sealed partial class ProductService : IProductService
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(edit);
+        edit = await WithMarkupAsync(edit, ct);
 
         // Adding a product sets its first price, which is not a price
         // change: there was no price before it. Maintaining the catalogue
@@ -249,10 +262,24 @@ public sealed partial class ProductService : IProductService
         return Result<Guid>.Ok(product.Id);
     }
 
+    /// An item saved with a cost and no price takes the default markup.
+    private async Task<ProductEditDto> WithMarkupAsync(ProductEditDto edit,
+        CancellationToken ct)
+    {
+        if (edit.RetailPrice > 0m || edit.CostPrice <= 0m) return edit;
+
+        var (markup, step) = await Pricing.ReadAsync(_settings, ct);
+
+        return Pricing.NewRetail(0m, 0m, edit.CostPrice, markup, step) is decimal retail
+            ? edit with { RetailPrice = retail }
+            : edit;
+    }
+
     public async Task<Result> UpdateAsync(Guid id, ProductEditDto edit,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(edit);
+        edit = await WithMarkupAsync(edit, ct);
 
         var product = await _products.GetAsync(id, ct);
         if (product is null || !InScope(product))

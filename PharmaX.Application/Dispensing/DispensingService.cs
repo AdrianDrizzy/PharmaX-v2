@@ -96,6 +96,19 @@ public interface IDispensingService
     /// </summary>
     Task<Result> AbandonAsync(Guid dispensingId,
         CancellationToken ct = default);
+
+
+    /// Everything owed to patients and not yet handed over.
+    Task<IReadOnlyList<ToFollowDto>> ToFollowAsync(CancellationToken ct = default);
+
+    /// Hands over what was owed on one line, off the shelf, and returns
+    /// the label for what was handed over.
+    Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId, int lineNo,
+        CancellationToken ct = default);
+
+    /// Scripts begun and kept to finish later.
+    Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -133,10 +146,24 @@ public sealed class DispensingService : IDispensingService
 {
     /// <summary>
     /// Schedule 6 and above are controlled medicines: kept in a register,
-    /// and released only on a pharmacist's own authority, whoever is
-    /// working the screen.
+    /// and named on the audit trail of whoever issued them.
     /// </summary>
     public const int ControlledSchedule = 6;
+
+    /// <summary>
+    /// Whether the operator releases a hard stop or issues a controlled
+    /// medicine on their own authority.
+    /// </summary>
+    /// <remarks>
+    /// Anyone who may dispense, a pharmacist assistant included. An
+    /// assistant used to need a pharmacist's credentials for both; the
+    /// pharmacy dropped that on 12 October 2026. A hard stop still needs a
+    /// written reason, and both are still audited under the operator's
+    /// name. Put ScriptAuthorise back here to bring the pharmacist's
+    /// sign-off back.
+    /// </remarks>
+    private bool ActsOnOwnAuthority =>
+        _permissions.Has(PermissionCode.ScriptDispense);
 
     private readonly IDispensingRepository _dispensings;
     private readonly IScriptRepository _scripts;
@@ -204,6 +231,13 @@ public sealed class DispensingService : IDispensingService
         if (script.RepeatsRemaining < 0)
             return Result<DispensingStateDto>.Fail("DSP-011",
                 $"Script {script.ScriptNumber} has no repeats left.");
+
+        // One kept to finish later is picked up where it was left.
+        if ((await _dispensings.ForPatientAsync(script.PatientId, ct))
+            .FirstOrDefault(d => d.ScriptId == script.Id
+                                 && d.Status == DispensingStatus.InProgress) is { } kept
+            && await _dispensings.GetAsync(kept.Id, ct) is { } resumed)
+            return Result<DispensingStateDto>.Ok(DispensingStateDto.From(resumed));
 
         var dispensing = Domain.Dispensing.Dispensing.Begin(
             script.Id, script.PatientId, _user.Id, script.RepeatsUsed);
@@ -377,11 +411,12 @@ public sealed class DispensingService : IDispensingService
                 + "they are printed on the label (DSP-004).");
 
         // FEFO across as many batches as the quantity needs, counting what
-        // earlier lines of this dispensing have already claimed. Checked
-        // here so the pharmacist learns of a shortage while the patient
-        // is still at the counter, and done again at issue against the
-        // stock as it is then.
+        // earlier lines of this dispensing have already claimed, and done
+        // again at issue against the stock as it is then. What the shelf
+        // is short of is owed to the patient - To follow - charged with
+        // the rest and handed over when the stock comes in.
         IReadOnlyList<BatchAllocation>? allocation = null;
+        decimal shortfall;
 
         // Counted in the script's units - tablets, capsules, millilitres -
         // against a shelf counted in packs, each pack holding the
@@ -402,14 +437,11 @@ public sealed class DispensingService : IDispensingService
                 .Sum(b => b.QuantityOnHand * perPack
                           - claimed.GetValueOrDefault(b.Id));
 
-            if (available < directions.Quantity)
-                return new Error("DSP-012",
-                    $"{product.Description}: {available:0.###} unexpired in "
-                    + $"stock, so {directions.Quantity:0.###} cannot be "
-                    + "dispensed.");
+            shortfall = Math.Max(directions.Quantity - Math.Max(available, 0m), 0m);
 
-            allocation = Allocate(batches, claimed, directions.Quantity,
-                                  perPack);
+            if (shortfall < directions.Quantity)
+                allocation = Allocate(batches, claimed,
+                                      directions.Quantity - shortfall, perPack);
         }
         else
         {
@@ -417,15 +449,11 @@ public sealed class DispensingService : IDispensingService
             // the till keeps (ADM-DEF-12).
             var claimed = dispensing.Lines
                 .Where(l => l.ProductId == product.Id)
-                .Sum(l => l.Quantity);
+                .Sum(l => l.Quantity - (l.Owed ?? 0m));
 
             var available = product.QuantityOnHand * perPack - claimed;
 
-            if (available < directions.Quantity)
-                return new Error("DSP-012",
-                    $"{product.Description}: {Math.Max(available, 0m):0.###} "
-                    + $"in stock, so {directions.Quantity:0.###} cannot be "
-                    + "dispensed.");
+            shortfall = Math.Max(directions.Quantity - Math.Max(available, 0m), 0m);
         }
 
         // What the society has agreed to pay for this product today.
@@ -455,12 +483,14 @@ public sealed class DispensingService : IDispensingService
             productId: product.Id,
             description: product.Description,
             quantity: directions.Quantity,
-            directions: directions.Directions.Trim(),
+            directions: await _reference.ExpandDirectionsAsync(
+                directions.Directions, ct),
             tariffAmount: contribution is Money share
                 ? share + tariff!.DispensingFee
                 : shelf,
             scriptItemId: scriptItemId));
 
+        if (shortfall > 0m) dispensing.Owe(line.LineNo, shortfall);
         if (allocation is not null) line.AllocateBatches(allocation);
 
         // The society's own share. SetSchemeContribution once had no
@@ -542,7 +572,7 @@ public sealed class DispensingService : IDispensingService
         var warning = dispensing?.Warnings.SingleOrDefault(w => w.Id == warningId);
 
         return warning is { IsHardStop: true }
-               && !_permissions.Has(PermissionCode.ScriptAuthorise);
+               && !ActsOnOwnAuthority;
     }
 
     public async Task<Result> AcknowledgeWarningAsync(Guid warningId,
@@ -558,13 +588,10 @@ public sealed class DispensingService : IDispensingService
         var warning = dispensing.Warnings.Single(w => w.Id == warningId);
         Guid? releasedBy = null;
 
-        // A hard stop is released on a pharmacist's authority. Where the
-        // operator holds it - a pharmacist, or the administrator - their
-        // own written reason is enough; an assistant needs a pharmacist's
-        // credentials as well. That is the one place an assistant is
-        // asked for an authorisation in the ordinary flow, and it is
-        // there because the business rule genuinely requires it.
-        if (warning.IsHardStop && !_permissions.Has(PermissionCode.ScriptAuthorise))
+        // A hard stop is released on the operator's own written reason
+        // where they act on their own authority (ActsOnOwnAuthority);
+        // otherwise a pharmacist's credentials are needed as well.
+        if (warning.IsHardStop && !ActsOnOwnAuthority)
         {
             if (authorisedBy is not Guid pharmacist
                 || pharmacist == _user.Id
@@ -619,7 +646,7 @@ public sealed class DispensingService : IDispensingService
         var controlled = await ControlledItemsAsync(dispensing, ct);
 
         return Result<IssueAuthorityDto>.Ok(
-            controlled.Count == 0 || _permissions.Has(PermissionCode.ScriptAuthorise)
+            controlled.Count == 0 || ActsOnOwnAuthority
                 ? new IssueAuthorityDto(true, null)
                 : new IssueAuthorityDto(false,
                     $"{string.Join(", ", controlled)} "
@@ -669,7 +696,7 @@ public sealed class DispensingService : IDispensingService
         }
 
         if (responsible == _user.Id
-            && !_permissions.Has(PermissionCode.ScriptAuthorise)
+            && !ActsOnOwnAuthority
             && await ControlledItemsAsync(dispensing, ct) is { Count: > 0 } controlled)
         {
             return Result<IssueResultDto>.Fail("DSP-030",
@@ -691,7 +718,9 @@ public sealed class DispensingService : IDispensingService
         var patient = await _patients.GetAsync(dispensing.PatientId, ct);
         var pharmacist = await _users.GetAsync(responsible, ct);
 
-        var labels = dispensing.Lines.OrderBy(l => l.LineNo).Select(l =>
+        // Counted in the bag, 1 of n: a line taken off before the issue
+        // leaves a gap in the line numbers that a label must not show.
+        var labels = dispensing.Lines.OrderBy(l => l.LineNo).Select((l, i) =>
             new LabelDto(
                 PatientName: patient?.FullName ?? "",
                 ProductDescription: l.Description,
@@ -703,7 +732,7 @@ public sealed class DispensingService : IDispensingService
                 ScriptNumber: script.ScriptNumber,
                 DispensedOn: _clock.Today,
                 Cautions: Array.Empty<string>(),
-                ItemNumber: l.LineNo,
+                ItemNumber: i + 1,
                 ItemCount: dispensing.Lines.Count,
                 PrescriberName: script.PrescriberName,
                 PrescriberNumber: script.PrescriberNumber)).ToList();
@@ -815,6 +844,99 @@ public sealed class DispensingService : IDispensingService
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();
+    }
+
+
+    public async Task<IReadOnlyList<ToFollowDto>> ToFollowAsync(
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var owed = new List<ToFollowDto>();
+
+        foreach (var d in await _dispensings.OwingAsync(ct))
+        {
+            var patient = await _patients.GetAsync(d.PatientId, ct);
+
+            owed.AddRange(d.Lines
+                .Where(l => l.Owed is not null && l.OwedGivenAtUtc is null)
+                .Select(l => new ToFollowDto(d.Id, l.LineNo,
+                    patient?.FullName ?? "", patient?.Telephone ?? "",
+                    l.Description, l.Owed!.Value,
+                    d.IssuedAtUtc?.ToLocalTime() ?? default, d.DocumentNumber)));
+        }
+
+        return owed.OrderBy(o => o.Since).ToList();
+    }
+
+    public async Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId,
+        int lineNo, CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        var line = dispensing?.Lines.SingleOrDefault(l => l.LineNo == lineNo);
+
+        if (dispensing is not { Status: DispensingStatus.Issued } || line is null)
+            return Result<LabelDto>.Fail("DSP-000", "Dispensing not found.");
+
+        var before = line.Batches.Count;
+
+        try
+        {
+            await _stock.ApplyOwedAsync(dispensing, line, ct);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            return Result<LabelDto>.Fail("DSP-041", ex.Message);
+        }
+
+        _audit.Applied("dsp.tofollow.give", "Dispensing", dispensing.Id,
+            $"{line.Description} x{line.Owed:0.###}");
+
+        await _uow.SaveChangesAsync(ct);
+        await tx.DisposeAsync();
+
+        // Labelled for what is handed over now, from the batches it came off.
+        var given = line.Batches.Skip(before).OrderBy(b => b.ExpiryDate).ToList();
+        var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
+        var patient = await _patients.GetAsync(dispensing.PatientId, ct);
+        var pharmacist = await _users.GetAsync(_user.Id, ct);
+
+        return Result<LabelDto>.Ok(new LabelDto(
+            PatientName: patient?.FullName ?? "",
+            ProductDescription: line.Description,
+            Quantity: line.Owed ?? 0m,
+            Directions: line.Directions,
+            BatchNumber: given.Count == 0 ? null : string.Join(", ", given.Select(b => b.BatchNumber)),
+            Expiry: given.Count == 0 ? null : given[0].ExpiryDate,
+            PharmacistName: pharmacist?.DisplayName ?? "",
+            ScriptNumber: script?.ScriptNumber ?? "",
+            DispensedOn: _clock.Today,
+            Cautions: Array.Empty<string>(),
+            PrescriberName: script?.PrescriberName,
+            PrescriberNumber: script?.PrescriberNumber));
+    }
+
+    public async Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var kept = new List<SuspendedDispensingDto>();
+
+        foreach (var d in await _dispensings.InProgressAsync(ct))
+        {
+            var patient = await _patients.GetAsync(d.PatientId, ct);
+            var script = await _scripts.GetAsync(d.ScriptId, ct);
+
+            kept.Add(new SuspendedDispensingDto(d.PatientId, d.ScriptId,
+                patient?.FullName ?? "", script?.ScriptNumber ?? "", d.Lines.Count));
+        }
+
+        return kept;
     }
 
     /// <summary>
@@ -959,6 +1081,14 @@ public interface IDispensingRepository
     /// oldest first - the queue a cashier works from.
     /// </summary>
     Task<IReadOnlyList<Domain.Dispensing.Dispensing>> AwaitingCollectionAsync(
+        CancellationToken ct = default);
+
+    /// Issued, with something still owed to the patient.
+    Task<IReadOnlyList<Domain.Dispensing.Dispensing>> OwingAsync(
+        CancellationToken ct = default);
+
+    /// Begun and not yet issued or set aside: kept to finish later.
+    Task<IReadOnlyList<Domain.Dispensing.Dispensing>> InProgressAsync(
         CancellationToken ct = default);
 
     Task AddAsync(Domain.Dispensing.Dispensing dispensing,

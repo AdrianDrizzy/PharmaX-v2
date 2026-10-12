@@ -15,8 +15,12 @@ partial class frmPatientList
     private Button btnEdit = null!;
     private Button btnDeactivate = null!;
     private Button btnDocuments = null!;
+    private Button btnExport = null!;
     private Button btnChoose = null!;
     private Button btnClose = null!;
+    private Button btnPrevious = null!;
+    private Button btnNext = null!;
+    private Label lblPage = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -46,10 +50,18 @@ partial class frmPatientList
         btnDeactivate.Name = "btnDeactivate";
         btnDocuments = new Button();
         btnDocuments.Name = "btnDocuments";
+        btnExport = new Button();
+        btnExport.Name = "btnExport";
         btnChoose = new Button();
         btnChoose.Name = "btnChoose";
         btnClose = new Button();
         btnClose.Name = "btnClose";
+        btnPrevious = new Button();
+        btnPrevious.Name = "btnPrevious";
+        btnNext = new Button();
+        btnNext.Name = "btnNext";
+        lblPage = new Label();
+        lblPage.Name = "lblPage";
         SuspendLayout();
 
         lblSearch.AutoSize = true;
@@ -65,7 +77,7 @@ partial class frmPatientList
 
         lblCount.AutoSize = false;
         lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        lblCount.Location = new Point(620, 17);
+        lblCount.Location = new Point(840, 17);
         lblCount.Size = new Size(150, 20);
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
@@ -103,6 +115,14 @@ partial class frmPatientList
             x += 116;
         }
 
+        // Where Choose goes, and hidden in its place by UseAsPicker: a
+        // picker answers another screen rather than exporting.
+        btnExport.Location = new Point(x, 8);
+        btnExport.Size = new Size(110, 30);
+        btnExport.Text = "Ex&port";
+        btnExport.UseVisualStyleBackColor = true;
+        pnlBottom.Controls.Add(btnExport);
+
         // Hidden until UseAsPicker turns it on.
         btnChoose.Location = new Point(x, 8);
         btnChoose.Size = new Size(110, 30);
@@ -111,8 +131,31 @@ partial class frmPatientList
         btnChoose.Visible = false;
         pnlBottom.Controls.Add(btnChoose);
 
+        // The pages either side, after Choose. Not anchored right like
+        // Close: PhxTheme seats every right-anchored control that starts
+        // off the edge at the same spot (see frmProductList).
+        btnPrevious.Enabled = false;
+        btnPrevious.Location = new Point(596, 8);
+        btnPrevious.Size = new Size(86, 30);
+        btnPrevious.Text = "Pre&vious";
+        btnPrevious.UseVisualStyleBackColor = true;
+
+        lblPage.AutoSize = false;
+        lblPage.Location = new Point(686, 8);
+        lblPage.Size = new Size(90, 30);
+        lblPage.TextAlign = ContentAlignment.MiddleCenter;
+
+        btnNext.Enabled = false;
+        btnNext.Location = new Point(780, 8);
+        btnNext.Size = new Size(86, 30);
+        btnNext.Text = "Ne&xt";
+        btnNext.UseVisualStyleBackColor = true;
+
+        pnlBottom.Controls.AddRange(new Control[]
+            { btnPrevious, lblPage, btnNext });
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(660, 8);
+        btnClose.Location = new Point(880, 8);
         btnClose.Size = new Size(110, 30);
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
@@ -125,7 +168,7 @@ partial class frmPatientList
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(790, 520);
+        ClientSize = new Size(1010, 520);
         Controls.Add(grdPatients);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

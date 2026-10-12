@@ -1,5 +1,7 @@
 using System.Globalization;
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Dispensing.Dtos;
+using PharmaX.Application.Finance;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
@@ -23,7 +25,14 @@ public enum StockAdjustmentKind
     TransferOut = 3,
 
     /// Received from another branch.
-    TransferIn = 4
+    TransferIn = 4,
+
+    /// Sent back to the supplier, for credit.
+    ReturnToSupplier = 5,
+
+    /// Packs of one item opened into another: the dispensary's bulk pack
+    /// into the shop's, or tablets counted into pre-packs.
+    MoveToItem = 6
 }
 
 /// <param name="BatchId">
@@ -47,8 +56,13 @@ public sealed record AdjustableProductDto(Guid ProductId, string Code,
     string Description, decimal QuantityOnHand, bool IsBatchTracked,
     IReadOnlyList<AdjustableBatchDto> Batches);
 
+/// <param name="PrePack">
+/// For stock moved into another item: the label each of its packs
+/// carries, and how many packs there now are to label.
+/// </param>
 public sealed record StockAdjustmentResultDto(string Description,
-    decimal QuantityOnHand, string Summary);
+    decimal QuantityOnHand, string Summary, LabelDto? PrePack = null,
+    int PrePacks = 0);
 
 public interface IStockAdjustmentService
 {
@@ -82,12 +96,17 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
     private readonly IOutbox _outbox;
     private readonly IUnitOfWork _uow;
     private readonly IClock _clock;
+    private readonly ICurrentUser _user;
+    private readonly IJournalPoster _journals;
 
     public StockAdjustmentService(IProductRepository products,
         IBatchRepository batches, IStockMovementWriter movements,
         IPermissionService permissions, IAuditWriter audit, IOutbox outbox,
-        IUnitOfWork uow, IClock clock)
+        IUnitOfWork uow, IClock clock, ICurrentUser user,
+        IJournalPoster journals)
     {
+        _user = user;
+        _journals = journals;
         _products = products;
         _batches = batches;
         _movements = movements;
@@ -145,11 +164,16 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         var transfer = edit.Kind is StockAdjustmentKind.TransferOut
                                  or StockAdjustmentKind.TransferIn;
 
-        if (transfer && string.IsNullOrWhiteSpace(edit.OtherBranch))
-            return Fail("INV-024",
-                edit.Kind == StockAdjustmentKind.TransferOut
-                    ? "Which branch is it going to?"
-                    : "Which branch is it coming from?");
+        if ((transfer || edit.Kind is StockAdjustmentKind.ReturnToSupplier
+                                   or StockAdjustmentKind.MoveToItem)
+            && string.IsNullOrWhiteSpace(edit.OtherBranch))
+            return Fail("INV-024", edit.Kind switch
+            {
+                StockAdjustmentKind.TransferOut => "Which branch is it going to?",
+                StockAdjustmentKind.TransferIn => "Which branch is it coming from?",
+                StockAdjustmentKind.ReturnToSupplier => "Which supplier is it going back to?",
+                _ => "Which item is it going into? Give its code."
+            });
 
         var product = await _products.FindByCodeOrBarcodeAsync(
             edit.ProductCode.Trim(), _permissions.ProductScope(), ct);
@@ -157,17 +181,36 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         if (product is null)
             return Fail("INV-020", $"No product for code {edit.ProductCode}.");
 
+        Product? into = null;
+
+        if (edit.Kind == StockAdjustmentKind.MoveToItem)
+        {
+            into = await _products.FindByCodeOrBarcodeAsync(
+                edit.OtherBranch!.Trim(), _permissions.ProductScope(), ct);
+
+            if (into is null || into.Id == product.Id)
+                return Fail("INV-020", $"No other product for code {edit.OtherBranch}.");
+        }
+
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
-        var problem = edit.Kind == StockAdjustmentKind.TransferIn
-            ? await BringInAsync(product, edit, ct)
-            : await TakeOutAsync(product, edit, ct);
+        var problem = edit.Kind switch
+        {
+            StockAdjustmentKind.TransferIn => await BringInAsync(product, edit, ct),
+            StockAdjustmentKind.MoveToItem => await MoveAsync(product, into!, edit, ct),
+            _ => await TakeOutAsync(product, edit, ct)
+        };
 
         if (problem is Error error) return Fail(error.Code, error.Message);
 
         var summary = Summarise(product, edit);
 
         _audit.Applied("inv.stock.adjust", "Product", product.Id, summary);
+
+        // The supplier owes the pharmacy what went back, at what it cost.
+        if (edit.Kind == StockAdjustmentKind.ReturnToSupplier)
+            await _journals.PostSupplierReturnAsync(edit.OtherBranch!.Trim(),
+                product.CostPrice * edit.Quantity, ct);
 
         if (transfer)
             _outbox.Append("StockTransfer", product.Id,
@@ -182,9 +225,52 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         await _uow.SaveChangesAsync(ct);
         await tx.DisposeAsync();
 
+        if (into is null)
+            return Result<StockAdjustmentResultDto>.Ok(new StockAdjustmentResultDto(
+                product.Description, product.QuantityOnHand, summary));
+
+        // Each new pack labelled as a pre-pack: what it is, how many are
+        // in it, and the batch it was counted out of.
+        var batch = edit.BatchId is Guid id ? await _batches.GetAsync(id, ct) : null;
+
         return Result<StockAdjustmentResultDto>.Ok(new StockAdjustmentResultDto(
-            product.Description, product.QuantityOnHand, summary));
+            product.Description, product.QuantityOnHand, summary,
+            new LabelDto("", into.Description, into.UnitsInPack, "",
+                batch?.BatchNumber, batch?.ExpiryDate, _user.Username, "Pre-pack",
+                _clock.Today, Array.Empty<string>()),
+            (int)Math.Floor(Moved(product, into, edit.Quantity))));
     }
+
+    /// <summary>
+    /// Out of one item and into another, the same tablets in different
+    /// packs: a pack of a thousand becomes fifty of twenty.
+    /// </summary>
+    /// <remarks>
+    /// Checked before anything moves, so a refusal leaves both as they were.
+    /// </remarks>
+    private async Task<Error?> MoveAsync(Product from, Product into,
+        StockAdjustmentEditDto edit, CancellationToken ct)
+    {
+        var batch = edit.BatchId is Guid id ? await _batches.GetAsync(id, ct) : null;
+
+        if (into.IsBatchTracked && (batch is null || batch.ExpiryDate <= _clock.Today))
+            return new Error("INV-032",
+                $"{into.Description} is batch tracked: move an in-date batch of "
+                + $"{from.Description} into it.");
+
+        return await TakeOutAsync(from, edit, ct)
+               ?? await BringInAsync(into, edit with
+               {
+                   Kind = StockAdjustmentKind.TransferIn,
+                   OtherBranch = from.Code,
+                   Quantity = Moved(from, into, edit.Quantity),
+                   BatchNumber = batch?.BatchNumber,
+                   Expiry = batch?.ExpiryDate
+               }, ct);
+    }
+
+    private static decimal Moved(Product from, Product into, decimal packs) =>
+        Math.Round(packs * from.UnitsInPack / into.UnitsInPack, 3);
 
     /// Breakage, expired write-off or transfer out.
     private async Task<Error?> TakeOutAsync(Product product,
@@ -240,9 +326,13 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         _movements.Add(StockMovement.Record(
             productId: product.Id,
             batchId: batch?.Id,
-            movementType: edit.Kind == StockAdjustmentKind.TransferOut
-                ? MovementType.TransferOut
-                : MovementType.Disposal,
+            movementType: edit.Kind switch
+            {
+                StockAdjustmentKind.TransferOut or StockAdjustmentKind.MoveToItem
+                    => MovementType.TransferOut,
+                StockAdjustmentKind.ReturnToSupplier => MovementType.ReturnToSupplier,
+                _ => MovementType.Disposal
+            },
             quantity: edit.Quantity,
             balanceAfter: balance,
             occurredAtUtc: _clock.UtcNow,
@@ -319,6 +409,10 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
             StockAdjustmentKind.ExpiredWriteOff => $"EXPIRED: {why}",
             StockAdjustmentKind.TransferOut =>
                 $"TO {edit.OtherBranch!.Trim()}: {why}",
+            StockAdjustmentKind.ReturnToSupplier =>
+                $"RETURN {edit.OtherBranch!.Trim()}: {why}",
+            StockAdjustmentKind.MoveToItem =>
+                $"INTO {edit.OtherBranch!.Trim()}: {why}",
             _ => $"FROM {edit.OtherBranch!.Trim()}: {why}"
         };
 
@@ -333,13 +427,22 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
                 StockAdjustmentKind.Breakage => "Breakage:",
                 StockAdjustmentKind.ExpiredWriteOff => "Expired, written off:",
                 StockAdjustmentKind.TransferOut => "Transferred out:",
+                StockAdjustmentKind.ReturnToSupplier => "Returned to the supplier:",
+                StockAdjustmentKind.MoveToItem => "Moved:",
                 _ => "Transferred in:"
             },
             edit.Quantity, product.Description,
-            edit.OtherBranch is null ? ""
-                : edit.Kind == StockAdjustmentKind.TransferOut
-                    ? $" to {edit.OtherBranch.Trim()}"
-                    : $" from {edit.OtherBranch.Trim()}",
+            (edit.OtherBranch is null ? ""
+                : edit.Kind switch
+                {
+                    StockAdjustmentKind.TransferIn => " from ",
+                    StockAdjustmentKind.MoveToItem => " into ",
+                    _ => " to "
+                } + edit.OtherBranch.Trim())
+            + (edit.Kind == StockAdjustmentKind.ReturnToSupplier
+                ? string.Format(CultureInfo.CurrentCulture, ", {0:N2} at cost",
+                    product.CostPrice.Amount * edit.Quantity)
+                : ""),
             edit.Reason.Trim());
 
     private static Result<StockAdjustmentResultDto> Fail(string code,

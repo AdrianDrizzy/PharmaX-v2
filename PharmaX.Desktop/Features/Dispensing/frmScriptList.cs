@@ -130,7 +130,7 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
             // ordinary rows the pharmacist might pick by mistake.
             if (script.Status is "Cancelled" or "Completed"
                 || script.RepeatsRemaining < 0)
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         lblCount.Text = $"{scripts.Count} script(s)";
@@ -143,7 +143,8 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     public string? PromptCancelReason() =>
         frmTextPrompt.Ask(this, "Cancel script",
             "Why is this script being cancelled? The script is kept and "
-            + "marked cancelled; it is never deleted.");
+            + "marked cancelled; it is never deleted.",
+            hint: "e.g. Prescriber wrote a new script");
 
     public event EventHandler? RefreshRequested;
     public event EventHandler? CaptureRequested;

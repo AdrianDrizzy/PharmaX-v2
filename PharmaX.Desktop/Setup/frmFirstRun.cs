@@ -23,6 +23,7 @@ public sealed partial class frmFirstRun : Form
 
     public frmFirstRun()
     {
+        Icon = PhxIcons.AppIcon;
         InitializeComponent();
         PhxTheme.Apply(this);
 
@@ -197,7 +198,7 @@ public sealed partial class frmFirstRun : Form
         lblTestResult.Text = result.Message;
 
         lblTestResult.ForeColor = result.Succeeded
-            ? PhxTheme.Accent
+            ? PhxTheme.Title
             : PhxTheme.ProblemText;
     }
 

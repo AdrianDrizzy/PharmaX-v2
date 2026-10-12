@@ -21,6 +21,7 @@ public sealed class WorkstationSettingConfiguration
 
         b.Property(x => x.WorkstationCode).HasMaxLength(20);
         b.Property(x => x.Key).HasMaxLength(100);
-        b.Property(x => x.Value).HasMaxLength(500);
+        // Unbounded: the pharmacy's logo is kept here as an image.
+        b.Property(x => x.Value);
     }
 }

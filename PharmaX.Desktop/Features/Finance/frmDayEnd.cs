@@ -175,7 +175,8 @@ public partial class frmDayEnd : PhxFormBase
         {
             FileName = $"{batch.BatchNumber}.csv",
             Filter = "CSV file (*.csv)|*.csv",
-            Title = "Export journal"
+            Title = "Export journal",
+            InitialDirectory = GridExport.Downloads
         };
 
         if (save.ShowDialog(this) != DialogResult.OK) return;
@@ -198,7 +199,7 @@ public partial class frmDayEnd : PhxFormBase
 
         File.WriteAllText(save.FileName, csv.ToString(), Encoding.UTF8);
 
-        ShowInfo($"Exported to {save.FileName}");
+        ShowSaved(save.FileName);
     }
 
     /// <summary>
@@ -222,7 +223,7 @@ public partial class frmDayEnd : PhxFormBase
                 batch.IsPosted ? ", posted" : ", not yet posted"),
             _user.Username);
 
-        if (saved is not null) ShowInfo($"Exported to {saved}");
+        if (saved is not null) ShowSaved(saved);
     }
 
     /// A field containing a comma or a quote would otherwise split a row.

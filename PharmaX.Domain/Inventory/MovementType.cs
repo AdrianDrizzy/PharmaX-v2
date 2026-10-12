@@ -13,7 +13,10 @@ public enum MovementType
     TransferOut = 5,
     TransferIn = 6,
     StockTake = 7,
-    Disposal = 8
+    Disposal = 8,
+
+    /// Sent back to the supplier it came from, for credit.
+    ReturnToSupplier = 9
 }
 
 public static class MovementTypeExtensions
