@@ -18,9 +18,12 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
 
     protected override void Subscribe()
     {
-        View.SearchChanged += (_, _) => Enqueue(LoadAsync);
+        // A new search, or the other view, starts again at the top.
+        View.SearchChanged += (_, _) => Enqueue(FirstPageAsync);
         View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
-        View.ViewModeChanged += (_, _) => Enqueue(LoadAsync);
+        View.ViewModeChanged += (_, _) => Enqueue(FirstPageAsync);
+        View.NextPageRequested += (_, _) => Enqueue(() => TurnAsync(+1));
+        View.PreviousPageRequested += (_, _) => Enqueue(() => TurnAsync(-1));
         View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
         View.EditRequested += (_, _) =>
         {
@@ -52,12 +55,51 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
 
     public override Task InitialiseAsync() => LoadAsync();
 
-    private Task LoadAsync() =>
-        View.BatchView ? LoadBatchesAsync() : LoadProductsAsync();
+    /// Products to a page. Enough to fill a tall screen, few enough that
+    /// a page of a 50,000-line catalogue comes back at once.
+    internal const int PageSize = 100;
+
+    /// The page on screen, from nought.
+    private int _page;
+
+    /// How many products the search matched, as of the last page read.
+    private int _total;
+
+    private Task FirstPageAsync()
+    {
+        _page = 0;
+        return LoadAsync();
+    }
+
+    private Task TurnAsync(int by)
+    {
+        var page = Math.Clamp(_page + by, 0, LastPage(_total));
+        if (page == _page) return Task.CompletedTask;
+
+        _page = page;
+        return LoadAsync();
+    }
+
+    private static int LastPage(int total) =>
+        Math.Max(0, (total - 1) / PageSize);
+
+    private async Task LoadAsync()
+    {
+        await (View.BatchView ? LoadBatchesAsync() : LoadProductsAsync());
+
+        // Products discontinued or recoded off the end of the last page
+        // leave it empty; the page before it is the one to show.
+        if (_page > LastPage(_total))
+        {
+            _page = LastPage(_total);
+            await (View.BatchView ? LoadBatchesAsync() : LoadProductsAsync());
+        }
+    }
 
     private Task LoadProductsAsync() => GuardAsync(async () =>
     {
-        var result = await _products.SearchAsync(View.SearchText, take: 200);
+        var result = await _products.SearchAsync(View.SearchText,
+            take: PageSize, skip: _page * PageSize);
 
         if (result.IsFailure)
         {
@@ -65,22 +107,23 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
             return;
         }
 
+        _total = result.Value.TotalCount;
         View.ShowProducts(result.Value.Items);
-        View.ShowCount(result.Value.Items.Count, result.Value.TotalCount);
+        View.ShowPage(_page, PageSize, result.Value.Items.Count, _total);
     });
 
     /// <summary>
     /// The same search, a batch at a time.
     /// </summary>
     /// <remarks>
-    /// The count still reports products rather than rows. "612 of 4,318"
-    /// where 4,318 is a product count and 612 is a batch count would be
-    /// two different units either side of the word "of".
+    /// The page and the count are still in products rather than rows.
+    /// "612 of 4,318" where 4,318 is a product count and 612 is a batch
+    /// count would be two different units either side of the word "of".
     /// </remarks>
     private Task LoadBatchesAsync() => GuardAsync(async () =>
     {
         var result = await _products.SearchBatchesAsync(View.SearchText,
-                                                        take: 200);
+            take: PageSize, skip: _page * PageSize);
 
         if (result.IsFailure)
         {
@@ -88,11 +131,12 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
             return;
         }
 
+        _total = result.Value.TotalCount;
         View.ShowBatches(result.Value.Items);
 
-        View.ShowCount(
+        View.ShowPage(_page, PageSize,
             result.Value.Items.Select(r => r.ProductId).Distinct().Count(),
-            result.Value.TotalCount);
+            _total);
     });
 
     private Task OpenEditorAsync(Guid? id, Guid? batchId = null) =>

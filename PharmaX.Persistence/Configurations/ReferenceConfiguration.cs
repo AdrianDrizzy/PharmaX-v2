@@ -97,3 +97,17 @@ public sealed class TariffConfiguration : IEntityTypeConfiguration<Tariff>
         b.HasIndex(x => new { x.SchemeId, x.ProductId });
     }
 }
+
+public sealed class PrescriberConfiguration
+    : IEntityTypeConfiguration<Prescriber>
+{
+    public void Configure(EntityTypeBuilder<Prescriber> builder) =>
+        ReferenceMapping.Configure(builder, "Prescriber");
+}
+
+public sealed class DosageCodeConfiguration
+    : IEntityTypeConfiguration<DosageCode>
+{
+    public void Configure(EntityTypeBuilder<DosageCode> builder) =>
+        ReferenceMapping.Configure(builder, "DosageCode");
+}

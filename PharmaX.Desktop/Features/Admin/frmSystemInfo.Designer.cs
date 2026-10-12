@@ -137,6 +137,7 @@ partial class frmSystemInfo
         txtTradingName.Dock = DockStyle.Fill;
         txtTradingName.MaxLength = 100;
         txtTradingName.Name = "txtTradingName";
+        txtTradingName.PlaceholderText = "e.g. Avondale Pharmacy";
         txtTradingName.TabIndex = 0;
 
         // The company behind the shop front, printed under the trading
@@ -145,6 +146,7 @@ partial class frmSystemInfo
         txtRegisteredName.Dock = DockStyle.Fill;
         txtRegisteredName.MaxLength = 100;
         txtRegisteredName.Name = "txtRegisteredName";
+        txtRegisteredName.PlaceholderText = "e.g. Avondale Pharmacy (Pvt) Ltd (optional)";
         txtRegisteredName.TabIndex = 1;
 
         Caption(lblVatNumber, "lblVatNumber", "&VAT number");
@@ -152,6 +154,7 @@ partial class frmSystemInfo
         txtVatNumber.MaxLength = 30;
         txtVatNumber.Name = "txtVatNumber";
         txtVatNumber.MinimumSize = new Size(240, 0);
+        txtVatNumber.PlaceholderText = "e.g. 10012345 (optional)";
         txtVatNumber.Width = 240;
         txtVatNumber.TabIndex = 2;
 
@@ -163,6 +166,7 @@ partial class frmSystemInfo
         txtTelephone.MaxLength = 40;
         txtTelephone.Name = "txtTelephone";
         txtTelephone.MinimumSize = new Size(240, 0);
+        txtTelephone.PlaceholderText = "e.g. +263 24 270 0123";
         txtTelephone.Width = 240;
         txtTelephone.TabIndex = 3;
 
@@ -171,6 +175,7 @@ partial class frmSystemInfo
         txtWhatsApp.MaxLength = 40;
         txtWhatsApp.Name = "txtWhatsApp";
         txtWhatsApp.MinimumSize = new Size(240, 0);
+        txtWhatsApp.PlaceholderText = "e.g. +263 77 123 4567 (optional)";
         txtWhatsApp.Width = 240;
         txtWhatsApp.TabIndex = 4;
 
@@ -181,6 +186,7 @@ partial class frmSystemInfo
         txtAddress.MaxLength = 400;
         txtAddress.Multiline = true;
         txtAddress.Name = "txtAddress";
+        txtAddress.PlaceholderText = "e.g. 12 Main Street, Avondale, Harare";
         txtAddress.ScrollBars = ScrollBars.Vertical;
         txtAddress.TabIndex = 5;
 

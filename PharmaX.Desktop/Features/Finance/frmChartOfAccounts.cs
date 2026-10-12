@@ -76,7 +76,7 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
         foreach (DataGridViewRow row in grdAccounts.Rows)
         {
             if (row.DataBoundItem is AccountRow { IsActive: false })
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         lblCount.Text = string.Format(CultureInfo.CurrentCulture,
@@ -87,12 +87,12 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
         PromptNewAccount()
     {
         var code = frmTextPrompt.Ask(this, "New account",
-            "Account code, for example 6100");
+            "Account code, for example 6100", hint: "e.g. 6100");
 
         if (string.IsNullOrWhiteSpace(code)) return null;
 
         var name = frmTextPrompt.Ask(this, "New account",
-            $"What is account {code} called?");
+            $"What is account {code} called?", hint: "e.g. Bank charges");
 
         if (string.IsNullOrWhiteSpace(name)) return null;
 
@@ -112,7 +112,7 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
 
     public string? PromptRename(string current) =>
         frmTextPrompt.Ask(this, "Rename account",
-            $"What should \"{current}\" be called?");
+            $"What should \"{current}\" be called?", hint: "e.g. Bank charges");
 
     /// One account as the grid shows it.
     private sealed record AccountRow(Guid Id, string Code, string Name,
@@ -160,6 +160,6 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
             return;
         }
 
-        ShowInfo($"Exported to {saved}");
+        ShowSaved(saved);
     }
 }

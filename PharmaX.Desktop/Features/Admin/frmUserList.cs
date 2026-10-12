@@ -65,9 +65,9 @@ public partial class frmUserList : PhxFormBase, IUserListView
             // Locked out is the one state the administrator is usually
             // here to fix, so it is the one that stands out.
             if (user.IsLockedOut)
-                row.DefaultCellStyle.BackColor = Color.FromArgb(255, 226, 226);
+                row.DefaultCellStyle.BackColor = PhxTheme.Problem;
             else if (!user.IsActive)
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         lblCount.Text = string.Format(CultureInfo.CurrentCulture,

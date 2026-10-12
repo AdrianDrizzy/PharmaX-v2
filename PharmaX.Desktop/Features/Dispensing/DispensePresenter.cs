@@ -54,6 +54,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         View.IssueRequested += (_, _) => Enqueue(IssueAsync);
         View.LabelReprintRequested += (_, _) => View.ShowLabelScreen();
         View.CloseRequested += (_, _) => Enqueue(CloseAsync);
+        View.SuspendedRequested += (_, _) => Enqueue(ResumeAsync);
     }
 
     /// <summary>
@@ -62,9 +63,9 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
     public bool HasUnissuedDispensing => _dispensingId != Guid.Empty;
 
     /// <summary>
-    /// Closes the screen, setting aside a dispensing that was begun and
-    /// never issued rather than leaving it in progress for ever
-    /// (ADM-OBS-14).
+    /// Closes the screen, keeping a dispensing that was begun and never
+    /// issued to finish later or setting it aside, as the pharmacist
+    /// says (ADM-OBS-14).
     /// </summary>
     private Task CloseAsync() => GuardAsync(async () =>
     {
@@ -76,9 +77,27 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
     {
         if (_dispensingId == Guid.Empty) return;
 
-        await _dispensing.AbandonAsync(_dispensingId);
+        if (!View.Confirm("Keep this script to finish later?\n\n"
+                          + "Yes keeps it under Suspended. No sets it aside."))
+            await _dispensing.AbandonAsync(_dispensingId);
+
         _dispensingId = Guid.Empty;
     }
+
+    /// A script kept to finish later, picked up where it was left.
+    private Task ResumeAsync() => GuardAsync(async () =>
+    {
+        var kept = await _dispensing.SuspendedAsync();
+
+        if (kept.Count == 0)
+        {
+            View.ShowInfo("No scripts are kept to finish later.");
+            return;
+        }
+
+        if (View.PromptSuspended(kept) is var (patientId, scriptId))
+            await BeginOnAsync(patientId, scriptId);
+    });
 
     /// A script captured from a quote on the way in is begun at once.
     public override Task InitialiseAsync() =>
@@ -132,6 +151,13 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
         var script = await _scripts.GetAsync(scriptId);
         if (script.IsSuccess) View.ShowScript(script.Value.Script);
+
+        // Kept to finish later: back as it was left, items and all.
+        if (result.Value.Items.Count > 0)
+        {
+            Render(result.Value);
+            return;
+        }
 
         // What the prescriber wrote goes straight on, quantity and
         // directions included: re-keying a script that was captured a

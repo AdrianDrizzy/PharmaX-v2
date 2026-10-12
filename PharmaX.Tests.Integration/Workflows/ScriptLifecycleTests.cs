@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
+using PharmaX.Application.Reporting;
 using PharmaX.Domain.Dispensing;
 using PharmaX.Domain.Security;
 using PharmaX.Persistence;
@@ -227,6 +228,29 @@ public class ScriptLifecycleTests : IClassFixture<PharmaXFixture>
         printout.Value.Title.Should().StartWith("Script SC-");
         printout.Value.Lines.Should().Contain(l => l.Contains("REVERSED",
             StringComparison.Ordinal));
+
+        // And found on the Reversed Scripts report by the words of its
+        // reason, which the report's Reason box used to ignore.
+        (await ReversedAsync("wrong patient")).Should()
+            .Contain(stored.DocumentNumber);
+        (await ReversedAsync("expired stock")).Should()
+            .NotContain(stored.DocumentNumber);
+    }
+
+    private async Task<IReadOnlyList<string?>> ReversedAsync(string reason)
+    {
+        using var scope = _steps.Fixture.NewScope();
+        var clock = PharmaXFixture.Resolve<IClock>(scope);
+
+        var result = await PharmaXFixture.Resolve<IReportRunner>(scope)
+            .RunAsync(new ReportRequest(
+                PresetKey: "dsp.scripts.reversed",
+                BranchCode: "1",
+                From: clock.Today.AddDays(-1),
+                To: clock.Today,
+                Slicers: new Dictionary<string, string?> { ["reason"] = reason }));
+
+        return result.Rows.Select(r => r["Document"] as string).ToList();
     }
 
     private async Task<string> NumberOfAsync(Guid scriptId)

@@ -141,11 +141,11 @@ public sealed class Sale : AuditableEntity
             throw new DomainException(
                 "Only an open sale can be tied to a dispensing.");
 
+        // First, so the script's lines are the ones marked as the
+        // script's; over-the-counter items can follow them.
         if (_lines.Count > 0)
             throw new DomainException(
-                "A collection cannot be mixed with over-the-counter "
-                + "lines: the stock behind them is accounted for "
-                + "differently.");
+                "A script collection starts on an empty sale.");
 
         if (dispensingId == Guid.Empty)
             throw new DomainException("That is not a dispensing.");

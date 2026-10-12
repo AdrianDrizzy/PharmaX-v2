@@ -151,6 +151,13 @@ public sealed class PresetCatalogue : IPresetCatalogue
             Array.Empty<string>(),
             PermissionCode.ReportOperational),
 
+        new("inv.stock.supplier-returns", "Returns to Supplier",
+            "StockMovements",
+            new Dictionary<string, string?>
+                { ["movementTypes"] = "ReturnToSupplier" },
+            Array.Empty<string>(),
+            PermissionCode.ReportOperational),
+
         new("inv.stock.breakages", "Breakages and Disposals",
             "StockMovements",
             new Dictionary<string, string?>
@@ -163,6 +170,74 @@ public sealed class PresetCatalogue : IPresetCatalogue
             new Dictionary<string, string?>(),
             new[] { "operator" },
             PermissionCode.ReportManagement),
+
+        // PharmaX and the RSI history it was seeded from, as one set of
+        // figures: the HistoryReport adds the two together.
+        new("pos.history.top-sellers", "Top Sellers (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Sale", ["groupBy"] = "product" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("pos.history.daily", "Sales by Day (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Sale", ["groupBy"] = "day" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("pos.history.monthly", "Sales by Month (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Sale", ["groupBy"] = "month" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("pos.history.tender", "Sales by Tender (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Sale", ["groupBy"] = "party" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("pos.history.overrides", "Price Overrides (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Override", ["groupBy"] = "none" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("fin.history.cashups", "Cash-ups (RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "DayEnd", ["groupBy"] = "none" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("inv.history.stock", "Stock Movements (RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Stock", ["groupBy"] = "none" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("pos.history.nosale", "Drawer Opened Without a Sale",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "NoSale", ["groupBy"] = "none" },
+            Array.Empty<string>(),
+            PermissionCode.ReportManagement),
+
+        new("dsp.history.doctor", "Dispensing by Doctor (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Script", ["groupBy"] = "party" },
+            Array.Empty<string>(),
+            PermissionCode.ReportClinical),
+
+        new("dsp.history.monthly", "Dispensing by Month (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Script", ["groupBy"] = "month" },
+            Array.Empty<string>(),
+            PermissionCode.ReportClinical),
+
+        new("dsp.history.top", "Most Dispensed (with RSI)",
+            "History",
+            new Dictionary<string, string?> { ["kind"] = "Script", ["groupBy"] = "product" },
+            Array.Empty<string>(),
+            PermissionCode.ReportClinical),
 
         // The costs every margin stands on, where one does not look like
         // the cost of the pack it is priced as. Management's, because it

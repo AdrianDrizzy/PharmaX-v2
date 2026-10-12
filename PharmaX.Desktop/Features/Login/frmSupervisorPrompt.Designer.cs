@@ -47,6 +47,7 @@ partial class frmSupervisorPrompt
 
         txtUsername.Location = new Point(140, 65);
         txtUsername.Name = "txtUsername";
+        txtUsername.PlaceholderText = "Who is authorising, e.g. tmoyo";
         txtUsername.Size = new Size(280, 23);
         txtUsername.TabIndex = 2;
 
@@ -59,12 +60,13 @@ partial class frmSupervisorPrompt
 
         txtPassword.Location = new Point(140, 99);
         txtPassword.Name = "txtPassword";
+        txtPassword.PlaceholderText = "Password for that username";
         txtPassword.Size = new Size(280, 23);
         txtPassword.TabIndex = 4;
         txtPassword.UseSystemPasswordChar = true;
 
         lblError.AutoSize = false;
-        lblError.ForeColor = Color.FromArgb(168, 32, 32);
+        lblError.ForeColor = Mvp.PhxTheme.ProblemText;
         lblError.Location = new Point(20, 130);
         lblError.Name = "lblError";
         lblError.Size = new Size(400, 32);

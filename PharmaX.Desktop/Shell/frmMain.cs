@@ -1,3 +1,4 @@
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Shell;
@@ -18,9 +19,11 @@ public partial class frmMain : PhxFormBase, IMainView
     public frmMain()
     {
         InitializeComponent();
+        WireTheme();
         WireMenu();
         WireMenuHover();
         WireHome();
+        WireGoTo();
     }
 
     /// Runtime. Resolved by the container.
@@ -30,6 +33,61 @@ public partial class frmMain : PhxFormBase, IMainView
         _branding = branding;
         _presenter.Attach(this);
         RefreshBranding();
+    }
+
+    /// <summary>
+    /// The Theme menu at the right-hand end of the menu bar: light, dark
+    /// and the other modes, the one in use ticked. A choice shows on every
+    /// open window at once, and the presenter keeps it for this till.
+    /// </summary>
+    /// <remarks>
+    /// The entries carry their mode rather than a string key in Tag, so
+    /// the menu wiring, the permission check and Go to all pass them by:
+    /// a theme is not a screen.
+    /// </remarks>
+    private void WireTheme()
+    {
+        // Opening leftwards, under the window rather than off its edge: the
+        // entry sits at the far right, and a list opening to the right of it
+        // landed past the window, on the next screen where there is one.
+        var theme = new ToolStripMenuItem("&Theme")
+        {
+            Alignment = ToolStripItemAlignment.Right,
+            DropDownDirection = ToolStripDropDownDirection.BelowLeft
+        };
+
+        foreach (var mode in ThemeMode.All)
+        {
+            var item = new ToolStripMenuItem(mode.Name) { Tag = mode };
+
+            item.Click += (_, _) =>
+            {
+                if (mode == PhxTheme.Mode) return;
+
+                PhxTheme.Use(PhxTheme.Palette, mode);
+                ThemeChosen?.Invoke(this, mode.Id);
+            };
+
+            theme.DropDownItems.Add(item);
+        }
+
+        // The one in use in bold as well as ticked: beside a swatch the tick
+        // is only a faint frame round the picture.
+        var bold = new Font(mnuMain.Font, FontStyle.Bold);
+        Disposed += (_, _) => bold.Dispose();
+
+        theme.DropDownOpening += (_, _) =>
+        {
+            foreach (ToolStripMenuItem item in theme.DropDownItems)
+            {
+                item.Checked = Equals(item.Tag, PhxTheme.Mode);
+
+                if (item.Checked) item.Font = bold;
+                else item.ResetFont();
+            }
+        };
+
+        mnuMain.Items.Add(theme);
     }
 
     /// <summary>
@@ -47,7 +105,8 @@ public partial class frmMain : PhxFormBase, IMainView
 
         pnlHomeLogo.Width = _branding.Logo is Image logo
             ? Math.Clamp(
-                (int)(pnlHomeHeader.Height * (float)logo.Width / logo.Height),
+                (int)((pnlHomeHeader.Height - pnlHomeHeader.Padding.Vertical)
+                      * (float)logo.Width / logo.Height),
                 72, 320) + pnlHomeLogo.Padding.Right
             : 0;
 
@@ -68,8 +127,129 @@ public partial class frmMain : PhxFormBase, IMainView
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        ShowIcons();
         if (_presenter is not null) await _presenter.InitialiseAsync();
         tmrWaiting.Start();
+    }
+
+    protected override void OnPaletteChanged() => ShowIcons();
+
+    /// Each menu entry's icon, by the key it opens. The home tiles use the
+    /// same, so a job looks the same wherever it is reached from.
+    private static readonly Dictionary<string, PhxIcon> MenuIcons =
+        new(StringComparer.Ordinal)
+    {
+        ["printer-setup"] = PhxIcon.Printer, ["till"] = PhxIcon.CashRegister,
+        ["logoff"] = PhxIcon.Logout, ["change-password"] = PhxIcon.Key,
+        ["exit"] = PhxIcon.DoorExit,
+        ["dispensary"] = PhxIcon.Pill, ["dispensing"] = PhxIcon.Pill,
+        ["patients"] = PhxIcon.Users, ["reprint-script"] = PhxIcon.Printer,
+        ["script-maintenance"] = PhxIcon.Prescription,
+        ["dispensary-quote"] = PhxIcon.FileDollar, ["labels"] = PhxIcon.Tags,
+        ["tariffs"] = PhxIcon.ReportMoney, ["merge-patients"] = PhxIcon.GitMerge,
+        ["schemes"] = PhxIcon.HeartHandshake, ["prescribers"] = PhxIcon.Stethoscope,
+        ["dosage-codes"] = PhxIcon.Language, ["drug-returns"] = PhxIcon.ArrowBackUp,
+        ["pos"] = PhxIcon.ShoppingCart, ["collect"] = PhxIcon.Receipt,
+        ["returns"] = PhxIcon.ReceiptRefund, ["quotation"] = PhxIcon.FileDollar,
+        ["inventory"] = PhxIcon.Package, ["alerts"] = PhxIcon.AlertTriangle,
+        ["departments"] = PhxIcon.BuildingStore, ["categories"] = PhxIcon.Category,
+        ["suppliers"] = PhxIcon.Truck, ["purchase-orders"] = PhxIcon.FileInvoice,
+        ["goods-receipt"] = PhxIcon.TruckDelivery,
+        ["manufacturers"] = PhxIcon.BuildingFactory, ["products"] = PhxIcon.Package,
+        ["stock"] = PhxIcon.Stack, ["stock-adjust"] = PhxIcon.Adjustments,
+        ["supplier-return"] = PhxIcon.ArrowBackUp, ["move-stock"] = PhxIcon.ArrowsExchange,
+        ["transfers"] = PhxIcon.ArrowsExchange, ["breakages"] = PhxIcon.TrashX,
+        ["expired-stock"] = PhxIcon.CalendarX, ["price-changes"] = PhxIcon.Tags, ["mass-price"] = PhxIcon.Percentage,
+        ["accounts"] = PhxIcon.Calculator, ["trial-balance"] = PhxIcon.Scale,
+        ["journal"] = PhxIcon.Notebook, ["accounts-receivable"] = PhxIcon.UserDollar,
+        ["claims"] = PhxIcon.HeartHandshake, ["chart-of-accounts"] = PhxIcon.ListTree,
+        ["day-end"] = PhxIcon.CalendarCheck, ["reports"] = PhxIcon.ChartBar,
+        ["stocktake"] = PhxIcon.ClipboardCheck, ["stocktake-new"] = PhxIcon.ClipboardPlus,
+        ["stocktake-capture"] = PhxIcon.Barcode,
+        ["stocktake-variance"] = PhxIcon.ClipboardList, ["stocktake-post"] = PhxIcon.Send,
+        ["admin"] = PhxIcon.Settings, ["vat-codes"] = PhxIcon.Percentage,
+        ["users"] = PhxIcon.Users, ["branches"] = PhxIcon.Building,
+        ["transaction-types"] = PhxIcon.ListDetails, ["system-setup"] = PhxIcon.Palette,
+        ["system-console"] = PhxIcon.Terminal, ["rsi-import"] = PhxIcon.DatabaseImport,
+        ["backup"] = PhxIcon.DatabaseExport,
+        ["rsi-history"] = PhxIcon.Archive, ["to-follow"] = PhxIcon.Clock,
+        ["control-variables"] = PhxIcon.AdjustmentsHorizontal,
+        ["about"] = PhxIcon.InfoCircle
+    };
+
+    /// <summary>
+    /// The menu entries and the status bar with their icons, drawn at the
+    /// size the strips' own scaling asks for, in the palette in use.
+    /// </summary>
+    private void ShowIcons()
+    {
+        var size = mnuMain.ImageScalingSize.Height;
+
+        foreach (var heading in mnuMain.Items.OfType<ToolStripMenuItem>())
+        {
+            heading.Image = MenuIcon(heading, size);
+
+            foreach (var item in heading.DropDownItems.OfType<ToolStripMenuItem>())
+                item.Image = MenuIcon(item, size);
+        }
+
+        var small = staMain.ImageScalingSize.Height;
+
+        lblUser.Image = PhxIcons.Image(PhxIcon.User, small, PhxTheme.Muted);
+        lblTill.Image = PhxIcons.Image(PhxIcon.CashRegister, small, PhxTheme.Muted);
+        lblSession.Image = PhxIcons.Image(PhxIcon.Clock, small, PhxTheme.Muted);
+        lblWaiting.Image = PhxIcons.Image(PhxIcon.Prescription, small, PhxTheme.Title);
+        lblAlerts.Image = PhxIcons.Image(PhxIcon.AlertTriangle, small,
+                                         PhxTheme.ProblemText);
+    }
+
+    private static Bitmap? MenuIcon(ToolStripMenuItem item, int size)
+    {
+        if (item.Tag is ThemeMode mode) return Swatch(mode, size);
+
+        // File and Help open nothing themselves, so they have no key.
+        var icon = item.Tag is string key && MenuIcons.TryGetValue(key, out var mapped)
+            ? mapped
+            : item.Text?.Replace("&", "", StringComparison.Ordinal) switch
+            {
+                "File" => PhxIcon.File,
+                "Help" => PhxIcon.HelpCircle,
+                "Theme" => PhxIcon.Palette,
+                _ => (PhxIcon?)null
+            };
+
+        return icon is PhxIcon chosen
+            ? PhxIcons.Image(chosen, size, PhxTheme.Title)
+            : null;
+    }
+
+    /// <summary>
+    /// A theme in miniature: its page, a box on it with a line of its text,
+    /// and its glow - or the pharmacy's highlight - along the foot. So the
+    /// Theme menu shows what each choice looks like, not only its name.
+    /// </summary>
+    private static Bitmap Swatch(ThemeMode mode, int size)
+    {
+        var swatch = new Bitmap(size, size);
+        using var graphics = Graphics.FromImage(swatch);
+
+        var step = Math.Max(2, size / 6);
+        var whole = new Rectangle(0, 0, size - 1, size - 1);
+
+        using (var paper = new SolidBrush(mode.Paper))
+            graphics.FillRectangle(paper, whole);
+        using (var field = new SolidBrush(mode.Field))
+            graphics.FillRectangle(field, step, step, size - 2 * step, size - 3 * step);
+        using (var ink = new SolidBrush(mode.Ink))
+            graphics.FillRectangle(ink, 2 * step, 2 * step, size / 2, Math.Max(1, step / 2));
+        using (var glow = new SolidBrush(mode.Glow ?? PhxTheme.Palette.Highlight))
+            graphics.FillRectangle(glow, 0, size - step, size, step);
+
+        // A light swatch on a light menu still needs an edge.
+        using var edge = new Pen(Color.FromArgb(140, 128, 128, 128));
+        graphics.DrawRectangle(edge, whole);
+
+        return swatch;
     }
 
     /// <summary>
@@ -185,6 +365,186 @@ public partial class frmMain : PhxFormBase, IMainView
         foreach (var tile in flpTiles.Controls.OfType<HomeTile>())
             tile.Chosen += (sender, _) =>
                 MenuSelected?.Invoke(this, ((HomeTile)sender!).MenuKey);
+
+        // The figures in the status bar open what they count.
+        lblWaiting.Click += (_, _) => MenuSelected?.Invoke(this, "collect");
+        lblAlerts.Click += (_, _) => MenuSelected?.Invoke(this, "alerts");
+        lblWaiting.ToolTipText = "Click to open Scripts to Collect";
+        lblAlerts.ToolTipText = "Click to open Stock Alerts";
+    }
+
+    public void SetTileCount(string menuKey, string? count)
+    {
+        foreach (var tile in flpTiles.Controls.OfType<HomeTile>()
+                     .Where(t => t.MenuKey == menuKey))
+            tile.ShowCount(count);
+    }
+
+    /// <summary>
+    /// Other words for a screen than its menu caption: what the staff call
+    /// the job rather than what the menu calls the screen.
+    /// </summary>
+    private static readonly Dictionary<string, string> GoToWords =
+        new(StringComparer.Ordinal)
+    {
+        ["pos"] = "till sale checkout counter shop",
+        ["collect"] = "collection queue script pay waiting",
+        ["returns"] = "refund credit note give back",
+        ["dispensing"] = "dispense script label medicine",
+        ["patients"] = "patient customer file allergy",
+        ["till"] = "cash up float x-read z-read session declare drawer",
+        ["goods-receipt"] = "receive delivery grn invoice book in",
+        ["purchase-orders"] = "order po buy",
+        ["products"] = "product item price catalogue",
+        ["stock"] = "on hand quantity",
+        ["alerts"] = "low reorder expiring short",
+        ["stock-adjust"] = "adjust correct",
+        ["breakages"] = "broken damaged write off",
+        ["expired-stock"] = "expiry expiring",
+        ["reports"] = "report daily sales vat",
+        ["trial-balance"] = "books ledger",
+        ["accounts-receivable"] = "debtor account statement",
+        ["claims"] = "medical aid claim",
+        ["day-end"] = "end of day",
+        ["stocktake-new"] = "count stock take",
+        ["stocktake-capture"] = "count stock take",
+        ["stocktake-variance"] = "count stock take difference",
+        ["stocktake-post"] = "count stock take",
+        ["users"] = "staff user role",
+        ["system-setup"] = "logo colour color palette brand theme",
+        ["printer-setup"] = "printer receipt label",
+        ["logoff"] = "sign out log out shift",
+        ["schemes"] = "medical aid",
+        ["to-follow"] = "owed owing balance",
+        ["rsi-history"] = "old history"
+    };
+
+    private SearchSuggestions? _goTo;
+
+    /// <summary>
+    /// The box above the tiles that opens any screen by name. Only what
+    /// this user may open is offered, because only an enabled menu entry
+    /// is; Ctrl+K reaches it from anywhere, and typing on the home screen
+    /// starts in it.
+    /// </summary>
+    private void WireGoTo()
+    {
+        _goTo = new SearchSuggestions(txtGoTo,
+            (term, _) => Task.FromResult(Screens(term)))
+        {
+            MinimumLength = 1,
+            Maximum = 8
+        };
+
+        _goTo.Chosen += (_, chosen) => Open((string)chosen.Value);
+
+        txtGoTo.KeyDown += (_, e) =>
+        {
+            if (e.Handled) return;
+
+            // Enter with nothing highlighted takes the best match, so a
+            // word and Enter is enough.
+            if (e.KeyCode == Keys.Enter
+                && Screens(txtGoTo.Text).FirstOrDefault() is { } best)
+            {
+                Open((string)best.Value);
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                txtGoTo.Clear();
+                e.SuppressKeyPress = true;
+            }
+        };
+    }
+
+    private void Open(string key)
+    {
+        txtGoTo.Clear();
+        MenuSelected?.Invoke(this, key);
+    }
+
+    /// <summary>
+    /// The menu entries this user may open whose caption, heading or other
+    /// words hold every word typed. Those whose caption starts with what
+    /// was typed come first.
+    /// </summary>
+    private IReadOnlyList<Suggestion> Screens(string term)
+    {
+        var words = term.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return Array.Empty<Suggestion>();
+
+        var screens = new List<(Suggestion Item, bool Starts)>();
+
+        foreach (var heading in mnuMain.Items.OfType<ToolStripMenuItem>())
+        {
+            foreach (var item in heading.DropDownItems.OfType<ToolStripMenuItem>())
+            {
+                if (!item.Enabled || item.Tag is not string key) continue;
+
+                var caption = Plain(item.Text);
+                var haystack = $"{caption} {Plain(heading.Text)} "
+                               + GoToWords.GetValueOrDefault(key, "");
+
+                if (!words.All(w => haystack.Contains(w,
+                        StringComparison.CurrentCultureIgnoreCase)))
+                    continue;
+
+                var keys = item.ShortcutKeys == Keys.None
+                    ? ""
+                    : "   " + new KeysConverter().ConvertToString(item.ShortcutKeys);
+
+                screens.Add((new Suggestion(key, caption,
+                        Plain(heading.Text) + keys),
+                    caption.StartsWith(words[0],
+                        StringComparison.CurrentCultureIgnoreCase)));
+            }
+        }
+
+        return screens
+            .OrderBy(s => s.Starts ? 0 : 1)
+            .Select(s => s.Item)
+            .DistinctBy(s => s.Value)
+            .ToList();
+    }
+
+    private static string Plain(string? text) =>
+        (text ?? "").Replace("&", "", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Ctrl+K to the Go to box from anywhere on the shell.
+    /// </summary>
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == (Keys.Control | Keys.K))
+        {
+            txtGoTo.Focus();
+            txtGoTo.SelectAll();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    /// <summary>
+    /// A letter typed on the home screen, with a tile rather than a box
+    /// under the keyboard, starts a Go to search with it.
+    /// </summary>
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (!e.Handled && char.IsLetterOrDigit(e.KeyChar)
+            && ActiveControl is not TextBoxBase && !mnuMain.ContainsFocus)
+        {
+            txtGoTo.Focus();
+            txtGoTo.Text = e.KeyChar.ToString();
+            txtGoTo.SelectionStart = txtGoTo.TextLength;
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyPress(e);
     }
 
     private static IEnumerable<ToolStripItem> AllMenuItems(
@@ -299,8 +659,22 @@ public partial class frmMain : PhxFormBase, IMainView
     {
         Text = "PharmaX  -  TEST DATA (seeded accounts)";
         staMain.BackColor = Color.FromArgb(255, 244, 214);
+
+        // Black on the yellow in every theme, not a dark mode's light ink -
+        // and the waiting count and the alerts in the light mode's navy and
+        // red, which a dark mode's brighter shades would wash out on yellow.
+        foreach (var label in new[] { lblUser, lblTill, lblSession, lblConnectivity })
+            label.ForeColor = Color.Black;
+
+        lblWaiting.ForeColor = Color.FromArgb(33, 56, 134);
+        lblAlerts.ForeColor = Color.FromArgb(168, 32, 32);
+
+        // A warning, so it stays this yellow whatever the theme does - the
+        // light mode's attention colour, which a change of mode would swap.
+        PhxTheme.Exclude(staMain);
     }
 
     public event EventHandler<string>? MenuSelected;
+    public event EventHandler<string>? ThemeChosen;
     public event EventHandler? WaitingTick;
 }

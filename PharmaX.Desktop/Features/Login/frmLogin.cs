@@ -55,6 +55,19 @@ public partial class frmLogin : PhxFormBase, ILoginView
 
     protected override void OnBrandChanged() => ShowPharmacy();
 
+    /// The logo is already the first thing on this window.
+    protected override bool ShowsWatermark => false;
+
+    /// <remarks>
+    /// White rather than the theme's surface: the logo comes on a white
+    /// ground, and on the tinted surface it showed as a pasted-on box.
+    /// </remarks>
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        BackColor = PhxTheme.Card;
+    }
+
     /// <summary>
     /// No function keys written on the sign-in buttons.
     /// </summary>

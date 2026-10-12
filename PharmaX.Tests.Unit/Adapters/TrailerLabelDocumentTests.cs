@@ -33,7 +33,17 @@ public class TrailerLabelDocumentTests
             "NIFEDIPINE CALCIGARD 20MG TAB (14)",
             "DR: madondoro D",
             new string('-', 40),
-            "Bethrapha Pharmacy, 28 Woodstock Road  08/09/2026");
+            "Bethrapha Pharmacy, 28 Woodstock Road  08/09/2026",
+            "Keep out of reach of children.");
+    }
+
+    [Fact]
+    public void The_trailer_gives_the_pharmacys_telephone_number()
+    {
+        var lines = TrailerLabelDocument.Lines(Trailer(("AMOXICILLIN 500MG CAP", 21m)),
+            Pharmacy, "+263 29 288 1234");
+
+        lines.Should().EndWith(new[] { "Tel: +263 29 288 1234", "Keep out of reach of children." });
     }
 
     [Fact]

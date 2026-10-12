@@ -70,7 +70,7 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
             if (row.DataBoundItem is SystemInfoRow item
                 && string.Equals(item.Source, "This workstation",
                                  StringComparison.Ordinal))
-                row.DefaultCellStyle.BackColor = Color.FromArgb(255, 244, 214);
+                row.DefaultCellStyle.BackColor = PhxTheme.Attention;
         }
     }
 

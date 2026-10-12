@@ -21,9 +21,27 @@ namespace PharmaX.Desktop;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+
+        // The installer, elevated, on the pharmacy's main computer: set
+        // up the database and stop. The wizard runs on the next start.
+        if (args is ["--setup-server", var msi])
+        {
+            // Before any window exists, so nothing waits on the thread.
+            Environment.ExitCode = ServerSetup.RunAsync(msi).GetAwaiter().GetResult();
+            return;
+        }
+
+        // A scheduled or scripted run has nobody to answer the first-run
+        // wizard - the nightly backup runs where no window can be seen - so
+        // on a machine not yet set up it stops rather than waiting forever.
+        if (args is ["--backup", ..] or ["--import-rsi", ..] && !WorkstationProvisioning.Exists)
+        {
+            Environment.ExitCode = 2;
+            return;
+        }
 
         // Before anything else, and before any logging: a machine that
         // has never been set up has no database to log to and no
@@ -42,10 +60,29 @@ internal static class Program
 
         ConfigureGlobalErrorHandling(host);
 
+        // The nightly scheduled task the installer sets up on the main
+        // computer: back the database up and stop.
+        if (args is ["--backup", ..])
+        {
+            Environment.ExitCode = BackUp(host, "nightly") ? 0 : 1;
+            host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            Log.CloseAndFlush();
+            return;
+        }
+
         if (!PrepareLocalDatabase(host)) return;
 
-        LoadBranding(host);
-        LoadPharmacyDetails(host);
+        // The change-over, from the installer or a technician:
+        //   PharmaX.Desktop.exe --import-rsi "D:\Exports" [--dry-run]
+        // loads the RSI export, saves its report beside the logs and stops.
+        // The exit code says whether every total agreed.
+        if (args is ["--import-rsi", var folder, ..])
+        {
+            Environment.ExitCode = ImportRsi(host, folder, args.Contains("--dry-run"));
+            host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            Log.CloseAndFlush();
+            return;
+        }
 
         // No scope of its own: ViewFactory gives each screen one.
         var views = host.Services.GetRequiredService<ViewFactory>();
@@ -73,6 +110,8 @@ internal static class Program
 
         while (true)
         {
+            LoadPharmacy(host);
+
             // Authenticate before the shell opens. Local credentials, so
             // this works with no host and no internet (SEC-002).
             using (var login = views.Create<frmLogin>())
@@ -203,41 +242,71 @@ internal static class Program
         Thread.CurrentThread.CurrentUICulture = Format.Culture;
     }
 
-    /// <summary>
-    /// Reads the pharmacy's logo once, so that the shell, the sign-in
-    /// window and every receipt draw the same image without any of them
-    /// touching the disk.
-    /// </summary>
-    private static void LoadBranding(IHost host)
+    private static bool BackUp(IHost host, string reason)
+    {
+        try
+        {
+            using var scope = host.Services.CreateScope();
+            scope.ServiceProvider.GetRequiredService<IDatabaseBackup>()
+                .BackUpAsync(reason).GetAwaiter().GetResult();
+            return true;
+        }
+#pragma warning disable CA1031 // Logged; the caller decides what a failed backup means.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Log.Error(ex, "Backup ({Reason}) failed", reason);
+            return false;
+        }
+    }
+
+    private static int ImportRsi(IHost host, string folder, bool dryRun)
     {
         using var scope = host.Services.CreateScope();
 
-        var path = scope.ServiceProvider
-            .GetRequiredService<IWorkstationSettings>()
-            .GetAsync(WorkstationSettingKey.LogoPath)
-            .GetAwaiter().GetResult();
+        var report = scope.ServiceProvider
+            .GetRequiredService<PharmaX.Application.Legacy.ILegacyImporter>()
+            .ImportAsync(folder, dryRun).GetAwaiter().GetResult();
 
-        host.Services.GetRequiredService<Branding>().Load(path);
+        var saved = Features.Admin.frmRsiImport.Save(report);
+
+        Log.Information("RSI import {Outcome}; report at {Report}",
+            report.Succeeded ? "agreed with the export" : "did NOT agree with the export",
+            saved);
+
+        return report.Succeeded ? 0 : 1;
     }
 
     /// <summary>
-    /// Puts the trading name, VAT number and address saved at the System
-    /// Console into use before the first window opens.
+    /// The pharmacy's logo, colours, name and details, read again before
+    /// every sign-in: the admin sets them once in System setup and System
+    /// console, and every till and every user has them from their next
+    /// sign-in, without a restart.
     /// </summary>
-    /// <remarks>
-    /// Before the sign-in window because its title and heading are the
-    /// first place the pharmacy's name can appear, and after the
-    /// database is prepared because that is where the details live. The
-    /// profile is filled before the titles subscribe to it, so start-up
-    /// does not try to re-title windows that do not exist yet.
-    /// </remarks>
-    private static void LoadPharmacyDetails(IHost host)
+    private static void LoadPharmacy(IHost host)
     {
         using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        var branding = host.Services.GetRequiredService<Branding>();
 
-        var details = scope.ServiceProvider
-            .GetRequiredService<PharmaX.Application.Pharmacy.IPharmacyDetailsService>()
-            .LoadAsync().GetAwaiter().GetResult();
+        // On the thread pool: after the first sign-in there is a window
+        // synchronisation context, and blocking on its awaits would hang.
+        var (palette, details, mode) = Task.Run(async () => (
+            await branding.RefreshAsync(
+                services.GetRequiredService<IPharmacySettings>(),
+                services.GetRequiredService<IWorkstationSettings>()),
+            await services
+                .GetRequiredService<PharmaX.Application.Pharmacy.IPharmacyDetailsService>()
+                .LoadAsync(),
+            await services.GetRequiredService<IWorkstationSettings>()
+                .GetAsync(WorkstationSettingKey.Theme))).GetAwaiter().GetResult();
+
+        // The logo's own colours unless a palette was chosen, so a
+        // pharmacy that only ever sets its logo gets matching windows -
+        // light or dark as this till last chose from the Theme menu.
+        PhxTheme.Use(Palette.Resolve(palette, branding.Logo),
+                     ThemeMode.Resolve(mode));
+        Watermark.Use(branding);
 
         var profile = host.Services.GetRequiredService<PharmacyProfile>();
         profile.Use(details);
@@ -275,6 +344,20 @@ internal static class Program
         // date either way. On a shared database this is the server's
         // schema, and the first till to start is the one that builds it.
         var db = services.GetRequiredService<PharmaXDbContext>();
+
+        // A copy before the schema changes under a database that already
+        // holds data, so an upgrade that goes wrong can be undone. Only
+        // where the database lives: a till leaves it to the main computer.
+        if (db.Database.GetAppliedMigrations().Any()
+            && db.Database.GetPendingMigrations().Any()
+            && services.GetRequiredService<IDatabaseBackup>().HoldsTheDatabase
+            && !BackUp(host, "before-upgrade")
+            && MessageBox.Show(
+                   "PharmaX could not back the database up before updating it. The "
+                   + "reason is in the log. Update it anyway?", "PharmaX",
+                   MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            return false;
+
         db.Database.Migrate();          // idempotent; safe on every start
 
         // Refuse to run on a schema the build does not match (ADM-012).
@@ -319,11 +402,6 @@ internal static class Program
         // Accounts with nothing to sell are half a test environment, so
         // the same flag puts stock on the shelf.
         services.GetRequiredService<TestCatalogueSeeder>()
-                .SeedAsync().GetAwaiter().GetResult();
-
-        // The pharmacy's own price list. Idempotent: it adds what is
-        // missing and reprices what has moved, and never touches stock.
-        services.GetRequiredService<PriceListSeeder>()
                 .SeedAsync().GetAwaiter().GetResult();
 
         // Same flag again, and last of the seeders because it builds

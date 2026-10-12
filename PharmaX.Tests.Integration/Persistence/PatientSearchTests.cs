@@ -124,6 +124,37 @@ public class PatientSearchTests : IClassFixture<PharmaXFixture>
             .Which.Id.Should().Be(id);
     }
 
+    /// <remarks>
+    /// All five share a name, which is where an order by name alone let a
+    /// patient turn up on two pages and another on none.
+    /// </remarks>
+    [Fact]
+    public async Task The_pages_between_them_hold_every_match_once()
+    {
+        await SignInAsync();
+
+        var surname = $"Pagez{Guid.NewGuid():N}";
+        var ids = new List<Guid>();
+        for (var i = 0; i < 5; i++) ids.Add(await GivenAsync(surname, "Same"));
+
+        using var scope = _fixture.NewScope();
+        var patients = PharmaXFixture.Resolve<IPatientService>(scope);
+
+        (await patients.CountAsync(surname)).Value.Should().Be(5);
+
+        var seen = new List<Guid>();
+        for (var page = 0; page < 3; page++)
+        {
+            var result = await patients.SearchAsync(surname, take: 2,
+                                                    skip: page * 2);
+
+            result.IsSuccess.Should().BeTrue(result.Error.Message);
+            seen.AddRange(result.Value.Select(p => p.Id));
+        }
+
+        seen.Should().OnlyHaveUniqueItems().And.BeEquivalentTo(ids);
+    }
+
     [Fact]
     public async Task A_product_is_found_word_by_word_and_by_its_generic_name()
     {

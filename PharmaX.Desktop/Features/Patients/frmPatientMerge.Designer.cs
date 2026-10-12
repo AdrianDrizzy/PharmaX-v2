@@ -118,6 +118,7 @@ partial class frmPatientMerge
         txtReason.MaxLength = 300;
         txtReason.Multiline = true;
         txtReason.Name = "txtReason";
+        txtReason.PlaceholderText = "e.g. Same patient opened twice at the counter";
         txtReason.Height = 60;
         txtReason.Width = 380;
 

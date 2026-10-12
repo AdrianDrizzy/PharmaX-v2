@@ -373,6 +373,13 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.Property<int>("LineNo")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("Owed")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<DateTime?>("OwedGivenAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<Guid>("ProductId")
                         .HasColumnType("char(36)");
 
@@ -1100,6 +1107,72 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.ToTable("StocktakeLine", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Legacy.LegacyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Number")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Operator")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<string>("Party")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("PatientFile")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ProductCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<decimal?>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientFile");
+
+                    b.HasIndex("ProductCode");
+
+                    b.HasIndex("Kind", "OccurredAt");
+
+                    b.ToTable("LegacyRecord", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Patients.Account", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1628,6 +1701,53 @@ namespace PharmaX.Persistence.Migrations.Host
                     b.ToTable("Department", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Reference.DosageCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("DosageCode", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Reference.Manufacturer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1720,6 +1840,53 @@ namespace PharmaX.Persistence.Migrations.Host
                         .IsUnique();
 
                     b.ToTable("MedicalAidScheme", (string)null);
+                });
+
+            modelBuilder.Entity("PharmaX.Domain.Reference.Prescriber", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Prescriber", (string)null);
                 });
 
             modelBuilder.Entity("PharmaX.Domain.Reference.Tariff", b =>
@@ -2029,6 +2196,9 @@ namespace PharmaX.Persistence.Migrations.Host
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("IsScript")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsVoided")
                         .HasColumnType("tinyint(1)");
@@ -3029,8 +3199,7 @@ namespace PharmaX.Persistence.Migrations.Host
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Value")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.HasKey("WorkstationCode", "Key");
 

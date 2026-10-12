@@ -50,6 +50,7 @@ partial class frmChangePassword
 
         txtCurrent.Location = new Point(170, 59);
         txtCurrent.Name = "txtCurrent";
+        txtCurrent.PlaceholderText = "The password you use now";
         txtCurrent.Size = new Size(250, 23);
         txtCurrent.TabIndex = 2;
         txtCurrent.UseSystemPasswordChar = true;
@@ -63,6 +64,7 @@ partial class frmChangePassword
 
         txtNew.Location = new Point(170, 93);
         txtNew.Name = "txtNew";
+        txtNew.PlaceholderText = "At least 8 characters, e.g. a short phrase";
         txtNew.Size = new Size(250, 23);
         txtNew.TabIndex = 4;
         txtNew.UseSystemPasswordChar = true;
@@ -76,12 +78,13 @@ partial class frmChangePassword
 
         txtConfirm.Location = new Point(170, 127);
         txtConfirm.Name = "txtConfirm";
+        txtConfirm.PlaceholderText = "The new password again";
         txtConfirm.Size = new Size(250, 23);
         txtConfirm.TabIndex = 6;
         txtConfirm.UseSystemPasswordChar = true;
 
         lblError.AutoSize = false;
-        lblError.ForeColor = Color.FromArgb(168, 32, 32);
+        lblError.ForeColor = Mvp.PhxTheme.ProblemText;
         lblError.Location = new Point(20, 158);
         lblError.Name = "lblError";
         lblError.Size = new Size(400, 32);

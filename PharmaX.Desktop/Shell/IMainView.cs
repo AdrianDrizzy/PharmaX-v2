@@ -44,7 +44,16 @@ public interface IMainView : Mvp.IView
     /// <param name="alerts">Empty where nothing is wrong.</param>
     void SetAlerts(string alerts);
 
+    /// <summary>
+    /// A figure on the home tile that opens this menu key - "6,732" on
+    /// Patients, "4 waiting" on Collect - or none.
+    /// </summary>
+    void SetTileCount(string menuKey, string? count);
+
     event EventHandler<string>? MenuSelected;
+
+    /// The id of the ThemeMode just put in use from the Theme menu.
+    event EventHandler<string>? ThemeChosen;
 
     /// Raised on the shell's own timer, to re-read the count above.
     event EventHandler? WaitingTick;

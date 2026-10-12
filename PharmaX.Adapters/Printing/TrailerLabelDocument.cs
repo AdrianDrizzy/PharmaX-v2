@@ -27,6 +27,7 @@ public sealed class TrailerLabelDocument : PrintDocument
 {
     private readonly TrailerLabelDto _trailer;
     private readonly string? _dispensedBy;
+    private readonly string? _telephone;
     private readonly Font _body = new("Consolas", 7f);
 
     /// For the pharmacy's line when it will not fit beside the date.
@@ -39,12 +40,15 @@ public sealed class TrailerLabelDocument : PrintDocument
     /// The pharmacy's name and address on one line, as the item labels
     /// carry it (LabelDocument.DispensedBy).
     /// </param>
-    public TrailerLabelDocument(TrailerLabelDto trailer, string? dispensedBy)
+    /// <param name="telephone">The pharmacy's number, under its name.</param>
+    public TrailerLabelDocument(TrailerLabelDto trailer, string? dispensedBy,
+                                string? telephone = null)
     {
         _trailer = trailer;
         _dispensedBy = string.IsNullOrWhiteSpace(dispensedBy)
             ? null
             : dispensedBy.Trim();
+        _telephone = Telephone(telephone);
 
         // The item labels' stock, so the trailer comes off the same roll.
         DefaultPageSettings.PaperSize = new PaperSize("Label", 276, 197);
@@ -71,7 +75,8 @@ public sealed class TrailerLabelDocument : PrintDocument
     /// the Labels screen shows before it prints, and what a test reads.
     /// </summary>
     public static IReadOnlyList<string> Lines(TrailerLabelDto trailer,
-                                              string? dispensedBy)
+                                              string? dispensedBy,
+                                              string? telephone = null)
     {
         ArgumentNullException.ThrowIfNull(trailer);
 
@@ -84,8 +89,14 @@ public sealed class TrailerLabelDocument : PrintDocument
             ? Dated(trailer)
             : $"{dispensedBy.Trim()}  {Dated(trailer)}");
 
+        if (Telephone(telephone) is string tel) lines.Add(tel);
+        lines.Add(LabelWording.KeepOutOfReach);
+
         return lines;
     }
+
+    private static string? Telephone(string? telephone) =>
+        string.IsNullOrWhiteSpace(telephone) ? null : $"Tel: {telephone.Trim()}";
 
     /// <summary>
     /// Draws one label and says whether the script carries on to another.
@@ -107,9 +118,10 @@ public sealed class TrailerLabelDocument : PrintDocument
 
         Line(Heading(_trailer, continued: _page > 0));
 
-        // What is left under the medicines: the prescriber, the rule and
-        // the pharmacy's line.
-        var foot = height * 2 + 6f;
+        // What is left under the medicines: the prescriber, the rule, the
+        // pharmacy's line, its telephone and "Keep out of reach of
+        // children", which every label carries.
+        var foot = height * (_telephone is null ? 3 : 4) + 6f;
         var room = Math.Max(1, (int)((bounds.Bottom - foot - y) / height));
 
         var items = _trailer.Items;
@@ -143,6 +155,10 @@ public sealed class TrailerLabelDocument : PrintDocument
                          font, Brushes.Black, bounds.Left, y);
 
         g.DrawString(date, font, Brushes.Black, bounds.Right - dateWidth, y);
+        y += height;
+
+        if (_telephone is not null) Line(_telephone);
+        Line(LabelWording.KeepOutOfReach);
 
         _page++;
 

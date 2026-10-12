@@ -23,6 +23,8 @@ public sealed class frmHeldSales : Form
 
     public frmHeldSales(IReadOnlyList<HeldSaleDto> held)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         ArgumentNullException.ThrowIfNull(held);
 
         Name = "frmHeldSales";

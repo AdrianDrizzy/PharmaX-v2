@@ -10,7 +10,10 @@ public interface IPatientListView : IView
     Guid? SelectedId { get; }
 
     void ShowPatients(IReadOnlyList<PatientListItemDto> patients);
-    void ShowCount(int count);
+
+    /// <param name="page">From nought.</param>
+    /// <param name="shown">How many are on this page.</param>
+    void ShowPage(int page, int pageSize, int shown, int total);
 
     /// <summary>
     /// True where the screen was opened to pick a patient for another
@@ -24,6 +27,8 @@ public interface IPatientListView : IView
     event EventHandler? EditRequested;
     event EventHandler? DeactivateRequested;
     event EventHandler? ChooseRequested;
+    event EventHandler? NextPageRequested;
+    event EventHandler? PreviousPageRequested;
 }
 
 public interface IPatientEditView : IView
@@ -55,7 +60,10 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     protected override void Subscribe()
     {
-        View.SearchChanged += (_, _) => Enqueue(LoadAsync);
+        // A new search starts again at the top.
+        View.SearchChanged += (_, _) => Enqueue(FirstPageAsync);
+        View.NextPageRequested += (_, _) => Enqueue(() => TurnAsync(+1));
+        View.PreviousPageRequested += (_, _) => Enqueue(() => TurnAsync(-1));
         View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
         View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
         View.DeactivateRequested += (_, _) => Enqueue(DeactivateAsync);
@@ -71,9 +79,50 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     public override Task InitialiseAsync() => LoadAsync();
 
+    /// Patients to a page, as on the product list.
+    internal const int PageSize = 100;
+
+    /// The page on screen, from nought.
+    private int _page;
+
+    /// How many patients the search matched, as of the last page read.
+    private int _total;
+
+    private Task FirstPageAsync()
+    {
+        _page = 0;
+        return LoadAsync();
+    }
+
+    private Task TurnAsync(int by)
+    {
+        var page = Math.Clamp(_page + by, 0, LastPage(_total));
+        if (page == _page) return Task.CompletedTask;
+
+        _page = page;
+        return LoadAsync();
+    }
+
+    private static int LastPage(int total) =>
+        Math.Max(0, (total - 1) / PageSize);
+
     private Task LoadAsync() => GuardAsync(async () =>
     {
-        var result = await _patients.SearchAsync(View.SearchText);
+        var count = await _patients.CountAsync(View.SearchText);
+
+        if (count.IsFailure)
+        {
+            View.ShowError(count.Error.Message);
+            return;
+        }
+
+        // Patients deactivated off the end of the last page leave it
+        // empty; the page before it is the one to show.
+        _total = count.Value;
+        _page = Math.Min(_page, LastPage(_total));
+
+        var result = await _patients.SearchAsync(View.SearchText,
+            take: PageSize, skip: _page * PageSize);
 
         if (result.IsFailure)
         {
@@ -82,7 +131,7 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
         }
 
         View.ShowPatients(result.Value);
-        View.ShowCount(result.Value.Count);
+        View.ShowPage(_page, PageSize, result.Value.Count, _total);
     });
 
     private Task OpenEditorAsync(Guid? id) => GuardAsync(async () =>
@@ -423,7 +472,8 @@ public sealed class AccountsPresenter : PresenterBase<IAccountsView>
                        + $"{_clock.Today:yyyy-MM-dd}.xlsx",
             Filter = "Excel workbook (*.xlsx)|*.xlsx",
             OverwritePrompt = true,
-            Title = "Export statement"
+            Title = "Export statement",
+            InitialDirectory = GridExport.Downloads
         };
 
         if (save.ShowDialog((Form)View) != DialogResult.OK) return;
@@ -431,7 +481,7 @@ public sealed class AccountsPresenter : PresenterBase<IAccountsView>
         _workbooks.WriteTo(AccountDocuments.StatementWorkbook(statement,
             _user.Username, DateTime.Now), save.FileName);
 
-        View.ShowInfo($"Exported to {save.FileName}");
+        View.ShowSaved(save.FileName);
     }
 
     private Task OnCreditLimitAsync() => GuardAsync(async () =>

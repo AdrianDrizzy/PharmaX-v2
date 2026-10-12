@@ -130,7 +130,7 @@ public sealed class LabelReprintService : ILabelReprintService
 
         IReadOnlyList<LabelDto> labels = dispensing.Lines
             .OrderBy(l => l.LineNo)
-            .Select(l => new LabelDto(
+            .Select((l, i) => new LabelDto(
                 PatientName: patient?.FullName ?? "",
                 ProductDescription: l.Description,
                 Quantity: l.Quantity,
@@ -141,7 +141,7 @@ public sealed class LabelReprintService : ILabelReprintService
                 ScriptNumber: script?.ScriptNumber ?? "",
                 DispensedOn: issued.Value.DispensedOn,
                 Cautions: Array.Empty<string>(),
-                ItemNumber: l.LineNo,
+                ItemNumber: i + 1,
                 ItemCount: dispensing.Lines.Count,
                 PrescriberName: script?.PrescriberName,
                 PrescriberNumber: script?.PrescriberNumber)).ToList();

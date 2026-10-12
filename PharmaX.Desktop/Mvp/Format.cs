@@ -119,4 +119,13 @@ public static class Format
     /// Month and year, which is how an expiry is printed on a pack.
     public static string Expiry(DateOnly? expiry) =>
         expiry is DateOnly value ? value.ToString("MM/yyyy", Culture) : "";
+
+    /// A patient's file as the counter reads it: "1757" rather than the
+    /// "RSI-1757" the import stored. On screen only - the stored number
+    /// keeps the prefix, which a second import and the RSI history match
+    /// on, and searching "1757" finds it either way.
+    public static string FileNumber(string? file) =>
+        file is not null && file.StartsWith("RSI-", StringComparison.OrdinalIgnoreCase)
+            ? file[4..]
+            : file ?? "";
 }

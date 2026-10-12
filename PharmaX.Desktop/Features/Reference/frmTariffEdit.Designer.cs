@@ -92,6 +92,7 @@ partial class frmTariffEdit
 
         txtPrice.Anchor = AnchorStyles.Left;
         txtPrice.Name = "txtPrice";
+        txtPrice.PlaceholderText = "0.00";
         txtPrice.Width = 130;
 
         lblFee.Anchor = AnchorStyles.Left;
@@ -100,6 +101,7 @@ partial class frmTariffEdit
 
         txtFee.Anchor = AnchorStyles.Left;
         txtFee.Name = "txtFee";
+        txtFee.PlaceholderText = "0.00";
         txtFee.Width = 130;
 
         lblFrom.Anchor = AnchorStyles.Left;

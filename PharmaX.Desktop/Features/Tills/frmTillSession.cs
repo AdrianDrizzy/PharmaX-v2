@@ -82,7 +82,7 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
         // Nothing to count against a closed till, so the grid reads as
         // unavailable rather than as an empty one somebody should fill.
         grdDenominations.DefaultCellStyle.BackColor = open
-            ? SystemColors.Window
+            ? PhxTheme.Field
             : PhxTheme.Band;
     }
 
@@ -245,7 +245,8 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
                     ? t.DisplayName() + " statement"
                     : "drawer",
                 variance < 0m ? "short" : "over",
-                Format.Money(Math.Abs(variance))));
+                Format.Money(Math.Abs(variance))),
+            hint: "e.g. Change given short on one sale");
 
     public event EventHandler? OpenRequested;
     public event EventHandler? XReadRequested;

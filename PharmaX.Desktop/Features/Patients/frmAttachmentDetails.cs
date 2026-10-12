@@ -21,6 +21,8 @@ internal sealed class frmAttachmentDetails : Form
 
     private frmAttachmentDetails(string suggestedDescription)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         Controls.Add(new Label
         {
             AutoSize = true,
@@ -45,6 +47,7 @@ internal sealed class frmAttachmentDetails : Form
         });
 
         _description.Location = new Point(130, 58);
+        _description.PlaceholderText = "e.g. Lab results, March 2026";
         _description.Size = new Size(250, 24);
         _description.Text = suggestedDescription;
 

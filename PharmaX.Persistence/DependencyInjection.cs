@@ -162,7 +162,10 @@ public static class DependencyInjection
         services.AddScoped<DemoTradingSeeder>();
         services.AddScoped<DemoDataSeeder>();
         services.AddScoped<CurrencyNormaliser>();
-        services.AddScoped<PriceListSeeder>();
+        services.AddScoped<Application.Legacy.ILegacyImporter, Import.RsiImporter>();
+        services.AddScoped<Application.Legacy.ILegacyHistory, Repositories.LegacyHistory>();
+        services.AddScoped<Application.Home.IHomeCounts, Repositories.HomeCounts>();
+        services.AddScoped<IDatabaseBackup, Backup.DatabaseBackup>();
         services.AddScoped<ICurrencyChanger, CurrencyChanger>();
 
         return services;

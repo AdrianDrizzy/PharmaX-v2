@@ -53,4 +53,9 @@ public interface IDispenseView : Mvp.IView
     event EventHandler? LabelReprintRequested;
     event EventHandler? RemoveItemRequested;
     event EventHandler? CloseRequested;
+    event EventHandler? SuspendedRequested;
+
+    /// One of the scripts kept to finish later; null to cancel.
+    (Guid PatientId, Guid ScriptId)? PromptSuspended(
+        IReadOnlyList<SuspendedDispensingDto> kept);
 }

@@ -40,6 +40,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             RemoveItemRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) =>
             CloseRequested?.Invoke(this, EventArgs.Empty);
+        btnSuspended.Click += (_, _) =>
+            SuspendedRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -98,8 +100,12 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             : "Allergies: " + string.Join(", ", patient.Allergies);
 
         lblAllergies.ForeColor = patient.Allergies.Count == 0
-            ? SystemColors.ControlText
-            : Color.FromArgb(168, 32, 32);
+            ? PhxTheme.Ink
+            : PhxTheme.ProblemText;
+
+        lblConditions.Text = patient.ChronicConditions.Count == 0
+            ? ""
+            : "Chronic: " + string.Join(", ", patient.ChronicConditions);
     }
 
     public void ShowScript(ScriptDto script)
@@ -120,7 +126,9 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         grdItems.Rows.Clear();
 
         foreach (var i in items)
-            grdItems.Rows.Add(i.LineNo, i.Description, i.Quantity,
+            grdItems.Rows.Add(i.LineNo,
+                i.Owed is { } owed ? $"{i.Description}  (to follow {owed:0.###})" : i.Description,
+                i.Quantity,
                 i.Directions, i.BatchNumber ?? "", i.Tariff,
                 i.Contribution, i.CoPayment);
     }
@@ -139,8 +147,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
 
         lstWarnings.BackColor = warnings.Any(w => w.IsHardStop
                                                   && !w.IsAcknowledged)
-            ? Color.FromArgb(255, 226, 226)
-            : SystemColors.Window;
+            ? PhxTheme.Problem
+            : PhxTheme.Field;
     }
 
     public void ShowCoPayment(decimal tariff, decimal contribution,
@@ -228,7 +236,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         // (DSP-004), so a blank answer cancels the item.
         var directions = frmTextPrompt.Ask(this, "Directions",
             "Directions as they will print on the label",
-            proposal.Directions);
+            proposal.Directions,
+            hint: "e.g. T1 TDS, or Take ONE tablet three times a day");
 
         return string.IsNullOrWhiteSpace(directions)
             ? null
@@ -260,7 +269,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         ArgumentNullException.ThrowIfNull(warning);
 
         return frmTextPrompt.Ask(this, "Clinical warning",
-            $"{warning.Message}\r\n\r\nWhy is this being overridden?");
+            $"{warning.Message}\r\n\r\nWhy is this being overridden?",
+            hint: "e.g. Prescriber confirmed the dose by phone");
     }
 
     public event EventHandler? PatientRequested;
@@ -271,6 +281,13 @@ public partial class frmDispense : PhxFormBase, IDispenseView
     public event EventHandler? LabelReprintRequested;
     public event EventHandler? RemoveItemRequested;
     public event EventHandler? CloseRequested;
+    public event EventHandler? SuspendedRequested;
+
+    public (Guid PatientId, Guid ScriptId)? PromptSuspended(
+        IReadOnlyList<SuspendedDispensingDto> kept) =>
+        frmChoicePrompt.Ask(this, "Suspended scripts", "The script to finish",
+            kept.Select(k => ($"{k.Patient}  -  script {k.ScriptNumber}  ({k.Items} items)",
+                              (k.PatientId, k.ScriptId))).ToList());
 
     /// <summary>
     /// Sets the split the designer asked for, once the window is its

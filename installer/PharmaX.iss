@@ -11,7 +11,7 @@
 ; everything this installer owns - see the comment on {app} below.
 
 #define AppName      "PharmaX"
-#define AppVersion   "1.0.0"
+#define AppVersion   "1.0.1"
 #define AppPublisher "PharmaX"
 #define AppExe       "PharmaX.Desktop.exe"
 
@@ -27,6 +27,14 @@ OutputBaseFilename=PharmaX-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+
+; The capsule from the logo: on setup.exe, beside PharmaX in Apps and
+; Features, and down the side of the wizard. Each image at the sizes Inno
+; picks between for 100, 150 and 200 per cent display scaling.
+SetupIconFile=..\PharmaX.Desktop\Resources\pharmax.ico
+UninstallDisplayIcon={app}\{#AppExe}
+WizardImageFile=wizard-large-100.bmp,wizard-large-150.bmp,wizard-large-200.bmp
+WizardSmallImageFile=wizard-small-100.bmp,wizard-small-150.bmp,wizard-small-200.bmp
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 
@@ -50,6 +58,14 @@ Name: "desktopicon"; Description: "Create a shortcut on the desktop"; \
 ; question is asked rather than assumed.
 Name: "startup"; Description: "Start PharmaX when this computer starts"; \
     GroupDescription: "Shortcuts:"; Flags: unchecked
+
+; Ticked on one machine per pharmacy, the one the tills connect to.
+; Installs MariaDB, makes PharmaX's database login and opens port 3306
+; to the local network - see ServerSetup.cs. Off by default: a till or
+; a single PC needs none of it.
+Name: "mainserver"; \
+    Description: "This is the pharmacy's main computer - install the database the tills share"; \
+    GroupDescription: "Database:"; Flags: unchecked
 
 [Files]
 ; The whole published folder: the executable plus the native libraries
@@ -75,6 +91,12 @@ Source: "..\PharmaX.Desktop\appsettings.json"; DestDir: "{app}"; \
 
 Source: "readme-after-install.txt"; DestDir: "{app}"; Flags: ignoreversion
 
+; MariaDB, downloaded and checked against its published hash by
+; build.ps1. Only unpacked on the main computer, and only for as long as
+; setup runs.
+Source: "redist\mariadb.msi"; DestDir: "{tmp}"; Tasks: mainserver; \
+    Flags: deleteafterinstall
+
 [Dirs]
 ; Created here so that the first-run wizard, and every later upgrade,
 ; find it already there with the right permissions. Users need to write
@@ -94,9 +116,32 @@ Name: "{commonstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
     Tasks: startup
 
 [Run]
+; Before the finish page, elevated, so that the wizard started from it
+; finds the database ready and its details filled in. MariaDB itself is
+; left installed on uninstall: it holds the pharmacy's data.
+Filename: "{app}\{#AppExe}"; \
+    Parameters: "--setup-server ""{tmp}\mariadb.msi"""; \
+    StatusMsg: "Installing the pharmacy's database. This takes a minute or two..."; \
+    Tasks: mainserver; Flags: waituntilterminated
+
+; A copy of the database every night at half past nine, on the main
+; computer, as SYSTEM so it runs whoever is signed in or nobody is.
+; Fourteen are kept in ProgramData\PharmaX\backups (DatabaseBackup.cs).
+; /F replaces the task an earlier install made, so an upgrade keeps one.
+Filename: "{sys}\schtasks.exe"; \
+    Parameters: "/Create /F /SC DAILY /ST 21:30 /RU SYSTEM /RL HIGHEST /TN ""PharmaX nightly backup"" /TR ""\""{app}\{#AppExe}\"" --backup"""; \
+    StatusMsg: "Scheduling the nightly backup..."; \
+    Tasks: mainserver; Flags: runhidden waituntilterminated
+
 Filename: "{app}\{#AppExe}"; \
     Description: "Set up PharmaX on this computer now"; \
     Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; The schedule goes with the program; the backups it made stay.
+Filename: "{sys}\schtasks.exe"; \
+    Parameters: "/Delete /F /TN ""PharmaX nightly backup"""; \
+    Flags: runhidden; RunOnceId: "DeleteBackupTask"
 
 [UninstallDelete]
 ; Nothing under ProgramData is removed. It holds the pharmacy's logs,

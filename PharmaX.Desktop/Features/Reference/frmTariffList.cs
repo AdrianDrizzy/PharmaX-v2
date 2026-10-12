@@ -115,7 +115,7 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
         foreach (DataGridViewRow row in grdTariffs.Rows)
         {
             if (row.DataBoundItem is TariffListItemDto item && !item.IsActive)
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         _suggestions.Offer(tariffs.Select(t =>

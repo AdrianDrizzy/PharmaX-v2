@@ -51,14 +51,14 @@ partial class frmCollect
 
         txtFind.Location = new Point(70, 13);
         txtFind.Name = "txtFind";
-        txtFind.PlaceholderText = "Patient name or script number";
+        txtFind.PlaceholderText = "Patient name, script or dispensing number";
         txtFind.Size = new Size(320, 23);
         txtFind.TabIndex = 0;
 
         lblSummary.AutoSize = false;
         lblSummary.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         lblSummary.Font = PhxTheme.Subheading;
-        lblSummary.ForeColor = PhxTheme.Accent;
+        lblSummary.ForeColor = PhxTheme.Title;
         lblSummary.Location = new Point(420, 13);
         lblSummary.Size = new Size(420, 26);
         lblSummary.TextAlign = ContentAlignment.MiddleRight;

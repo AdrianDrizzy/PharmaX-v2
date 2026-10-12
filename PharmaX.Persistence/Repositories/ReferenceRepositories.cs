@@ -30,6 +30,10 @@ public sealed class ReferenceRepository : IReferenceRepository
                 await Query(_db.Branches, term, includeInactive, ct),
             ReferenceKind.MedicalAidScheme =>
                 await Query(_db.MedicalAidSchemes, term, includeInactive, ct),
+            ReferenceKind.Prescriber =>
+                await Query(_db.Prescribers, term, includeInactive, ct),
+            ReferenceKind.DosageCode =>
+                await Query(_db.DosageCodes, term, includeInactive, ct),
             _ => Array.Empty<ReferenceEntry>()
         };
 
@@ -43,6 +47,8 @@ public sealed class ReferenceRepository : IReferenceRepository
             ReferenceKind.Branch => await Fresh(_db.Branches, id, ct),
             ReferenceKind.MedicalAidScheme =>
                 await Fresh(_db.MedicalAidSchemes, id, ct),
+            ReferenceKind.Prescriber => await Fresh(_db.Prescribers, id, ct),
+            ReferenceKind.DosageCode => await Fresh(_db.DosageCodes, id, ct),
             _ => null
         };
 
@@ -88,6 +94,10 @@ public sealed class ReferenceRepository : IReferenceRepository
                 .FirstOrDefaultAsync(x => x.Code == normalised, ct),
             ReferenceKind.MedicalAidScheme => await _db.MedicalAidSchemes
                 .FirstOrDefaultAsync(x => x.Code == normalised, ct),
+            ReferenceKind.Prescriber => await _db.Prescribers
+                .FirstOrDefaultAsync(x => x.Code == normalised, ct),
+            ReferenceKind.DosageCode => await _db.DosageCodes
+                .FirstOrDefaultAsync(x => x.Code == normalised, ct),
             _ => null
         };
     }
@@ -103,6 +113,8 @@ public sealed class ReferenceRepository : IReferenceRepository
             case Branch b: await _db.Branches.AddAsync(b, ct); break;
             case MedicalAidScheme s:
                 await _db.MedicalAidSchemes.AddAsync(s, ct); break;
+            case Prescriber p: await _db.Prescribers.AddAsync(p, ct); break;
+            case DosageCode d: await _db.DosageCodes.AddAsync(d, ct); break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(entry));
         }
@@ -118,12 +130,16 @@ public sealed class ReferenceRepository : IReferenceRepository
 
         if (!includeInactive) query = query.Where(x => x.IsActive);
 
-        // Word by word, like every other search.
+        // Word by word, like every other search. The detail too: it is
+        // where a prescriber's practice number and a supplier's contact
+        // are kept, and the number off a script is often all there is.
         foreach (var word in SearchTerms.Words(term))
         {
             var pattern = $"%{word}%";
             query = query.Where(x => EF.Functions.Like(x.Code, pattern)
-                                  || EF.Functions.Like(x.Name, pattern));
+                                  || EF.Functions.Like(x.Name, pattern)
+                                  || (x.Detail != null
+                                      && EF.Functions.Like(x.Detail, pattern)));
         }
 
         return await query.OrderBy(x => x.Name).ToListAsync(ct);

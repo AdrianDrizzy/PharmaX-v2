@@ -59,9 +59,11 @@ partial class frmScriptEdit
 
         Field("&Prescriber", txtPrescriber, 1, 300);
         txtPrescriber.MaxLength = 150;
+        txtPrescriber.PlaceholderText = "Doctor, clinic, code or practice number";
 
         Field("Prescriber &no.", txtPrescriberNumber, 2, 160);
         txtPrescriberNumber.MaxLength = 30;
+        txtPrescriberNumber.PlaceholderText = "e.g. 041234 (optional)";
 
         Label(20, 20 + 3 * 34 + 4, "Prescri&bed on");
         dtpPrescribedOn.Format = DateTimePickerFormat.Short;

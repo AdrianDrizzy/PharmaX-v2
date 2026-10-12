@@ -52,6 +52,7 @@ partial class frmUserEdit
         txtUsername.Location = new Point(150, 20);
         txtUsername.MaxLength = 50;
         txtUsername.Name = "txtUsername";
+        txtUsername.PlaceholderText = "e.g. t.moyo";
         txtUsername.Size = new Size(220, 23);
         txtUsername.TabIndex = 0;
 
@@ -62,6 +63,7 @@ partial class frmUserEdit
         txtDisplayName.Location = new Point(150, 54);
         txtDisplayName.MaxLength = 120;
         txtDisplayName.Name = "txtDisplayName";
+        txtDisplayName.PlaceholderText = "e.g. Tendai Moyo";
         txtDisplayName.Size = new Size(300, 23);
         txtDisplayName.TabIndex = 1;
 
@@ -84,6 +86,7 @@ partial class frmUserEdit
 
         txtDiscountLimit.Location = new Point(150, 228);
         txtDiscountLimit.Name = "txtDiscountLimit";
+        txtDiscountLimit.PlaceholderText = "e.g. 10";
         txtDiscountLimit.Size = new Size(90, 26);
         txtDiscountLimit.TabIndex = 3;
 
@@ -96,6 +99,7 @@ partial class frmUserEdit
         txtRegistration.Location = new Point(150, 262);
         txtRegistration.MaxLength = 30;
         txtRegistration.Name = "txtRegistration";
+        txtRegistration.PlaceholderText = "e.g. P00123";
         txtRegistration.Size = new Size(160, 23);
         txtRegistration.TabIndex = 4;
         txtRegistration.Visible = false;

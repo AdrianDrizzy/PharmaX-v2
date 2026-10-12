@@ -1,3 +1,4 @@
+using System.Globalization;
 using PharmaX.Application.Abstractions;
 using PharmaX.Desktop.Mvp;
 using PharmaX.Domain.Primitives;
@@ -19,6 +20,9 @@ namespace PharmaX.Desktop.Features.Admin;
 public sealed class frmSystemSetup : PhxFormBase
 {
     private readonly IWorkstationSettings _settings;
+    private readonly IPharmacySettings _pharmacy;
+    private readonly NumericUpDown _markup = new();
+    private readonly ComboBox _rounding = new();
     private readonly Branding _branding;
     private readonly ICurrencyChanger _currency;
 
@@ -32,6 +36,9 @@ public sealed class frmSystemSetup : PhxFormBase
     private readonly Button _save = new();
     private readonly Button _cancel = new();
 
+    private readonly ComboBox _palettes = new();
+    private readonly Label _paletteHint = new();
+
     private readonly Panel _body = new();
     private readonly Branding _preview = new();
 
@@ -43,9 +50,10 @@ public sealed class frmSystemSetup : PhxFormBase
         Domain.Security.PermissionCode.SettingsChange;
 
     public frmSystemSetup(IWorkstationSettings settings, Branding branding,
-                          ICurrencyChanger currency)
+                          ICurrencyChanger currency, IPharmacySettings pharmacy)
     {
         _settings = settings;
+        _pharmacy = pharmacy;
         _branding = branding;
         _currency = currency;
 
@@ -60,12 +68,14 @@ public sealed class frmSystemSetup : PhxFormBase
 
         BuildCurrency();
         BuildLogo();
+        BuildColours();
+        BuildPrices();
         BuildHeader();
         BuildButtons();
 
         AcceptButton = _save;
         CancelButton = _cancel;
-        ClientSize = new Size(600, 492);
+        ClientSize = new Size(600, 700);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -94,8 +104,7 @@ public sealed class frmSystemSetup : PhxFormBase
             ForeColor = PhxTheme.Muted,
             Location = new Point(PhxTheme.Gutter + 2, 36),
             Size = new Size(560, 20),
-            Text = "This workstation. Set every till in the pharmacy the "
-                   + "same."
+            Text = "For the whole pharmacy: every till, every user."
         });
 
         Controls.Add(header);
@@ -152,7 +161,10 @@ public sealed class frmSystemSetup : PhxFormBase
             Text = "Logo"
         });
 
-        _logo.BackColor = Color.White;
+        // The card the logo sits on in the shell, so the preview shows it as
+        // every till will: white in the light mode, the theme's card in the
+        // others, with the logo made for it.
+        _logo.BackColor = PhxTheme.Card;
         _logo.BorderStyle = BorderStyle.FixedSingle;
         _logo.Location = new Point(0, 194);
         _logo.Size = new Size(220, 96);
@@ -179,6 +191,148 @@ public sealed class frmSystemSetup : PhxFormBase
         _body.Controls.AddRange(new Control[]
             { _logo, _logoHint, _choose, _remove });
     }
+
+    /// <summary>
+    /// The windows' colours: the logo's own by default, or a named palette.
+    /// </summary>
+    private void BuildColours()
+    {
+        _body.Controls.Add(new Label
+        {
+            AutoSize = false,
+            Font = PhxTheme.Subheading,
+            Location = new Point(0, 306),
+            Size = new Size(300, 24),
+            Text = "Colours"
+        });
+
+        _body.Controls.Add(new Label
+        {
+            AutoSize = true,
+            Location = new Point(2, 342),
+            Text = "&Windows"
+        });
+
+        // Each entry shows its two colours, so the choice is made by eye.
+        _palettes.DrawMode = DrawMode.OwnerDrawFixed;
+        _palettes.DropDownStyle = ComboBoxStyle.DropDownList;
+        _palettes.ItemHeight = 22;
+        _palettes.Location = new Point(108, 338);
+        _palettes.Name = "cboPalette";
+        _palettes.Size = new Size(320, 28);
+        _palettes.DrawItem += (_, e) => DrawPalette(e);
+
+        _palettes.Items.Add(LogoChoice());
+
+        foreach (var palette in Palette.Presets)
+            _palettes.Items.Add(new PaletteChoice(palette.Id, palette.Name, palette));
+
+        // Grows downward to fit its words at any display scaling; a fixed
+        // height lost the second line at 125 per cent.
+        _paletteHint.AutoSize = true;
+        _paletteHint.ForeColor = PhxTheme.Muted;
+        _paletteHint.Location = new Point(108, 374);
+        _paletteHint.MaximumSize = new Size(440, 0);
+        _paletteHint.Text = "From the logo takes the colours out of the image "
+                            + "above, so a new logo brings its own colours.";
+
+        _body.Controls.AddRange(new Control[] { _palettes, _paletteHint });
+    }
+
+    /// The pharmacy's pricing rules, the same at every till.
+    private void BuildPrices()
+    {
+        _body.Controls.Add(new Label
+        {
+            AutoSize = false, Font = PhxTheme.Subheading,
+            Location = new Point(0, 430), Size = new Size(300, 24), Text = "Prices"
+        });
+
+        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 466), Text = "&Markup %" });
+        _markup.DecimalPlaces = 1;
+        _markup.Location = new Point(108, 462);
+        _markup.Maximum = 1000m;
+        _markup.Name = "numMarkup";
+        _markup.Size = new Size(90, 24);
+
+        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(220, 466), Text = "R&ound up to" });
+        _rounding.DropDownStyle = ComboBoxStyle.DropDownList;
+        _rounding.Items.AddRange(new object[] { "0.01", "0.05", "0.10", "0.50", "1.00" });
+        _rounding.Location = new Point(340, 462);
+        _rounding.Name = "cboRounding";
+        _rounding.Size = new Size(90, 24);
+
+        _body.Controls.Add(new Label
+        {
+            AutoSize = true, ForeColor = PhxTheme.Muted,
+            Location = new Point(108, 496), MaximumSize = new Size(440, 0),
+            Text = "An item with no price takes the markup on its first delivery. A "
+                   + "delivery that costs more puts the price up to keep its margin."
+        });
+
+        _body.Controls.AddRange(new Control[] { _markup, _rounding });
+    }
+
+    /// <summary>A palette as the list offers it.</summary>
+    private sealed record PaletteChoice(string Id, string Name, Palette Colours)
+    {
+        public override string ToString() => Name;
+    }
+
+    /// The logo's own colours, worked out from the image being previewed.
+    private PaletteChoice LogoChoice()
+    {
+        var derived = Palette.FromLogo(_preview.Logo);
+
+        return new PaletteChoice(Palette.FromLogoId,
+            derived is null
+                ? "From the logo (none chosen: navy and orange)"
+                : "From the logo",
+            derived ?? Palette.NavyAndOrange);
+    }
+
+    private void DrawPalette(DrawItemEventArgs e)
+    {
+        e.DrawBackground();
+        if (e.Index < 0 || _palettes.Items[e.Index] is not PaletteChoice choice) return;
+
+        var size = e.Bounds.Height - 8;
+        var y = e.Bounds.Y + 4;
+
+        foreach (var (colour, x) in new[]
+        {
+            (choice.Colours.Primary, e.Bounds.X + 4),
+            (choice.Colours.Highlight, e.Bounds.X + 8 + size)
+        })
+        {
+            using var fill = new SolidBrush(colour);
+            e.Graphics.FillRectangle(fill, x, y, size, size);
+            e.Graphics.DrawRectangle(Pens.White, x, y, size - 1, size - 1);
+        }
+
+        var text = new Rectangle(e.Bounds.X + 16 + size * 2, e.Bounds.Y,
+                                 e.Bounds.Width - 16 - size * 2, e.Bounds.Height);
+
+        TextRenderer.DrawText(e.Graphics, choice.Name, e.Font ?? Font, text,
+            e.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+
+        e.DrawFocusRectangle();
+    }
+
+    /// <summary>
+    /// Works the logo's colours out again after the logo changes, and
+    /// chooses them: a new logo is the strongest hint there is of the
+    /// colours the pharmacy wants.
+    /// </summary>
+    private void RefreshLogoChoice()
+    {
+        _palettes.Items[0] = LogoChoice();
+        _palettes.SelectedIndex = 0;
+        _palettes.Invalidate();
+    }
+
+    private PaletteChoice ChosenPalette =>
+        _palettes.SelectedItem as PaletteChoice ?? LogoChoice();
 
     private void BuildButtons()
     {
@@ -215,6 +369,31 @@ public sealed class frmSystemSetup : PhxFormBase
         _preview.Load(_chosenLogo);
         _logo.Invalidate();
         _remove.Enabled = _chosenLogo is not null;
+
+        _palettes.Items[0] = LogoChoice();
+        SelectPalette(await _pharmacy.GetAsync(PharmacySettingKey.Palette));
+
+        var (markup, step) = await Application.Inventory.Pricing.ReadAsync(_pharmacy);
+        _markup.Value = Math.Clamp(markup, _markup.Minimum, _markup.Maximum);
+        _rounding.SelectedItem = (step <= 0m ? 0.01m : step).ToString("0.00", CultureInfo.InvariantCulture);
+        if (_rounding.SelectedIndex < 0) _rounding.SelectedIndex = 0;
+    }
+
+    private void SelectPalette(string? id)
+    {
+        id = string.IsNullOrWhiteSpace(id) ? Palette.FromLogoId : id;
+
+        for (var i = 0; i < _palettes.Items.Count; i++)
+        {
+            if (_palettes.Items[i] is PaletteChoice choice
+                && string.Equals(choice.Id, id, StringComparison.Ordinal))
+            {
+                _palettes.SelectedIndex = i;
+                return;
+            }
+        }
+
+        _palettes.SelectedIndex = 0;
     }
 
     private void Select(CurrencyOption currency)
@@ -310,11 +489,20 @@ public sealed class frmSystemSetup : PhxFormBase
 
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
+        // Kept in the database for every till, so it is kept small.
+        if (new FileInfo(dialog.FileName).Length > 2 * 1024 * 1024)
+        {
+            ShowError("That image is over 2 MB. Choose a smaller one; a logo "
+                      + "a few hundred pixels wide is plenty for a receipt.");
+            return;
+        }
+
         _chosenLogo = dialog.FileName;
         _preview.Load(_chosenLogo);
         _logoChanged = true;
         _remove.Enabled = true;
         _logo.Invalidate();
+        RefreshLogoChoice();
     }
 
     private void RemoveLogo()
@@ -324,6 +512,7 @@ public sealed class frmSystemSetup : PhxFormBase
         _logoChanged = true;
         _remove.Enabled = false;
         _logo.Invalidate();
+        RefreshLogoChoice();
     }
 
     /// <summary>
@@ -407,8 +596,23 @@ public sealed class frmSystemSetup : PhxFormBase
 
             var logo = StoreLogo();
 
-            await _settings.SetAsync(WorkstationSettingKey.LogoPath, logo);
+            // The image itself, for every till and every user: a path means
+            // nothing on another machine. Blank, not missing, once removed,
+            // so no till hands its old logo back to the pharmacy.
+            await _pharmacy.SetAsync(PharmacySettingKey.LogoImage,
+                                     Branding.Encode(logo) ?? "");
+            await _settings.SetAsync(WorkstationSettingKey.LogoPath, null);
             _branding.Load(logo);
+
+            // Into use at once: every open window, the shell behind this
+            // one included, swaps to the new colours as Save is pressed.
+            var palette = ChosenPalette;
+            await _pharmacy.SetAsync(PharmacySettingKey.Palette, palette.Id);
+
+            await _pharmacy.SetAsync(PharmacySettingKey.Markup,
+                _markup.Value.ToString(CultureInfo.InvariantCulture));
+            await _pharmacy.SetAsync(PharmacySettingKey.Rounding, (string?)_rounding.SelectedItem);
+            PhxTheme.Use(Palette.Resolve(palette.Id, _branding.Logo));
 
             if (changingCurrency)
             {

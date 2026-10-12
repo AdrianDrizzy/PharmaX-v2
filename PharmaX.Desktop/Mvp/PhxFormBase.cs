@@ -16,6 +16,48 @@ public class PhxFormBase : Form, IView
 
     protected IConnectivityMonitor? Connectivity { get; private set; }
 
+    /// The pharmacy's capsule in the title bar and on the taskbar, rather
+    /// than the Windows Forms default every window used to carry.
+    public PhxFormBase() => Icon = PhxIcons.AppIcon;
+
+    /// <summary>
+    /// Follows a change of palette while open: the colours the screen was
+    /// built with are swapped for the new ones, and the icons redrawn.
+    /// </summary>
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        PhxTheme.Changed += OnPaletteChange;
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        PhxTheme.Changed -= OnPaletteChange;
+        base.OnHandleDestroyed(e);
+    }
+
+    private void OnPaletteChange(object? sender,
+                                 IReadOnlyDictionary<Color, Color> changes)
+    {
+        if (IsDisposed) return;
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnPaletteChange(sender, changes));
+            return;
+        }
+
+        PhxTheme.Recolour(this, changes);
+        PhxTheme.TitleBar(this);
+        PhxIcons.Decorate(this);
+        OnPaletteChanged();
+        Invalidate(true);
+    }
+
+    /// Where a screen draws icons of its own - the shell's menus and tiles
+    /// - it draws them again here, in the new palette.
+    protected virtual void OnPaletteChanged() { }
+
     // The title as the screen asked for it, before branding. Kept so the
     // window can be re-titled either way when the switch is changed.
     private string _requestedTitle = "";
@@ -180,8 +222,18 @@ public class PhxFormBase : Form, IView
         // window is fitted: the keys make some captions longer.
         AssignFunctionKeys();
 
+        // After the keys, which are part of the caption the icon must fit
+        // beside.
+        PhxIcons.Decorate(this);
+
         FitWindowToContents();
+
+        if (ShowsWatermark) Watermark.Attach(this);
     }
+
+    /// Whether the logo is laid faintly across this screen. Off where the
+    /// screen shows the logo itself.
+    protected virtual bool ShowsWatermark => true;
 
     /// <summary>
     /// Grows the window if the contents have ended up bigger than it is.
@@ -366,16 +418,18 @@ public class PhxFormBase : Form, IView
     // ---- IView -----------------------------------------------------------
 
     public void ShowError(string message) =>
-        MessageBox.Show(this, message, WindowTitles.Caption,
+        frmMessage.Show(this, message,
             MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
     public void ShowInfo(string message) =>
-        MessageBox.Show(this, message, WindowTitles.Caption,
+        frmMessage.Show(this, message,
             MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     public bool Confirm(string question) =>
-        MessageBox.Show(this, question, WindowTitles.Caption,
+        frmMessage.Show(this, question,
             MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+
+    public void ShowSaved(string path) => GridExport.Saved(this, path);
 
     public void SetBusy(bool busy) =>
         Cursor = busy ? Cursors.WaitCursor : Cursors.Default;

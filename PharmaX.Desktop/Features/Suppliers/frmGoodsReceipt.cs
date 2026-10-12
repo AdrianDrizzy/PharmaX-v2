@@ -238,7 +238,7 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
         // Amber rather than red: the delivery note and the invoice
         // disagreeing is a question, not an error.
         lblVarianceValue.BackColor = variance is decimal d && d != 0m
-            ? Color.FromArgb(255, 244, 214)
+            ? PhxTheme.Attention
             : Color.Transparent;
     }
 

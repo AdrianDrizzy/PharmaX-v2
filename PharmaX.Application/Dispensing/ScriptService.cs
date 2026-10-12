@@ -86,14 +86,20 @@ public sealed class ScriptService : IScriptService
 
     private readonly Sales.IQuotationRepository _quotations;
 
+    // Writes dosage shorthand out in full; absent in tests that do not
+    // care about directions.
+    private readonly Reference.IReferenceRepository? _reference;
+
     public ScriptService(IScriptRepository scripts,
         IDispensingRepository dispensings,
         IPatientRepository patients, IProductRepository products,
         IDocumentNumbering numbering, IPermissionService permissions,
         IAuditWriter audit, IOutbox outbox, IUnitOfWork uow, IClock clock,
-        Sales.IQuotationRepository quotations)
+        Sales.IQuotationRepository quotations,
+        Reference.IReferenceRepository? reference = null)
     {
         _quotations = quotations;
+        _reference = reference;
         _scripts = scripts;
         _dispensings = dispensings;
         _patients = patients;
@@ -314,8 +320,13 @@ public sealed class ScriptService : IScriptService
                     $"{product.Description}: directions are mandatory, "
                     + "because they are printed on the label (DSP-004)."));
 
+            var directions = _reference is null
+                ? item.Directions.Trim()
+                : await Reference.DosageShorthand.ExpandDirectionsAsync(
+                    _reference, item.Directions, ct);
+
             items.Add(ScriptItem.Create(product.Id, product.Description,
-                item.Quantity, item.Directions.Trim(), item.AllowSubstitution));
+                item.Quantity, directions, item.AllowSubstitution));
         }
 
         return (items, null);

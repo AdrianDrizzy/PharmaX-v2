@@ -73,6 +73,8 @@ public partial class frmPayment : Form
 
     public frmPayment(decimal amountDue)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         InitializeComponent();
 
         // A plain Form rather than PhxFormBase, so branded here.

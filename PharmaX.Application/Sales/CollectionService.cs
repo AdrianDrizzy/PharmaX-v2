@@ -189,7 +189,8 @@ public sealed class CollectionService : ICollectionService
                 // rated-transactions report.
                 priceSource: line.SchemeContribution.IsZero
                     ? PriceSource.StandardRetail
-                    : PriceSource.MedicalAidTariff));
+                    : PriceSource.MedicalAidTariff,
+                isScript: true));
 
             // Deliberately no batch on the line. The dispensing already
             // records which batch the patient was given, and that is the

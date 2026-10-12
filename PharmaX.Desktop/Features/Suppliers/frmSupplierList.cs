@@ -80,7 +80,7 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
         foreach (DataGridViewRow row in grdSuppliers.Rows)
         {
             if (row.DataBoundItem is SupplierListItemDto { IsActive: false })
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         lblCount.Text = $"{suppliers.Count} supplier(s)";

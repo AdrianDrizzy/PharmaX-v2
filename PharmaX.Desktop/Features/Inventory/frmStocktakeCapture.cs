@@ -55,10 +55,22 @@ public partial class frmStocktakeCapture : PhxFormBase,
 
     public void LoadStocktake(Guid id) => StocktakeId = id;
 
+    /// The step the menu entry named: the variances shown alone for
+    /// Variance and Post, and Post goes on to post.
+    public StocktakeStep StartAt { get; set; } = StocktakeStep.Capture;
+
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        if (_presenter is not null) await _presenter.InitialiseAsync();
+        if (_presenter is null) return;
+
+        await _presenter.InitialiseAsync();
+
+        if (StartAt is StocktakeStep.Variance or StocktakeStep.Post)
+            ShowVarianceOnly(true);
+
+        if (StartAt == StocktakeStep.Post)
+            PostRequested?.Invoke(this, EventArgs.Empty);
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -115,7 +127,7 @@ public partial class frmStocktakeCapture : PhxFormBase,
             // Uncounted is the state that blocks posting, so it is the
             // one that has to be visible at a glance down the list.
             if (!line.IsCounted)
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
             else if (line.Variance < 0m)
                 PhxTheme.Flag(row, PhxTheme.Problem);
             else if (line.Variance > 0m)
@@ -132,8 +144,8 @@ public partial class frmStocktakeCapture : PhxFormBase,
             Format.Money(stocktake.NetVarianceValue);
 
         lblNetVarianceValue.ForeColor = stocktake.NetVarianceValue < 0m
-            ? Color.FromArgb(168, 32, 32)
-            : SystemColors.ControlText;
+            ? PhxTheme.Negative
+            : PhxTheme.Ink;
 
         lblShrinkageValue.Text = Format.Money(stocktake.ShrinkageValue);
 
@@ -181,7 +193,8 @@ public partial class frmStocktakeCapture : PhxFormBase,
             string.Format(CultureInfo.CurrentCulture,
                 "The net variance is {0:N2}. Why? This is kept on the "
                 + "stocktake and appears on the variance report.",
-                netVariance));
+                netVariance),
+            hint: "e.g. Breakages not written off");
 
     public event EventHandler? CountRequested;
     public event EventHandler? ClearCountRequested;

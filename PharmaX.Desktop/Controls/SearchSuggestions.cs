@@ -328,7 +328,7 @@ public sealed class SearchSuggestions : IDisposable
 
             TabStop = false;
             Visible = false;
-            BackColor = Color.White;
+            BackColor = PhxTheme.Card;
             Font = PhxTheme.Body;
             Name = "lstSuggestions";
             AccessibleName = "Suggestions";
@@ -447,7 +447,7 @@ public sealed class SearchSuggestions : IDisposable
                             | TextFormatFlags.NoPrefix;
 
                 TextRenderer.DrawText(g, item.Text, _bold, textArea,
-                    PhxTheme.Accent, flags);
+                    PhxTheme.Title, flags);
 
                 if (string.IsNullOrWhiteSpace(item.Detail)) continue;
 

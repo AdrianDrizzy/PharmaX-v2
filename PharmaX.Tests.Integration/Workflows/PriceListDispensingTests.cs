@@ -6,7 +6,7 @@ using PharmaX.Domain.Batches;
 using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Security;
 using PharmaX.Persistence;
-using PharmaX.Persistence.Seeding;
+using PharmaX.Domain.Primitives;
 
 namespace PharmaX.Tests.Integration.Workflows;
 
@@ -34,8 +34,17 @@ public sealed class PriceListDispensingTests : IDisposable
     [Fact]
     public async Task Thirty_tablets_of_a_hundred_pack_are_three_tenths_of_a_pack()
     {
+        // A hundred-tablet pack at 12.00, as the RSI import brings it in.
         using (var scope = _fixture.NewScope())
-            await PharmaXFixture.Resolve<PriceListSeeder>(scope).SeedAsync();
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var losartan = Product.Create("1850", "LOSARTAN VALOSAR 50MG",
+                Money.Of(12.00m), 0m, "Z", schedule: 3, isBatchTracked: true);
+            losartan.SetUnitsPerPack(100m);
+            losartan.SetPackSize("TAB 100");
+            db.Products.Add(losartan);
+            await db.SaveChangesAsync();
+        }
 
         await _steps.OpenTillAsync();
 
@@ -74,6 +83,80 @@ public sealed class PriceListDispensingTests : IDisposable
         var stock = await _steps.StockOfAsync(line.ProductId);
         stock.Product.Should().Be(9.7m, "three tenths of a pack left the shelf");
         stock.Batches.Should().Be(9.7m);
+    }
+
+    [Fact]
+    public async Task Short_stock_is_owed_kept_and_given_when_it_comes_in()
+    {
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var losartan = Product.Create("1850", "LOSARTAN VALOSAR 50MG",
+                Money.Of(12.00m), 0m, "Z", schedule: 3, isBatchTracked: true);
+            losartan.SetUnitsPerPack(100m);
+            db.Products.Add(losartan);
+            await db.SaveChangesAsync();
+        }
+
+        await _steps.OpenTillAsync();
+        await ReceiveAsync("1850", "LOS-A", 1m);
+        await _steps.SignInAsync("pld.pharm2", Role.Standard.Pharmacist);
+
+        var patientId = await _steps.PatientAsync("Owed", "Rudo");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("1850", 130m, "Take ONE tablet daily"));
+
+        // 130 tablets against a pack of 100: the 30 the shelf is short of are owed.
+        Guid id;
+        using (var scope = _fixture.NewScope())
+        {
+            var service = PharmaXFixture.Resolve<IDispensingService>(scope);
+            id = (await service.BeginAsync(scriptId)).Value.Id;
+            var added = await service.AddScriptItemsAsync(id);
+            added.Value.Problems.Should().BeEmpty();
+            added.Value.State.Items.Should().ContainSingle().Which.Owed.Should().Be(30m);
+        }
+
+        // Kept to finish later: the same dispensing comes back, items and all.
+        using (var scope = _fixture.NewScope())
+        {
+            var service = PharmaXFixture.Resolve<IDispensingService>(scope);
+            (await service.SuspendedAsync()).Should().ContainSingle(k => k.ScriptId == scriptId);
+
+            var resumed = await service.BeginAsync(scriptId);
+            resumed.Value.Id.Should().Be(id);
+            resumed.Value.Items.Should().ContainSingle();
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var service = PharmaXFixture.Resolve<IDispensingService>(scope);
+            var issued = await service.IssueAsync(id);
+            issued.IsSuccess.Should().BeTrue(issued.Error.Message);
+            (await service.ToFollowAsync()).Should().ContainSingle().Which.Owed.Should().Be(30m);
+        }
+
+        (await _steps.StockOfAsync(await ProductIdAsync("1850"))).Product.Should().Be(0m);
+
+        await ReceiveAsync("1850", "LOS-B", 1m);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var service = PharmaXFixture.Resolve<IDispensingService>(scope);
+            var given = await service.GiveOwedAsync(id, 1);
+            given.IsSuccess.Should().BeTrue(given.Error.Message);
+            given.Value.Quantity.Should().Be(30m, "the label is for what is handed over now");
+            given.Value.BatchNumber.Should().Be("LOS-B");
+            (await service.ToFollowAsync()).Should().BeEmpty();
+        }
+
+        (await _steps.StockOfAsync(await ProductIdAsync("1850"))).Product.Should().Be(0.7m);
+    }
+
+    private async Task<Guid> ProductIdAsync(string code)
+    {
+        using var scope = _fixture.NewScope();
+        return (await PharmaXFixture.Resolve<PharmaXDbContext>(scope).Products.SingleAsync(p => p.Code == code)).Id;
     }
 
     /// Puts packs on the shelf against a batch, with the receipt that explains them.

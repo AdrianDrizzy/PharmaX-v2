@@ -38,6 +38,7 @@ public sealed class ReferenceDataSeeder
         await SeedFirstNumberBlockAsync(ct);
         await SeedChartOfAccountsAsync(ct);
         await SeedMedicalAidSocietiesAsync(ct);
+        await SeedDosageCodesAsync(ct);
 
         await _db.SaveChangesAsync(ct);
     }
@@ -50,6 +51,24 @@ public sealed class ReferenceDataSeeder
     /// Adds only codes that are missing, as the chart does: a society
     /// the pharmacy has renamed or retired is its decision to keep.
     /// </remarks>
+    /// <summary>
+    /// The dosage shorthand every dispensary shares, added where missing
+    /// and never over a meaning the pharmacy has changed.
+    /// </summary>
+    private async Task SeedDosageCodesAsync(CancellationToken ct)
+    {
+        var existing = await _db.DosageCodes.Select(d => d.Code)
+            .ToListAsync(ct);
+
+        foreach (var (code, meaning) in Application.Reference.DosageShorthand.Standard)
+        {
+            if (existing.Contains(code, StringComparer.OrdinalIgnoreCase)) continue;
+            _db.DosageCodes.Add(Domain.Reference.DosageCode.Create(code, meaning));
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
     private async Task SeedMedicalAidSocietiesAsync(CancellationToken ct)
     {
         var existing = await _db.MedicalAidSchemes

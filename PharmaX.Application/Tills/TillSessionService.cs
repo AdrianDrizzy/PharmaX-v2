@@ -18,6 +18,9 @@ public interface ITillSessionService
 
     Task<Result> SuspendAsync(CancellationToken ct = default);
     Task<Result> ResumeAsync(CancellationToken ct = default);
+
+    /// The drawer opened without a sale, logged with the reason given.
+    Task<Result> NoSaleAsync(string reason, CancellationToken ct = default);
 }
 
 public sealed class TillSessionService : ITillSessionService
@@ -119,6 +122,20 @@ public sealed class TillSessionService : ITillSessionService
         session.Resume();
         _context.AttachTillSession(session.Id);
         _audit.Applied("pos.session.resume", "TillSession", session.Id);
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
+    }
+
+    public async Task<Result> NoSaleAsync(string reason, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Fail("POS-040", "Say why the drawer is being opened.");
+
+        var session = await _sessions.CurrentAsync(ct);
+        if (session is null) return Result.Fail("POS-016", "No open session.");
+
+        _audit.Applied("pos.drawer.nosale", "TillSession", session.Id, reason.Trim());
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();

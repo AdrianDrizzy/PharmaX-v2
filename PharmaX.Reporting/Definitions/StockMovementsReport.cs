@@ -118,6 +118,7 @@ public sealed class StockMovementsReport : IReportDefinition
             _ when wanted.Contains(MovementType.TransferIn)
                    || wanted.Contains(MovementType.TransferOut) => "Transfers",
             _ when wanted.Contains(MovementType.Disposal) => "Breakages and Disposals",
+            _ when wanted.Contains(MovementType.ReturnToSupplier) => "Returns to Supplier",
             _ => "Stock Transactions"
         };
 
@@ -131,6 +132,7 @@ public sealed class StockMovementsReport : IReportDefinition
         MovementType.TransferIn => "Transfer in",
         MovementType.StockTake => "Stock take",
         MovementType.Disposal => "Breakage or disposal",
+        MovementType.ReturnToSupplier => "Returned to supplier",
         _ => type.ToString()
     };
 }

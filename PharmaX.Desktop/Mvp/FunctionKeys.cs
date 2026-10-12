@@ -213,9 +213,9 @@ public static class FunctionKeys
 
     /// <summary>
     /// The caption as words: no mnemonic, no ellipsis, no key already
-    /// written on it, lower case.
+    /// written on it, lower case. PhxIcons reads captions the same way.
     /// </summary>
-    private static string Words(string? caption)
+    internal static string Words(string? caption)
     {
         var text = Written.Replace(caption ?? "", " ")
             .Replace("&", "", StringComparison.Ordinal)

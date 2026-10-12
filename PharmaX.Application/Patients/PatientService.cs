@@ -10,8 +10,12 @@ namespace PharmaX.Application.Patients;
 
 public interface IPatientService
 {
+    /// <param name="skip">Matches passed over first, for a later page.</param>
     Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(string term,
-        CancellationToken ct = default);
+        int take = 100, int skip = 0, CancellationToken ct = default);
+
+    /// How many patients the same search matches, across every page.
+    Task<Result<int>> CountAsync(string term, CancellationToken ct = default);
 
     Task<Result<PatientDto>> GetAsync(Guid id, CancellationToken ct = default);
 
@@ -107,13 +111,14 @@ public sealed class PatientService : IPatientService
     }
 
     public async Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(
-        string term, CancellationToken ct = default)
+        string term, int take = 100, int skip = 0,
+        CancellationToken ct = default)
     {
         // A patient list is clinical information, so reading it needs the
         // dispensing permission rather than the product one.
         _permissions.Demand(PermissionCode.PatientMaintain);
 
-        var patients = await _patients.SearchAsync(term, ct: ct);
+        var patients = await _patients.SearchAsync(term, take, skip, ct);
 
         var allergic = await _patients
             .WithAllergiesAsync(patients.Select(p => p.Id), ct);
@@ -124,6 +129,14 @@ public sealed class PatientService : IPatientService
             .ToList();
 
         return Result<IReadOnlyList<PatientListItemDto>>.Ok(items);
+    }
+
+    public async Task<Result<int>> CountAsync(string term,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.PatientMaintain);
+
+        return Result<int>.Ok(await _patients.CountAsync(term, ct));
     }
 
     public async Task<Result<PatientDto>> GetAsync(Guid id,

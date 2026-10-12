@@ -105,8 +105,9 @@ public interface IProductRepository
         ProductScope scope = ProductScope.All,
         CancellationToken ct = default);
 
+    /// <param name="skip">Matches passed over first, for a later page.</param>
     Task<IReadOnlyList<Product>> SearchAsync(string term, int take = 200,
-        ProductScope scope = ProductScope.All,
+        ProductScope scope = ProductScope.All, int skip = 0,
         CancellationToken ct = default);
 
     /// How many the same term matches altogether, so a list screen can
@@ -168,8 +169,13 @@ public interface IPatientRepository
     /// Active patients matching every word typed: surname, first names,
     /// file number, ID number, membership number or telephone.
     /// </summary>
+    /// <param name="skip">Matches passed over first, for a later page.</param>
     Task<IReadOnlyList<Patient>> SearchAsync(string term, int take = 100,
+                                             int skip = 0,
                                              CancellationToken ct = default);
+
+    /// How many active patients the same search matches, across pages.
+    Task<int> CountAsync(string term, CancellationToken ct = default);
 
     /// <summary>
     /// Files that may be the same person: the same ID number, or the

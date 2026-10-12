@@ -273,7 +273,7 @@ public sealed class InMemoryProductRepository : IProductRepository
                                             && InScope(p, scope)));
 
     public Task<IReadOnlyList<Product>> SearchAsync(string term,
-        int take = 200, ProductScope scope = ProductScope.All,
+        int take = 200, ProductScope scope = ProductScope.All, int skip = 0,
         CancellationToken ct = default)
     {
         IReadOnlyList<Product> found = _products
@@ -282,6 +282,7 @@ public sealed class InMemoryProductRepository : IProductRepository
                 || p.Description.Contains(term,
                     StringComparison.OrdinalIgnoreCase)
                 || p.Code.Contains(term, StringComparison.OrdinalIgnoreCase))
+            .Skip(skip)
             .Take(take)
             .ToList();
 
@@ -397,6 +398,14 @@ public sealed class RecordingStockService : IStockService
         CancellationToken ct = default)
     {
         Dispensings.Add(dispensing.Id);
+        return Task.CompletedTask;
+    }
+
+    public Task ApplyOwedAsync(PharmaX.Domain.Dispensing.Dispensing dispensing,
+        PharmaX.Domain.Dispensing.DispensingLine line,
+        CancellationToken ct = default)
+    {
+        line.GiveOwed(null, DateTime.UtcNow);
         return Task.CompletedTask;
     }
 
@@ -563,6 +572,19 @@ public sealed class InMemoryDispensingRepository : IDispensingRepository
         Add(dispensing);
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>> OwingAsync(
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>>(_items.Values
+            .Where(d => d.Status == PharmaX.Domain.Dispensing.DispensingStatus.Issued
+                        && d.Lines.Any(l => l.Owed != null && l.OwedGivenAtUtc == null))
+            .ToList());
+
+    public Task<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>> InProgressAsync(
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>>(_items.Values
+            .Where(d => d.Status == PharmaX.Domain.Dispensing.DispensingStatus.InProgress)
+            .ToList());
 }
 
 /// <summary>

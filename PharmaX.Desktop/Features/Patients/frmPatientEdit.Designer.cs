@@ -106,10 +106,15 @@ partial class frmPatientEdit
         lblFileNumberValue.Text = "(allocated on save)";
 
         Field(tabIdentity, "&Surname", txtSurname, 1, 260, 200);
+        txtSurname.PlaceholderText = "e.g. Moyo";
         Field(tabIdentity, "&First names", txtFirstNames, 2, 260, 200);
+        txtFirstNames.PlaceholderText = "e.g. Tendai Grace";
         Field(tabIdentity, "&ID number", txtIdNumber, 3, 180, 20);
+        txtIdNumber.PlaceholderText = "e.g. 63-123456 A 42";
         Field(tabIdentity, "&Telephone", txtTelephone, 5, 180, 30);
+        txtTelephone.PlaceholderText = "e.g. 0772 123 456";
         Field(tabIdentity, "&Email", txtEmail, 6, 260, 150);
+        txtEmail.PlaceholderText = "e.g. name@example.com (optional)";
 
         // Where the patient lives. Searched with the telephone number, so
         // two patients of the same name can be told apart, and two lines
@@ -117,6 +122,7 @@ partial class frmPatientEdit
         Field(tabIdentity, "Add&ress", txtAddress, 7, 380, 250);
         txtAddress.AcceptsReturn = true;
         txtAddress.Multiline = true;
+        txtAddress.PlaceholderText = "House number, street and suburb or town";
         txtAddress.ScrollBars = ScrollBars.Vertical;
         txtAddress.Size = new Size(380, 50);
 
@@ -154,6 +160,7 @@ partial class frmPatientEdit
 
         // ---- Clinical ---------------------------------------------------
         Field(tabClinical, "&Weight (kg)", txtWeight, 0, 90, 0);
+        txtWeight.PlaceholderText = "e.g. 70.5";
 
         chkPregnant.AutoSize = true;
         chkPregnant.Location = new Point(280, 22);
@@ -230,6 +237,7 @@ partial class frmPatientEdit
         txtChronicConditions.Location = new Point(150, 220);
         txtChronicConditions.Multiline = true;
         txtChronicConditions.Name = "txtChronicConditions";
+        txtChronicConditions.PlaceholderText = "e.g. Hypertension, type 2 diabetes";
         txtChronicConditions.ScrollBars = ScrollBars.Vertical;
         txtChronicConditions.Size = new Size(420, 70);
 
@@ -244,6 +252,7 @@ partial class frmPatientEdit
         txtNotes.MaxLength = 2000;
         txtNotes.Multiline = true;
         txtNotes.Name = "txtNotes";
+        txtNotes.PlaceholderText = "Anything the next pharmacist should know";
         txtNotes.ScrollBars = ScrollBars.Vertical;
         txtNotes.Size = new Size(420, 70);
 
@@ -262,8 +271,10 @@ partial class frmPatientEdit
         // leaves before the input, and ran into it.
         Field(tabMedicalAid, "Membership &no.", txtMembershipNumber,
               1, 200, 40);
+        txtMembershipNumber.PlaceholderText = "As on the medical aid card";
 
         Field(tabMedicalAid, "&Dependant code", txtDependantCode, 2, 80, 10);
+        txtDependantCode.PlaceholderText = "e.g. 00";
 
         tabMedicalAid.Controls.Add(new Label
         {

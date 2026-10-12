@@ -105,7 +105,7 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
         foreach (DataGridViewRow row in grdItems.Rows)
         {
             if (row.DataBoundItem is ReferenceItemDto item && !item.IsActive)
-                row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
         _suggestions.Offer(items.Select(i =>

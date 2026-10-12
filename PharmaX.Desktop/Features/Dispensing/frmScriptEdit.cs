@@ -52,6 +52,18 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     }
 
     /// Runtime. Resolved by the container.
+    private SearchSuggestions? _prescribers;
+
+    /// "Practice 40525 - 0292..." gives 40525.
+    private static string? PracticeNumber(string? detail)
+    {
+        const string marker = "Practice ";
+        if (detail is null || !detail.StartsWith(marker, StringComparison.Ordinal)) return null;
+
+        var number = detail[marker.Length..].Split(' ')[0];
+        return number.Length > 30 ? number[..30] : number;
+    }
+
     public frmScriptEdit(ScriptEditPresenter presenter,
                          IServiceScopeFactory scopes) : this()
     {
@@ -72,6 +84,18 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         _suggestions.Chosen += (_, chosen) =>
         {
             if (chosen.Value is ProductListItemDto product) AddProduct(product);
+        };
+
+        // The prescriber from the list RSI's doctors came across into:
+        // a few letters of the name or the practice number, and both
+        // boxes are filled. Typing a name not on the list still works.
+        _prescribers = new SearchSuggestions(txtPrescriber, Suggest.Prescribers(scopes));
+        _prescribers.Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is not Domain.Reference.Prescriber prescriber) return;
+
+            txtPrescriber.Text = prescriber.Name;
+            txtPrescriberNumber.Text = PracticeNumber(prescriber.Detail) ?? "";
         };
 
         // After the suggestions, which take Enter first when one is
@@ -150,8 +174,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             : Suggest.ProductDetails(product, withCode: false);
 
         row.Cells["Product"].Style.ForeColor = product is null
-            ? Color.Firebrick
-            : SystemColors.ControlText;
+            ? PhxTheme.ProblemText
+            : PhxTheme.Ink;
     }
 
     /// <summary>

@@ -17,6 +17,8 @@ public partial class frmChangePassword : Form
     public frmChangePassword(IAuthenticationService auth, string username,
                              string currentPassword)
     {
+        Icon = PhxIcons.AppIcon;
+        PhxTheme.Follow(this);
         InitializeComponent();
 
         // A plain Form rather than PhxFormBase, so branded here.

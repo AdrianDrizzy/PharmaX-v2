@@ -270,7 +270,8 @@ public partial class frmPurchaseOrderList : PhxFormBase,
     public string? PromptCancelReason() =>
         frmTextPrompt.Ask(this, "Cancel order",
             "Why is this order being cancelled? The order is kept and "
-            + "marked cancelled; it is never deleted.");
+            + "marked cancelled; it is never deleted.",
+            hint: "e.g. Supplier out of stock");
 
     public event EventHandler? RaiseRequested;
     public event EventHandler? RefreshRequested;

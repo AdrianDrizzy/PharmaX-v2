@@ -1,5 +1,6 @@
 using System.Globalization;
 using PharmaX.Application.Reporting;
+using PharmaX.Desktop.Controls;
 
 namespace PharmaX.Desktop.Mvp;
 
@@ -42,7 +43,8 @@ internal static class GridExport
             Filter = "Excel workbook (*.xlsx)|*.xlsx",
             Title = $"Export {title.ToLowerInvariant()}",
             DefaultExt = "xlsx",
-            AddExtension = true
+            AddExtension = true,
+            InitialDirectory = Downloads
         };
 
         if (save.ShowDialog(owner) != DialogResult.OK) return null;
@@ -58,16 +60,68 @@ internal static class GridExport
         {
             // Most often the workbook is still open in Excel from the last
             // export. Said as that, not as a fault in PharmaX.
-            MessageBox.Show(owner,
+            frmMessage.Show(owner,
                 $"{Path.GetFileName(path)} could not be saved: {ex.Message}"
                 + "\n\nClose it if it is open in Excel, or choose another "
                 + "name, and export again.",
-                owner.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBoxButtons.OK, MessageBoxIcon.Warning, owner.Text);
 
             return null;
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Where an export is offered first: the Downloads folder, as a file
+    /// from a browser lands, or Documents on a profile without one.
+    /// </summary>
+    public static string Downloads
+    {
+        get
+        {
+            var downloads = Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.UserProfile), "Downloads");
+
+            return Directory.Exists(downloads)
+                ? downloads
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        }
+    }
+
+    /// <summary>
+    /// Says where the workbook went and offers to open it or the folder
+    /// it is in, so nobody has to go looking for it.
+    /// </summary>
+    public static void Saved(IWin32Window owner, string path)
+    {
+        var open = new TaskDialogButton("Open file");
+        var folder = new TaskDialogButton("Show in folder");
+
+        var chosen = TaskDialog.ShowDialog(owner, new TaskDialogPage
+        {
+            Caption = "PharmaX",
+            Heading = "Exported",
+            Text = path,
+            Icon = TaskDialogIcon.Information,
+            Buttons = { open, folder, TaskDialogButton.Close }
+        });
+
+        try
+        {
+            if (chosen == open)
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+            else if (chosen == folder)
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // No program for .xlsx on this till: the file is still saved.
+            frmMessage.Show(owner, $"{path} is saved, but could not be opened: "
+                + ex.Message, MessageBoxButtons.OK, MessageBoxIcon.Warning,
+                "PharmaX");
+        }
     }
 
     /// <summary>

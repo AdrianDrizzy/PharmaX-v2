@@ -131,3 +131,31 @@ public sealed class MedicalAidScheme : ReferenceEntry
         string? detail = null) =>
         Init(new MedicalAidScheme(), code, name, detail);
 }
+
+/// <summary>
+/// A doctor or clinic that writes prescriptions, with the practice number
+/// a claim quotes. The dispensary picks the prescriber from this list
+/// rather than typing the name onto every script.
+/// </summary>
+public sealed class Prescriber : ReferenceEntry
+{
+    private Prescriber() { }
+
+    public static Prescriber Create(string code, string name,
+        string? detail = null) =>
+        Init(new Prescriber(), code, name, detail);
+}
+
+/// <summary>
+/// A dosage shorthand and what it means on a label: "TDS" is "three times
+/// a day". Directions typed in shorthand are written out in full before
+/// the pharmacist issues them, so the patient never reads the cipher.
+/// </summary>
+public sealed class DosageCode : ReferenceEntry
+{
+    private DosageCode() { }
+
+    public static DosageCode Create(string code, string meaning,
+        string? detail = null) =>
+        Init(new DosageCode(), code, meaning, detail);
+}

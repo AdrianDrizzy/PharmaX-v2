@@ -7,6 +7,10 @@ public interface IView
     void ShowError(string message);
     void ShowInfo(string message);
     bool Confirm(string question);
+
+    /// A file was exported to path. PhxFormBase offers to open it.
+    void ShowSaved(string path) => ShowInfo("Exported to " + path);
+
     void SetBusy(bool busy);
     void CloseView(bool success);
 }

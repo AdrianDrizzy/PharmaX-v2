@@ -41,6 +41,10 @@ public interface IJournalPoster
     Task PostReceiptAsync(GoodsReceipt receipt,
                           CancellationToken ct = default);
 
+    /// Stock sent back to a supplier: the receipt's entry backwards, at cost.
+    Task PostSupplierReturnAsync(string supplier, Money value,
+                                 CancellationToken ct = default);
+
     /// <summary>
     /// What the drawer was actually short or over by. Posts nothing
     /// where it balanced, which is most days.
@@ -192,6 +196,19 @@ public sealed class JournalPoster : IJournalPoster
         batch.AddLine(LedgerCode.Purchases, receipt.Total, isDebit: true);
         batch.AddLine(LedgerCode.TradeCreditors, receipt.Total,
                       isDebit: false);
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostSupplierReturnAsync(string supplier, Money value,
+        CancellationToken ct = default)
+    {
+        if (!Enabled || value.IsZero) return;
+
+        var batch = await OpenAsync("RTS", $"Returned to {supplier}", ct);
+
+        batch.AddLine(LedgerCode.TradeCreditors, value, isDebit: true);
+        batch.AddLine(LedgerCode.Purchases, value, isDebit: false);
 
         await PostAsync(batch, ct);
     }

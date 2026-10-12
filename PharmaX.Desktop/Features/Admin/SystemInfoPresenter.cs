@@ -35,12 +35,15 @@ public sealed class SystemInfoPresenter : PresenterBase<ISystemInfoView>
     private const string FromTill = "This workstation";
     private const string FromApp = "Running application";
     private const string FromPharmacy = "System console";
+    private const string FromSetup = "System setup, for the whole pharmacy";
+    private readonly Mvp.Branding _branding;
 
     public SystemInfoPresenter(PharmaXOptions options,
         PharmacyProfile pharmacy, IPharmacyDetailsService details,
         IWorkstationSettings settings, IConnectivityMonitor connectivity,
-        ICurrentUser user, IClock clock)
+        ICurrentUser user, IClock clock, Mvp.Branding branding)
     {
+        _branding = branding;
         _options = options;
         _pharmacy = pharmacy;
         _details = details;
@@ -112,7 +115,6 @@ public sealed class SystemInfoPresenter : PresenterBase<ISystemInfoView>
         // The till's own store first, because where it has an opinion it
         // is the one that wins over the installed file.
         var currency = await _settings.GetAsync(WorkstationSettingKey.Currency);
-        var logo = await _settings.GetAsync(WorkstationSettingKey.LogoPath);
         var receipt = await _settings.GetAsync(
             WorkstationSettingKey.ReceiptPrinter);
         var label = await _settings.GetAsync(WorkstationSettingKey.LabelPrinter);
@@ -159,8 +161,8 @@ public sealed class SystemInfoPresenter : PresenterBase<ISystemInfoView>
             label is null ? FromApp : FromTill));
         rows.Add(new("Printing", "Cash drawer", Or(drawer, "Not configured"),
             drawer is null ? FromApp : FromTill));
-        rows.Add(new("Printing", "Logo file", Or(logo, "None set"),
-            logo is null ? FromApp : FromTill));
+        rows.Add(new("Printing", "Logo", _branding.HasLogo ? "Set" : "None set",
+            _branding.HasLogo ? FromSetup : FromApp));
 
         rows.Add(new("Numbering", "Block size (days)",
             Number(_options.Numbering.BlockSizeDays), FromFile));

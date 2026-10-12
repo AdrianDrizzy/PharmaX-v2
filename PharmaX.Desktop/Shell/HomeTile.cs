@@ -18,16 +18,26 @@ internal sealed class HomeTile : Panel
     private readonly Label _title = new();
     private readonly Label _hint = new();
     private readonly string _shortcut;
+    private readonly string _caption;
+    private readonly PhxIcon _icon;
     private bool _hot;
 
+    /// The figure in the top right-hand corner, or null for none.
+    private string? _count;
+
+    private static readonly Font CountFont =
+        new("Segoe UI", 8.25f, FontStyle.Bold);
+
     internal HomeTile(string title, string hint, string menuKey,
-                      string permissionGroup)
+                      string permissionGroup, PhxIcon icon)
     {
         MenuKey = menuKey;
         PermissionGroup = permissionGroup;
         _shortcut = hint;
+        _caption = title;
+        _icon = icon;
 
-        BackColor = Color.White;
+        BackColor = PhxTheme.Card;
         Cursor = Cursors.Hand;
         Margin = new Padding(0, 0, 14, 14);
         Size = new Size(212, 94);
@@ -46,15 +56,18 @@ internal sealed class HomeTile : Panel
         _title.AutoSize = false;
         _title.BackColor = Color.Transparent;
         _title.Font = PhxTheme.Subheading;
-        _title.Location = new Point(16, 18);
-        _title.Size = new Size(180, 26);
+        _title.ForeColor = PhxTheme.Title;
+
+        // Beside the icon, which OnPaint draws in front of it.
+        _title.Location = new Point(62, 18);
+        _title.Size = new Size(138, 26);
         _title.Text = title;
 
         _hint.AutoSize = false;
         _hint.BackColor = Color.Transparent;
         _hint.Font = PhxTheme.Body;
         _hint.ForeColor = PhxTheme.Muted;
-        _hint.Location = new Point(16, 48);
+        _hint.Location = new Point(16, 56);
         _hint.Size = new Size(180, 22);
         _hint.Text = hint;
 
@@ -79,6 +92,18 @@ internal sealed class HomeTile : Panel
 
     internal event EventHandler? Chosen;
 
+    /// <summary>
+    /// Puts a figure in the card's top right-hand corner - how many
+    /// patients are on file, how many scripts are waiting - or takes it
+    /// away. Read out with the card's name.
+    /// </summary>
+    internal void ShowCount(string? count)
+    {
+        _count = string.IsNullOrWhiteSpace(count) ? null : count;
+        AccessibleName = _count is null ? _caption : $"{_caption}, {_count}";
+        Invalidate(true);
+    }
+
     private void Choose()
     {
         if (Enabled) Chosen?.Invoke(this, EventArgs.Empty);
@@ -95,11 +120,30 @@ internal sealed class HomeTile : Panel
             return;
         }
 
+        // Up and down a row, to the card nearest in the row above or
+        // below. Left and right already step card to card.
+        if (e.KeyCode is Keys.Up or Keys.Down && Parent is not null)
+        {
+            var down = e.KeyCode == Keys.Down;
+
+            var next = Parent.Controls.OfType<HomeTile>()
+                .Where(t => t.Visible && t.Enabled
+                            && (down ? t.Top > Top : t.Top < Top))
+                .OrderBy(t => Math.Abs(t.Top - Top))
+                .ThenBy(t => Math.Abs(t.Left - Left))
+                .FirstOrDefault();
+
+            next?.Focus();
+            e.Handled = true;
+            return;
+        }
+
         base.OnKeyDown(e);
     }
 
     protected override bool IsInputKey(Keys keyData) =>
-        keyData is Keys.Enter or Keys.Space || base.IsInputKey(keyData);
+        keyData is Keys.Enter or Keys.Space or Keys.Up or Keys.Down
+        || base.IsInputKey(keyData);
 
     protected override void OnGotFocus(EventArgs e)
     {
@@ -111,7 +155,7 @@ internal sealed class HomeTile : Panel
     {
         base.OnLostFocus(e);
         _hot = false;
-        BackColor = Enabled ? Color.White : PhxTheme.Band;
+        BackColor = Enabled ? PhxTheme.Card : PhxTheme.Band;
         Invalidate();
     }
 
@@ -148,9 +192,7 @@ internal sealed class HomeTile : Panel
         if (hot == _hot) return;
 
         _hot = hot;
-        BackColor = hot && Enabled
-            ? Color.FromArgb(243, 247, 253)
-            : Color.White;
+        BackColor = hot && Enabled ? PhxTheme.Hover : PhxTheme.Card;
 
         Invalidate();
     }
@@ -160,8 +202,8 @@ internal sealed class HomeTile : Panel
         base.OnEnabledChanged(e);
 
         Cursor = Enabled ? Cursors.Hand : Cursors.Default;
-        BackColor = Enabled ? Color.White : PhxTheme.Band;
-        _title.ForeColor = Enabled ? SystemColors.ControlText : PhxTheme.Muted;
+        BackColor = Enabled ? PhxTheme.Card : PhxTheme.Band;
+        _title.ForeColor = Enabled ? PhxTheme.Title : PhxTheme.Muted;
 
         _hint.Text = Enabled ? _shortcut : "Not permitted for this user";
         AccessibleDescription = _hint.Text;
@@ -173,10 +215,90 @@ internal sealed class HomeTile : Panel
         base.OnPaint(e);
         ArgumentNullException.ThrowIfNull(e);
 
-        using var pen = new Pen(_hot && Enabled
-            ? PhxTheme.Accent
-            : PhxTheme.Line);
+        PaintIcon(e.Graphics);
+        if (_count is not null && Enabled) PaintCount(e.Graphics);
 
+        // The card under the mouse is outlined in the highlight, two
+        // pixels wide; a pen that wide straddles its line, so it is drawn
+        // one pixel in to stay inside the card.
+        if (_hot && Enabled)
+        {
+            using var hot = new Pen(PhxTheme.Highlight, 2);
+            e.Graphics.DrawRectangle(hot, 1, 1, Width - 2, Height - 2);
+            return;
+        }
+
+        using var pen = new Pen(PhxTheme.Line);
         e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+    }
+
+    /// <summary>
+    /// The job's icon on a rounded square of the brand's tint, level with
+    /// the title.
+    /// </summary>
+    /// <remarks>
+    /// Sized from the title rather than in pixels, so that it grows with
+    /// the display's scaling exactly as the labels beside it do.
+    /// </remarks>
+    private void PaintIcon(Graphics graphics)
+    {
+        var chip = (int)(_title.Height * 1.3);
+        var box = new Rectangle(_hint.Left,
+            _title.Top + (_title.Height - chip) / 2, chip, chip);
+
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        using (var path = Rounded(box, chip / 4))
+        using (var fill = new SolidBrush(Enabled ? PhxTheme.Selection : PhxTheme.Line))
+            graphics.FillPath(fill, path);
+
+        var glyph = (int)(chip * 0.62);
+
+        graphics.DrawImage(
+            PhxIcons.Image(_icon, glyph, Enabled ? PhxTheme.Title : PhxTheme.Muted),
+            box.X + (chip - glyph) / 2, box.Y + (chip - glyph) / 2, glyph, glyph);
+
+        // The card's one-pixel outline is drawn next, and blurs if smoothed.
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
+    }
+
+    /// <summary>
+    /// The figure as a pill in the brand's colour, tucked into the corner
+    /// above the title so that a long title keeps its room.
+    /// </summary>
+    private void PaintCount(Graphics graphics)
+    {
+        var text = TextRenderer.MeasureText(_count, CountFont);
+        var height = text.Height + 2;
+        var width = Math.Max(height, text.Width + height / 2);
+        var inset = _title.Top / 3;
+
+        var pill = new Rectangle(Width - width - inset * 2, inset, width, height);
+
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        using (var path = Rounded(pill, height / 2))
+        using (var fill = new SolidBrush(PhxTheme.Brand))
+            graphics.FillPath(fill, path);
+
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
+
+        TextRenderer.DrawText(graphics, _count, CountFont, pill, Color.White,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+            | TextFormatFlags.NoPrefix);
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle box,
+                                                                 int radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        var d = radius * 2;
+
+        path.AddArc(box.X, box.Y, d, d, 180, 90);
+        path.AddArc(box.Right - d, box.Y, d, d, 270, 90);
+        path.AddArc(box.Right - d, box.Bottom - d, d, d, 0, 90);
+        path.AddArc(box.X, box.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 }

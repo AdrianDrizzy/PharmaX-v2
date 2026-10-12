@@ -52,6 +52,11 @@ public partial class frmProductList : PhxFormBase, IProductListView
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(IsPickerMode ? false : true);
+        btnPrevious.Click += (_, _) =>
+            PreviousPageRequested?.Invoke(this, EventArgs.Empty);
+        btnNext.Click += (_, _) =>
+            NextPageRequested?.Invoke(this, EventArgs.Empty);
+        btnExport.Click += (_, _) => Export();
 
         // A double click means "this one" in both modes and in both
         // views; which mode it is decides whether that opens the editor
@@ -84,14 +89,41 @@ public partial class frmProductList : PhxFormBase, IProductListView
 
     /// Runtime. Resolved by the container.
     public frmProductList(ProductListPresenter presenter,
-        Application.Security.IPermissionService permissions) : this()
+        Application.Security.IPermissionService permissions,
+        Application.Reporting.IWorkbookWriter workbooks,
+        Application.Abstractions.ICurrentUser user) : this()
     {
         _presenter = presenter;
         _permissions = permissions;
+        _workbooks = workbooks;
+        _user = user;
         _presenter.Attach(this);
     }
 
     private readonly Application.Security.IPermissionService? _permissions;
+    private readonly Application.Reporting.IWorkbookWriter? _workbooks;
+    private readonly Application.Abstractions.ICurrentUser? _user;
+
+    /// <summary>
+    /// The page on screen to a workbook - products or batches, whichever
+    /// view is showing - with the search and the page it came from.
+    /// </summary>
+    private void Export()
+    {
+        if (_workbooks is null || _user is null) return;   // designer
+
+        var grid = BatchView ? grdBatches : grdProducts;
+        var search = txtSearch.Text.Trim();
+
+        var saved = GridExport.Offer(this, _workbooks, grid,
+            BatchView ? "Products and batches" : "Products",
+            $"{(search.Length == 0 ? "All products" : $"\"{search}\"")}, "
+            + lblCount.Text, _user.Username);
+
+        if (saved is not null) ShowSaved(saved);
+        else if (grid.Rows.Count == 0)
+            ShowInfo("There is nothing on the screen to export.");
+    }
 
     /// <summary>
     /// Offered to the people whose save will be accepted. The Add button
@@ -172,7 +204,7 @@ public partial class frmProductList : PhxFormBase, IProductListView
         // find something to sell.
         btnAdd.Visible = false;
         btnEdit.Visible = false;
-
+        btnExport.Visible = false;
 
         if (!string.IsNullOrWhiteSpace(term)) txtSearch.Text = term.Trim();
     }
@@ -260,9 +292,9 @@ public partial class frmProductList : PhxFormBase, IProductListView
                 if (row.DataBoundItem is not ProductRow item) continue;
 
                 if (!item.ListedActive)
-                    row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                    row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
                 else if (item.IsBelowReorderLevel)
-                    row.DefaultCellStyle.BackColor = Color.FromArgb(255, 244, 214);
+                    row.DefaultCellStyle.BackColor = PhxTheme.Attention;
             }
 
             Restore(grdProducts, _keepProduct, null, _scrollProducts);
@@ -318,21 +350,19 @@ public partial class frmProductList : PhxFormBase, IProductListView
 
                 if (!item.ListedActive)
                 {
-                    row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
+                    row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
                     continue;
                 }
 
                 // Already gone off and still on the shelf, which is the one
                 // thing on this grid somebody has to act on today.
                 if (item.IsExpired)
-                    row.DefaultCellStyle.BackColor =
-                        Color.FromArgb(255, 221, 221);
+                    row.DefaultCellStyle.BackColor = PhxTheme.Problem;
 
                 // The same amber the product list uses for a line that needs
                 // attention but is not yet a problem.
                 else if (item.DaysValue is int days && days <= 90)
-                    row.DefaultCellStyle.BackColor =
-                        Color.FromArgb(255, 244, 214);
+                    row.DefaultCellStyle.BackColor = PhxTheme.Attention;
             }
 
             Restore(grdBatches, _keepProduct, _keepBatch, _scrollBatches);
@@ -350,9 +380,44 @@ public partial class frmProductList : PhxFormBase, IProductListView
                     $"{Format.Quantity(g.Sum(r => r.QuantityOnHand))} on hand"))));
     }
 
-    public void ShowCount(int shown, int total) =>
-        lblCount.Text = string.Format(CultureInfo.CurrentCulture,
-            "{0:N0} of {1:N0}", shown, total);
+    public void ShowPage(int page, int pageSize, int shown, int total)
+    {
+        var first = page * pageSize + 1;
+        var pages = Math.Max(1, (total + pageSize - 1) / pageSize);
+
+        lblCount.Text = total == 0
+            ? "No products match"
+            : string.Format(CultureInfo.CurrentCulture,
+                "{0:N0} to {1:N0} of {2:N0}", first, first + shown - 1, total);
+
+        lblPage.Text = string.Format(CultureInfo.CurrentCulture,
+            "Page {0:N0} of {1:N0}", page + 1, pages);
+
+        btnPrevious.Enabled = page > 0;
+        btnNext.Enabled = page + 1 < pages;
+    }
+
+    /// <summary>
+    /// Ctrl+Page Down and Ctrl+Page Up turn the page from anywhere on the
+    /// screen, the grid included, as they do in a spreadsheet.
+    /// </summary>
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        var button = keyData switch
+        {
+            Keys.Control | Keys.PageDown => btnNext,
+            Keys.Control | Keys.PageUp => btnPrevious,
+            _ => null
+        };
+
+        if (button is { Enabled: true })
+        {
+            button.PerformClick();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
 
     public event EventHandler? SearchChanged;
     public event EventHandler? AddRequested;
@@ -361,6 +426,8 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public event EventHandler? ChooseRequested;
     public event EventHandler? ViewModeChanged;
     public event EventHandler? CellEdited;
+    public event EventHandler? NextPageRequested;
+    public event EventHandler? PreviousPageRequested;
 
     private bool _showing;
     private Guid? _keepProduct;

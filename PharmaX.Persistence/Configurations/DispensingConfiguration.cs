@@ -116,6 +116,7 @@ public sealed class DispensingLineConfiguration
         b.Property(x => x.Directions).HasMaxLength(500).IsRequired();
         b.Property(x => x.BatchNumber).HasMaxLength(50);
         b.Property(x => x.Quantity).HasPrecision(18, 3);
+        b.Property(x => x.Owed).HasPrecision(18, 3);
 
         b.ComplexProperty(x => x.TariffAmount, m =>
         {

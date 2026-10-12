@@ -176,17 +176,20 @@ partial class frmFirstRun
         Caption(lblDatabase, "Database", 18, 68);
         txtDatabase.Location = new Point(150, 64);
         txtDatabase.Name = "txtDatabase";
+        txtDatabase.PlaceholderText = "e.g. PharmaX";
         txtDatabase.Size = new Size(200, 23);
         txtDatabase.Text = "PharmaX";
 
         Caption(lblUser, "Username", 18, 104);
         txtUser.Location = new Point(150, 100);
         txtUser.Name = "txtUser";
+        txtUser.PlaceholderText = "e.g. pharmax";
         txtUser.Size = new Size(200, 23);
 
         Caption(lblPassword, "Password", 370, 104);
         txtPassword.Location = new Point(460, 100);
         txtPassword.Name = "txtPassword";
+        txtPassword.PlaceholderText = "Database password";
         txtPassword.Size = new Size(136, 23);
         txtPassword.UseSystemPasswordChar = true;
 
@@ -216,6 +219,7 @@ partial class frmFirstRun
         txtBranchCode.Location = new Point(150, 28);
         txtBranchCode.MaxLength = 10;
         txtBranchCode.Name = "txtBranchCode";
+        txtBranchCode.PlaceholderText = "e.g. 1";
         txtBranchCode.Size = new Size(80, 23);
         txtBranchCode.Text = "1";
 
@@ -223,6 +227,7 @@ partial class frmFirstRun
         txtTillNumber.Location = new Point(360, 28);
         txtTillNumber.MaxLength = 10;
         txtTillNumber.Name = "txtTillNumber";
+        txtTillNumber.PlaceholderText = "e.g. 2";
         txtTillNumber.Size = new Size(80, 23);
         txtTillNumber.Text = "1";
 
@@ -248,6 +253,7 @@ partial class frmFirstRun
         txtTradingName.Location = new Point(150, 28);
         txtTradingName.MaxLength = 100;
         txtTradingName.Name = "txtTradingName";
+        txtTradingName.PlaceholderText = "e.g. Main Street Pharmacy";
         txtTradingName.Size = new Size(290, 23);
 
         Caption(lblCurrency, "Currency", 18, 68);
@@ -260,6 +266,7 @@ partial class frmFirstRun
         txtVatNumber.Location = new Point(150, 100);
         txtVatNumber.MaxLength = 30;
         txtVatNumber.Name = "txtVatNumber";
+        txtVatNumber.PlaceholderText = "e.g. 10012345 (optional)";
         txtVatNumber.Size = new Size(290, 23);
 
         grpPharmacy.Controls.AddRange(new Control[]

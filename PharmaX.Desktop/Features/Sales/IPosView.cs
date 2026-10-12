@@ -77,4 +77,12 @@ public interface IPosView : Mvp.IView
     event EventHandler? QuotationRequested;     // F10
     event EventHandler? ReprintRequested;       // F12
     event EventHandler? CloseRequested;         // F7
+    event EventHandler? LockRequested;          // F1
+    event EventHandler? NoSaleRequested;        // F11
+
+    /// Why the drawer is being opened without a sale; null to cancel.
+    string? PromptNoSaleReason();
+
+    /// Holds the till until the operator, or a supervisor, signs in.
+    void PromptUnlock(string username);
 }

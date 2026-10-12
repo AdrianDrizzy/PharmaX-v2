@@ -49,6 +49,7 @@ public static class ScreenAccess
                 p.Has(PermissionCode.ScriptDispense)
                 && p.Has(PermissionCode.PatientMaintain),
             ["labels"] = p => p.Has(PermissionCode.ScriptDispense),
+            ["to-follow"] = p => p.Has(PermissionCode.ScriptDispense),
 
             // Priced by whoever captures or dispenses scripts.
             ["dispensary-quote"] = p =>
@@ -60,6 +61,8 @@ public static class ScreenAccess
                 && p.Has(PermissionCode.PatientMaintain),
             ["quotation"] = p => p.Has(PermissionCode.SaleCreate),
             ["schemes"] = p => p.Has(PermissionCode.ReferenceMaintain),
+            ["prescribers"] = p => p.Has(PermissionCode.ReferenceMaintain),
+            ["dosage-codes"] = p => p.Has(PermissionCode.ReferenceMaintain),
             ["drug-returns"] = p =>
                 p.Has(PermissionCode.ScriptDispense) && MayRefund(p),
 
@@ -88,10 +91,13 @@ public static class ScreenAccess
             // permission (PresetCatalogue).
             ["stock"] = p => p.Has(PermissionCode.ReportOperational),
             ["stock-adjust"] = p => p.Has(PermissionCode.StockTakePost),
+            ["supplier-return"] = p => p.Has(PermissionCode.StockTakePost),
+            ["move-stock"] = p => p.Has(PermissionCode.StockTakePost),
             ["transfers"] = p => p.Has(PermissionCode.ReportOperational),
             ["breakages"] = p => p.Has(PermissionCode.ReportOperational),
             ["expired-stock"] = p => p.Has(PermissionCode.ReportOperational),
             ["price-changes"] = p => p.Has(PermissionCode.ReportManagement),
+            ["mass-price"] = p => p.Has(PermissionCode.PriceChange),
             ["vat-codes"] = p => p.Has(PermissionCode.ReportFinancial),
             ["transaction-types"] = p =>
                 p.Has(PermissionCode.ReportOperational),
@@ -112,6 +118,12 @@ public static class ScreenAccess
                 PermissionCode.ReportFinancial,
                 PermissionCode.ReportClinical),
 
+            // The old system's history holds patients' prescriptions as
+            // well as takings, so it needs both a management and a
+            // clinical reader.
+            ["rsi-history"] = p => p.Has(PermissionCode.ReportManagement)
+                || p.Has(PermissionCode.ReportClinical),
+
             // Stocktake: counting is not posting.
             ["stocktake-new"] = p => p.Has(PermissionCode.StockTakeCapture),
             ["stocktake-capture"] = p =>
@@ -124,6 +136,8 @@ public static class ScreenAccess
             ["users"] = p => p.Has(PermissionCode.UserRoleAssign),
             ["branches"] = p => p.Has(PermissionCode.SettingsChange),
             ["system-setup"] = p => p.Has(PermissionCode.SettingsChange),
+            ["rsi-import"] = p => p.Has(PermissionCode.SettingsChange),
+            ["backup"] = p => p.Has(PermissionCode.SettingsChange),
             ["system-console"] = p => p.Has(PermissionCode.SettingsChange),
             ["control-variables"] = p =>
                 p.Has(PermissionCode.SettingsChange)

@@ -86,7 +86,7 @@ public partial class frmTrialBalance : PhxFormBase, ITrialBalanceView
             balance.IsBalanced ? "in balance" : "OUT OF BALANCE");
 
         lblTotals.ForeColor = balance.IsBalanced
-            ? PhxTheme.Accent
+            ? PhxTheme.Title
             : PhxTheme.ProblemText;
     }
 
@@ -181,6 +181,6 @@ public partial class frmTrialBalance : PhxFormBase, ITrialBalanceView
             return;
         }
 
-        ShowInfo($"Exported to {saved}");
+        ShowSaved(saved);
     }
 }
