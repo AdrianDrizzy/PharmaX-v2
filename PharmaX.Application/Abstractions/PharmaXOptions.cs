@@ -49,6 +49,10 @@ public sealed class PharmacyOptions
 
     /// The number the pharmacy takes messages on, where it has one.
     public string WhatsApp { get; init; } = "";
+
+    /// The logo chosen when PharmaX was set up, or blank. Becomes the
+    /// pharmacy's at the first sign-in unless it already has one.
+    public string LogoPath { get; init; } = "";
 }
 
 public sealed class WorkstationOptions

@@ -146,7 +146,7 @@ public class AuthenticationServiceTests
     {
         var sut = new AuthServiceBuilder().Build();
 
-        (await sut.ChangePasswordAsync("cashier", "Correct#1", "short"))
+        (await sut.ChangePasswordAsync("cashier", "Correct#1", "abc"))
             .Error.Code.Should().Be("SEC-004");
 
         (await sut.ChangePasswordAsync("cashier", "Correct#1", "Correct#1"))

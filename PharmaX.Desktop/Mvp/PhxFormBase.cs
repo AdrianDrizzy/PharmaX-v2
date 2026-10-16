@@ -376,6 +376,61 @@ public class PhxFormBase : Form, IView
             _ => (text, stopped ? PhxTheme.Problem : PhxTheme.Information,
                   true)
         };
+
+        // Tall enough for the words to wrap onto a second line on a
+        // narrow dialog rather than being cut off along the bottom.
+        _offlineBanner.Height = TextRenderer.MeasureText(_offlineBanner.Text,
+                _offlineBanner.Font, new Size(Math.Max(ClientSize.Width - 8, 1), 0),
+                TextFormatFlags.WordBreak).Height
+            + _offlineBanner.Padding.Vertical;
+
+        MakeRoomForBanner();
+    }
+
+    // How far this screen's own controls have been moved down to clear
+    // the banner.
+    private int _bannerRoom;
+
+    /// <summary>
+    /// Moves the controls the designer placed by position down, out from
+    /// under the banner, while it shows, and back up once it has gone.
+    /// </summary>
+    /// <remarks>
+    /// Docking moves only docked controls, and most dialogs place theirs
+    /// by position, so they sat on top of the banner and hid it: on the
+    /// sign-in window all that showed of "... when the host returns" was
+    /// "urns", in a grey box in the corner. Each control is pinned to the
+    /// top for the move and anchored as it was afterwards, so one anchored
+    /// to the bottom is not moved a second time when the window grows.
+    /// </remarks>
+    private void MakeRoomForBanner()
+    {
+        var wanted = _offlineBanner is { Visible: true } banner ? banner.Height : 0;
+        var by = wanted - _bannerRoom;
+        if (by == 0) return;
+
+        var placed = Controls.Cast<Control>()
+            .Where(c => c != _offlineBanner && c.Dock == DockStyle.None)
+            .ToList();
+
+        if (placed.Count == 0) return;
+
+        var anchors = placed.Select(c => c.Anchor).ToList();
+
+        SuspendLayout();
+        foreach (var control in placed)
+        {
+            control.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            control.Top += by;
+        }
+
+        if (WindowState == FormWindowState.Normal)
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + by);
+
+        for (var i = 0; i < placed.Count; i++) placed[i].Anchor = anchors[i];
+        ResumeLayout(true);
+
+        _bannerRoom = wanted;
     }
 
     /// <summary>

@@ -56,7 +56,7 @@ public partial class frmProductList : PhxFormBase, IProductListView
             PreviousPageRequested?.Invoke(this, EventArgs.Empty);
         btnNext.Click += (_, _) =>
             NextPageRequested?.Invoke(this, EventArgs.Empty);
-        btnExport.Click += (_, _) => Export();
+        btnExport.Click += (_, _) => _presenter?.ExportAll(Export);
 
         // A double click means "this one" in both modes and in both
         // views; which mode it is decides whether that opens the editor
@@ -105,24 +105,34 @@ public partial class frmProductList : PhxFormBase, IProductListView
     private readonly Application.Abstractions.ICurrentUser? _user;
 
     /// <summary>
-    /// The page on screen to a workbook - products or batches, whichever
-    /// view is showing - with the search and the page it came from.
+    /// Every product the search matches to a workbook - not only the page
+    /// on screen - as products or batches, whichever view is showing, in
+    /// the columns the grid shows.
     /// </summary>
-    private void Export()
+    private void Export(IReadOnlyList<object> rows)
     {
         if (_workbooks is null || _user is null) return;   // designer
 
         var grid = BatchView ? grdBatches : grdProducts;
         var search = txtSearch.Text.Trim();
 
+        // In the shape the grid binds, so each column reads as on screen.
+        rows = rows.Select(r => r switch
+        {
+            ProductListItemDto p => (object)ProductRow.From(p),
+            ProductBatchListItemDto b => BatchRow.From(b),
+            _ => r
+        }).ToList();
+
         var saved = GridExport.Offer(this, _workbooks, grid,
             BatchView ? "Products and batches" : "Products",
-            $"{(search.Length == 0 ? "All products" : $"\"{search}\"")}, "
-            + lblCount.Text, _user.Username);
+            string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0}, {1:N0} rows",
+                search.Length == 0 ? "All products" : $"\"{search}\"", rows.Count),
+            _user.Username, rows);
 
         if (saved is not null) ShowSaved(saved);
-        else if (grid.Rows.Count == 0)
-            ShowInfo("There is nothing on the screen to export.");
+        else if (rows.Count == 0)
+            ShowInfo("There is nothing to export.");
     }
 
     /// <summary>

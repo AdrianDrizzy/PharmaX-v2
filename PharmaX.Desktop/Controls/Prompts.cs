@@ -196,7 +196,7 @@ public sealed class frmTextPrompt : Form
     private readonly TextBox _input = new();
 
     private frmTextPrompt(string title, string prompt, string? initial,
-                          string? hint)
+                          string? hint, bool secret)
     {
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
@@ -227,6 +227,7 @@ public sealed class frmTextPrompt : Form
         _input.Size = new Size(400, 23);
         _input.Text = initial ?? "";
         _input.PlaceholderText = hint ?? "Type here, then press Enter";
+        _input.UseSystemPasswordChar = secret;
 
         var ok = new Button
         {
@@ -273,15 +274,20 @@ public sealed class frmTextPrompt : Form
     /// Shown in the empty box: an example of a good answer, such as
     /// "e.g. Customer changed their mind".
     /// </param>
+    /// <param name="secret">
+    /// Masked, and returned exactly as typed: an existing password asked
+    /// for once, where typing it twice would prove nothing.
+    /// </param>
     public static string? Ask(IWin32Window owner, string title,
                               string prompt, string? initial = null,
-                              string? hint = null)
+                              string? hint = null, bool secret = false)
     {
-        using var dialog = new frmTextPrompt(title, prompt, initial, hint);
+        using var dialog = new frmTextPrompt(title, prompt, initial, hint,
+                                             secret);
 
-        return dialog.ShowDialog(owner) == DialogResult.OK
-            ? dialog._input.Text.Trim()
-            : null;
+        return dialog.ShowDialog(owner) != DialogResult.OK ? null
+            : secret ? dialog._input.Text
+            : dialog._input.Text.Trim();
     }
 }
 
@@ -534,28 +540,38 @@ public sealed class frmChoicePrompt : Form
 {
     private readonly ListBox _list = new();
 
+    /// <param name="many">
+    /// Several may be picked, with Ctrl and Shift as in any Windows list,
+    /// and the list is wider and taller for rows that say more.
+    /// </param>
     private frmChoicePrompt(string title, string prompt,
-                            IEnumerable<string> choices)
+                            IEnumerable<string> choices, bool many = false)
     {
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
+
+        var width = many ? 640 : 400;
+        var height = many ? 320 : 140;
+
         var label = new Label
         {
             AutoSize = false,
             Location = new Point(16, 16),
-            Size = new Size(400, 20),
+            Size = new Size(width, 20),
             Text = prompt
         };
 
         _list.Location = new Point(16, 42);
-        _list.Size = new Size(400, 140);
+        _list.Size = new Size(width, height);
+        _list.HorizontalScrollbar = true;
+        _list.SelectionMode = many ? SelectionMode.MultiExtended : SelectionMode.One;
         _list.Items.AddRange(choices.Cast<object>().ToArray());
         if (_list.Items.Count > 0) _list.SelectedIndex = 0;
 
         var ok = new Button
         {
             DialogResult = DialogResult.OK,
-            Location = new Point(260, 196),
+            Location = new Point(width - 140, height + 56),
             Size = new Size(75, 28),
             Text = "OK"
         };
@@ -563,7 +579,7 @@ public sealed class frmChoicePrompt : Form
         var cancel = new Button
         {
             DialogResult = DialogResult.Cancel,
-            Location = new Point(341, 196),
+            Location = new Point(width - 59, height + 56),
             Size = new Size(75, 28),
             Text = "Cancel"
         };
@@ -580,12 +596,29 @@ public sealed class frmChoicePrompt : Form
 
         AcceptButton = ok;
         CancelButton = cancel;
-        ClientSize = new Size(432, 238);
+        ClientSize = new Size(width + 32, height + 98);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
         Text = WindowTitles.Brand(title);
+    }
+
+    /// The ones picked, in list order; empty if cancelled.
+    public static IReadOnlyList<TValue> AskMany<TValue>(IWin32Window owner,
+        string title, string prompt, IReadOnlyList<(string Text, TValue Value)> choices)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+
+        using var dialog = new frmChoicePrompt(title, prompt,
+            choices.Select(c => c.Text), many: true);
+
+        if (dialog.ShowDialog(owner) != DialogResult.OK) return Array.Empty<TValue>();
+
+        return dialog._list.SelectedIndices.Cast<int>()
+            .Where(i => i < choices.Count)
+            .Select(i => choices[i].Value)
+            .ToList();
     }
 
     public static TValue? Ask<TValue>(IWin32Window owner, string title,

@@ -178,7 +178,7 @@ public sealed class UserService : IUserService
         var user = await _users.GetAsync(id, ct);
         if (user is null) return Result.Fail("SEC-020", "User not found.");
 
-        if (PasswordPolicy.Refuse(newPassword, user.Username) is Error weak)
+        if (PasswordPolicy.Refuse(newPassword) is Error weak)
             return Result.Fail(weak.Code, weak.Message);
 
         user.ChangeCredential(_hasher.Hash(newPassword), _clock.UtcNow);
@@ -300,8 +300,7 @@ public sealed class UserService : IUserService
                 + "on every label they dispense.");
 
         if (initialPassword is not null
-            && PasswordPolicy.Refuse(initialPassword, edit.Username)
-                is Error weak)
+            && PasswordPolicy.Refuse(initialPassword) is Error weak)
             return weak;
 
         return null;

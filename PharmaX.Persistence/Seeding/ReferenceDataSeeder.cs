@@ -144,22 +144,59 @@ public sealed class ReferenceDataSeeder
         }
     }
 
+    /// The first administrator's sign-in, as installed.
+    public const string AdministratorUsername = "admin";
+    private const string AdministratorPassword = "ChangeMe#1";
+
     private async Task SeedAdministratorAsync(CancellationToken ct)
     {
         if (await _db.Users.AnyAsync(ct)) return;
 
-        var hash = _hasher.Hash("ChangeMe#1");
+        _db.Users.Add(NewAdministrator());
+    }
 
+    private User NewAdministrator()
+    {
         var admin = User.Create(
-            username: "admin",
+            username: AdministratorUsername,
             displayName: "Initial Administrator",
-            credential: hash,
+            credential: _hasher.Hash(AdministratorPassword),
             mustChangePassword: true);      // enforced at first login
 
         admin.AssignRole(Role.Standard.Administrator);
         admin.SetDiscountLimit(100m);
+        return admin;
+    }
 
-        _db.Users.Add(admin);
+    /// <summary>
+    /// Puts the first administrator back as installed: the starting
+    /// password, to be changed at the next sign-in, unlocked, active and
+    /// an administrator. Made again if it has gone.
+    /// </summary>
+    /// <remarks>
+    /// For an owner locked out with nobody else who can reset a password:
+    /// <c>PharmaX.Desktop.exe --reset-admin</c>, run at the machine.
+    /// </remarks>
+    public async Task ResetAdministratorAsync(CancellationToken ct = default)
+    {
+        var admin = await _db.Users.FirstOrDefaultAsync(
+            u => u.Username == AdministratorUsername, ct);
+
+        if (admin is null)
+        {
+            _db.Users.Add(NewAdministrator());
+        }
+        else
+        {
+            admin.ChangeCredential(_hasher.Hash(AdministratorPassword),
+                                   DateTime.UtcNow);
+            admin.RequirePasswordChange();
+            admin.Unlock();
+            admin.Reactivate();
+            admin.AssignRole(Role.Standard.Administrator);
+        }
+
+        await _db.SaveChangesAsync(ct);
     }
 
     /// <summary>

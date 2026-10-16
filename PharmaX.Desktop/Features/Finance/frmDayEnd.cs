@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Finance;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Finance;
@@ -243,7 +244,7 @@ public partial class frmDayEnd : PhxFormBase
         }
 
         _batches = result.Value;
-        grdBatches.DataSource = _batches.ToList();
+        GridPager.Attach(grdBatches).Show(_batches);
         ShowSelectedLines();
     }
 
@@ -267,7 +268,7 @@ public partial class frmDayEnd : PhxFormBase
     {
         if (Selected() is not DayEndJournalBatchDto batch)
         {
-            grdLines.DataSource = null;
+            GridPager.Attach(grdLines).Show(Array.Empty<DayEndJournalLineDto>());
             lblBalance.Text = "";
             btnPost.Enabled = false;
             btnExport.Enabled = false;
@@ -275,7 +276,7 @@ public partial class frmDayEnd : PhxFormBase
             return;
         }
 
-        grdLines.DataSource = batch.Lines.ToList();
+        GridPager.Attach(grdLines).Show(batch.Lines);
 
         lblBalance.Text = batch.IsBalanced
             ? $"Debits {Format.Amount(batch.TotalDebits)} = credits "

@@ -55,6 +55,26 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
 
     public override Task InitialiseAsync() => LoadAsync();
 
+    /// <summary>
+    /// Every product the search matches, in the view on screen, for an
+    /// export: the grid holds only the page.
+    /// </summary>
+    internal void ExportAll(Action<IReadOnlyList<object>> export) =>
+        Enqueue(() => GuardAsync(async () =>
+        {
+            if (View.BatchView)
+            {
+                var batches = await _products.SearchBatchesAsync(View.SearchText, take: int.MaxValue);
+                if (batches.IsFailure) View.ShowError(batches.Error.Message);
+                else export(batches.Value.Items.ToList<object>());
+                return;
+            }
+
+            var products = await _products.SearchAsync(View.SearchText, take: int.MaxValue);
+            if (products.IsFailure) View.ShowError(products.Error.Message);
+            else export(products.Value.Items.ToList<object>());
+        }));
+
     /// Products to a page. Enough to fill a tall screen, few enough that
     /// a page of a 50,000-line catalogue comes back at once.
     internal const int PageSize = 100;

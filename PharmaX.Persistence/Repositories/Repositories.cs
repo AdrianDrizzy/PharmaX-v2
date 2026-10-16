@@ -832,7 +832,7 @@ public sealed class GoodsReceiptRepository : IGoodsReceiptRepository
             .Include(r => r.Lines)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
-    public async Task<IReadOnlyList<GoodsReceipt>> RecentAsync(int take = 100,
+    public async Task<IReadOnlyList<GoodsReceipt>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default) =>
         await _db.GoodsReceipts
             .AsNoTracking()
@@ -877,7 +877,7 @@ public sealed class StocktakeRepository : IStocktakeRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<IReadOnlyList<Stocktake>> RecentAsync(int take = 50,
+    public async Task<IReadOnlyList<Stocktake>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default) =>
         await _db.Stocktakes
             .AsNoTracking()
@@ -904,7 +904,7 @@ public sealed class ReturnRepository : IReturnRepository
             .Include(r => r.Refunds)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
-    public async Task<IReadOnlyList<SaleReturn>> RecentAsync(int take = 100,
+    public async Task<IReadOnlyList<SaleReturn>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default) =>
         await _db.SaleReturns
             .AsNoTracking()
@@ -1155,7 +1155,7 @@ public sealed class AccountRepository : IAccountRepository
             .FirstOrDefaultAsync(a => a.AccountNumber == accountNumber, ct);
 
     public async Task<IReadOnlyList<Account>> SearchAsync(string term,
-        int take = 100, CancellationToken ct = default)
+        int take = int.MaxValue, CancellationToken ct = default)
     {
         var query = _db.Accounts.AsNoTracking();
 

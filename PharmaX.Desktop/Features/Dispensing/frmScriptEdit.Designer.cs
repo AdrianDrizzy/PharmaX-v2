@@ -14,6 +14,7 @@ partial class frmScriptEdit
     private DataGridView grdItems = null!;
     private Button btnAddItem = null!;
     private Button btnRemoveItem = null!;
+    private Button btnFromHistory = null!;
     private Button btnSave = null!;
     private Button btnCancel = null!;
 
@@ -42,6 +43,8 @@ partial class frmScriptEdit
         btnAddItem.Name = "btnAddItem";
         btnRemoveItem = new Button();
         btnRemoveItem.Name = "btnRemoveItem";
+        btnFromHistory = new Button();
+        btnFromHistory.Name = "btnFromHistory";
         btnSave = new Button();
         btnSave.Name = "btnSave";
         btnCancel = new Button();
@@ -180,6 +183,13 @@ partial class frmScriptEdit
         btnRemoveItem.Text = "Re&move";
         btnRemoveItem.UseVisualStyleBackColor = true;
 
+        // What the patient has had before - imported history included -
+        // picked onto this script and changed here like any other line.
+        btnFromHistory.Location = new Point(342, 20 + 6 * 34 + 158);
+        btnFromHistory.Size = new Size(150, 26);
+        btnFromHistory.Text = "From &history...";
+        btnFromHistory.UseVisualStyleBackColor = true;
+
         btnSave.Location = new Point(804, 20 + 6 * 34 + 196);
         btnSave.Size = new Size(80, 30);
         btnSave.Text = "&Save";
@@ -199,7 +209,7 @@ partial class frmScriptEdit
         {
             lblPatient, dtpPrescribedOn, numRepeats, chkHasValidUntil,
             dtpValidUntil, txtFindProduct, grdItems, btnAddItem,
-            btnRemoveItem, btnSave, btnCancel
+            btnRemoveItem, btnFromHistory, btnSave, btnCancel
         });
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;

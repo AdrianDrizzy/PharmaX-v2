@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using PharmaX.Application.Reporting;
 using PharmaX.Desktop.Controls;
@@ -28,14 +29,22 @@ internal static class GridExport
     /// null if the operator thought better of it or there is nothing on
     /// the grid to send.
     /// </summary>
+    /// <param name="rows">
+    /// Every row the list holds, where the screen pages it from the
+    /// database and the grid has only the page on screen. Left out, the
+    /// grid's own pager has them all, or the grid itself does.
+    /// </param>
     public static string? Offer(Form owner, IWorkbookWriter writer,
-        DataGridView grid, string title, string parameters, string username)
+        DataGridView grid, string title, string parameters, string username,
+        IReadOnlyList<object>? rows = null)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(grid);
 
-        if (grid.Rows.Count == 0) return null;
+        rows ??= GridPager.Of(grid)?.All;
+
+        if ((rows?.Count ?? grid.Rows.Count) == 0) return null;
 
         using var save = new SaveFileDialog
         {
@@ -53,7 +62,7 @@ internal static class GridExport
 
         try
         {
-            writer.WriteTo(Build(grid, title, parameters, username), path);
+            writer.WriteTo(Build(grid, title, parameters, username, rows), path);
         }
         catch (Exception ex) when (ex is IOException
                                        or UnauthorizedAccessException)
@@ -140,8 +149,13 @@ internal static class GridExport
     /// The grid as a report result: its visible columns, its rows, and
     /// the provenance line every other export in PharmaX carries.
     /// </summary>
+    /// <remarks>
+    /// Every row of the list where there are more than the page on
+    /// screen: each read through the column's bound property, or for a
+    /// grid filled a row at a time, by the column's position.
+    /// </remarks>
     internal static ReportResult Build(DataGridView grid, string title,
-        string parameters, string username)
+        string parameters, string username, IReadOnlyList<object>? all = null)
     {
         var columns = grid.Columns
             .Cast<DataGridViewColumn>()
@@ -162,7 +176,25 @@ internal static class GridExport
             .ToList();
 
         var rows = new List<IReadOnlyDictionary<string, object?>>(
-            grid.Rows.Count);
+            all?.Count ?? grid.Rows.Count);
+
+        if (all is not null)
+        {
+            foreach (var item in all)
+            {
+                var values = new Dictionary<string, object?>(StringComparer.Ordinal);
+                var properties = item is object?[] ? null : TypeDescriptor.GetProperties(item);
+
+                foreach (var column in columns)
+                    values[column.Name] = item is object?[] cells
+                        ? column.Index < cells.Length ? cells[column.Index] : null
+                        : properties?[column.DataPropertyName]?.GetValue(item);
+
+                rows.Add(values);
+            }
+
+            return Result(rows, "Every row listed, not only the page on screen");
+        }
 
         foreach (DataGridViewRow row in grid.Rows)
         {
@@ -178,19 +210,20 @@ internal static class GridExport
             rows.Add(values);
         }
 
-        return new ReportResult(
+        // Said plainly: this is the screen at the moment the button was
+        // pressed, not a query run against the host.
+        return Result(rows, "As shown on screen");
+
+        ReportResult Result(List<IReadOnlyDictionary<string, object?>> data, string currency) => new(
             Title: title,
             Columns: headings,
-            Rows: rows,
+            Rows: data,
             Totals: new Dictionary<string, object?>(StringComparer.Ordinal),
             Provenance: new ReportProvenance(
                 RunByUsername: username,
                 RunAtLocal: DateTime.Now,
                 ParameterSummary: parameters,
-
-                // Said plainly: this is the screen at the moment the
-                // button was pressed, not a query run against the host.
-                DataCurrency: "As shown on screen"));
+                DataCurrency: currency));
     }
 
     private static string SuggestedName(string title)

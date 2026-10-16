@@ -36,6 +36,10 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
+
+            // A new search opens on its first matches, not the page the
+            // last one was left on.
+            GridPager.Of(grdItems)?.Restart();
             SearchChanged?.Invoke(this, EventArgs.Empty);
         };
 
@@ -100,7 +104,7 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     {
         ArgumentNullException.ThrowIfNull(items);
 
-        grdItems.DataSource = items.ToList();
+        GridPager.Attach(grdItems).Show(items);
 
         foreach (DataGridViewRow row in grdItems.Rows)
         {

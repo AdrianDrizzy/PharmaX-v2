@@ -57,14 +57,20 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
             _debounce.Start();
         };
 
+        // A new search, or owing only, opens on its first matches, not the
+        // page the last list was left on.
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
+            GridPager.Of(_grid)?.Restart();
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         };
 
         _owingOnly.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(_grid)?.Restart();
             RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         _open.Click += (_, _) => OpenRequested?.Invoke(this, EventArgs.Empty);
 
@@ -131,7 +137,7 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     {
         ArgumentNullException.ThrowIfNull(accounts);
 
-        _grid.DataSource = accounts.Select(AccountRow.From).ToList();
+        GridPager.Attach(_grid).Show(accounts.Select(AccountRow.From));
 
         foreach (DataGridViewRow row in _grid.Rows)
         {

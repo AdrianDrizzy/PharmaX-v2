@@ -105,6 +105,14 @@ public class CashDrawerTests
         (await drawer.IsAvailableAsync()).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task No_drawer_hangs_off_a_printer_on_another_computer()
+    {
+        Setting(WorkstationSettingKey.CashDrawerPrinter, @"\\TILL-2\EPSON");
+
+        (await Build(portOf: _ => "USB001").DrawerPrinterAsync()).Should().BeNull();
+    }
+
     /// <remarks>
     /// A settings store that will not answer is a till that cannot open
     /// its drawer, not a till that cannot sell (POS-014).

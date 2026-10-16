@@ -158,6 +158,7 @@ public partial class frmMain : PhxFormBase, IMainView
         ["manufacturers"] = PhxIcon.BuildingFactory, ["products"] = PhxIcon.Package,
         ["stock"] = PhxIcon.Stack, ["stock-adjust"] = PhxIcon.Adjustments,
         ["supplier-return"] = PhxIcon.ArrowBackUp, ["move-stock"] = PhxIcon.ArrowsExchange,
+        ["prepack"] = PhxIcon.Package,
         ["transfers"] = PhxIcon.ArrowsExchange, ["breakages"] = PhxIcon.TrashX,
         ["expired-stock"] = PhxIcon.CalendarX, ["price-changes"] = PhxIcon.Tags, ["mass-price"] = PhxIcon.Percentage,
         ["accounts"] = PhxIcon.Calculator, ["trial-balance"] = PhxIcon.Scale,
@@ -170,9 +171,8 @@ public partial class frmMain : PhxFormBase, IMainView
         ["admin"] = PhxIcon.Settings, ["vat-codes"] = PhxIcon.Percentage,
         ["users"] = PhxIcon.Users, ["branches"] = PhxIcon.Building,
         ["transaction-types"] = PhxIcon.ListDetails, ["system-setup"] = PhxIcon.Palette,
-        ["system-console"] = PhxIcon.Terminal, ["rsi-import"] = PhxIcon.DatabaseImport,
-        ["backup"] = PhxIcon.DatabaseExport,
-        ["rsi-history"] = PhxIcon.Archive, ["to-follow"] = PhxIcon.Clock,
+        ["system-console"] = PhxIcon.Terminal, ["data-import"] = PhxIcon.DatabaseImport,
+        ["backup"] = PhxIcon.DatabaseExport, ["to-follow"] = PhxIcon.Clock,
         ["control-variables"] = PhxIcon.AdjustmentsHorizontal,
         ["about"] = PhxIcon.InfoCircle
     };
@@ -416,7 +416,7 @@ public partial class frmMain : PhxFormBase, IMainView
         ["logoff"] = "sign out log out shift",
         ["schemes"] = "medical aid",
         ["to-follow"] = "owed owing balance",
-        ["rsi-history"] = "old history"
+        ["data-import"] = "import load csv excel spreadsheet change-over"
     };
 
     private SearchSuggestions? _goTo;

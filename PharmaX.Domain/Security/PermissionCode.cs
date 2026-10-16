@@ -42,6 +42,17 @@ public static class PermissionCode
     public const string ScriptDispense = "dsp.script.dispense";
 
     /// <summary>
+    /// Correcting a dispensing after it was issued: the quantity handed
+    /// over and the amount charged for an item.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission because it moves stock and changes what the
+    /// patient owes after the labels are on the bottles. Changing an item
+    /// still being dispensed is part of dispensing it.
+    /// </remarks>
+    public const string DispensingAmend = "dsp.dispensing.amend";
+
+    /// <summary>
     /// Finding, adding and editing patient files.
     /// </summary>
     public const string PatientMaintain = "dsp.patient.maintain";
@@ -76,6 +87,17 @@ public static class PermissionCode
     /// </summary>
     public const string StockTakeCapture = "inv.stocktake.capture";
     public const string StockTakePost = "inv.stocktake.post";
+
+    /// <summary>
+    /// Counting bulk stock into pre-packs: a tin of a thousand into
+    /// twenty-five packs of forty, each its own item on the shelf.
+    /// </summary>
+    /// <remarks>
+    /// Apart from inv.stocktake.post, which every other stock adjustment
+    /// needs: pre-packing is the dispensary's daily work, and posting a
+    /// stocktake is not.
+    /// </remarks>
+    public const string StockPrepack = "inv.stock.prepack";
     public const string SupplierMaintain = "inv.supplier.maintain";
 
     /// <summary>
@@ -115,7 +137,7 @@ public static class PermissionCode
         ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,
-        UserRoleAssign, SettingsChange
+        UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack
     };
 }
 

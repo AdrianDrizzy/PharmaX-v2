@@ -41,6 +41,8 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnQuote.Click += (_, _) =>
             QuoteRequested?.Invoke(this, EventArgs.Empty);
+        btnUseAgain.Click += (_, _) =>
+            UseAgainRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
 
         grdScripts.DoubleClick += (_, _) =>
@@ -76,6 +78,7 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         {
             btnCapture.Visible = false;
             btnEditScript.Visible = false;
+            btnUseAgain.Visible = false;
         }
 
         if (!Application.Security.PermissionServiceExtensions.Has(
@@ -119,7 +122,7 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     {
         ArgumentNullException.ThrowIfNull(scripts);
 
-        grdScripts.DataSource = scripts.ToList();
+        GridPager.Attach(grdScripts).Show(scripts);
 
         foreach (DataGridViewRow row in grdScripts.Rows)
         {
@@ -152,4 +155,5 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     public event EventHandler? CancelScriptRequested;
     public event EventHandler? ChooseRequested;
     public event EventHandler? QuoteRequested;
+    public event EventHandler? UseAgainRequested;
 }

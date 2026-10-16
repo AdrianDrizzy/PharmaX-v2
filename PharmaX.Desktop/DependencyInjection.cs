@@ -90,6 +90,7 @@ public static class DependencyInjection
         s.AddTransient<StocktakeListPresenter>();
         s.AddTransient<frmStocktakeCapture>();
         s.AddTransient<frmStockAdjustment>();
+        s.AddTransient<frmPrepack>();
         s.AddTransient<StocktakeCapturePresenter>();
 
         // Tills
@@ -126,8 +127,7 @@ public static class DependencyInjection
         s.AddTransient<UserEditPresenter>();
         s.AddTransient<frmPrinterSetup>();
         s.AddTransient<frmSystemSetup>();
-        s.AddTransient<frmRsiImport>();
-        s.AddTransient<Features.Reports.frmLegacyHistory>();
+        s.AddTransient<frmDataImport>();
         s.AddTransient<Features.Dispensing.frmToFollow>();
         s.AddTransient<frmDayEnd>();
         s.AddTransient<frmSystemInfo>();

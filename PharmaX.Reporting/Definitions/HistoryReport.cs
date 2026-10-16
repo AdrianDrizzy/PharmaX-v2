@@ -9,16 +9,17 @@ using PharmaX.Reporting.Engine;
 namespace PharmaX.Reporting.Definitions;
 
 /// <summary>
-/// Sales, dispensing and till overrides across both systems: PharmaX's own
-/// since go-live and RSI's history before it, in one set of figures.
+/// Sales, dispensing, till overrides and cash-ups over any period, as
+/// lines or grouped - the history imported from the system before
+/// PharmaX included, because it is held in the same tables.
 /// </summary>
 /// <remarks>
-/// Fixed slicers choose what: "kind" (Sale, Script, Override, DayEnd,
-/// Stock - the history's kinds - and NoSale, PharmaX's alone) and "groupBy" (product, day, month,
-/// party, operator, or none for the lines themselves). "Party" is the
-/// tender of a sale, the doctor of a script, the authoriser of an
-/// override. Small enough to group in memory: a year of the pharmacy's
-/// sales is forty thousand lines.
+/// Fixed slicers choose what: "kind" (Sale, Script, Override, NoSale,
+/// DayEnd) and "groupBy" (product, day, month, party, operator, or none
+/// for the lines themselves). "Party" is the tender of a sale, the doctor
+/// of a script, the authoriser of an override, the tender of a cash-up.
+/// Small enough to group in memory: a year of the pharmacy's sales is
+/// forty thousand lines.
 /// </remarks>
 public sealed class HistoryReport : IReportDefinition
 {
@@ -28,7 +29,7 @@ public sealed class HistoryReport : IReportDefinition
 
     public HistoryReport(PharmaXDbContext db) => _db = db;
 
-    private sealed record Line(DateTime When, string Source, string Code, string Item,
+    private sealed record Line(DateTime When, string Code, string Item,
                                string Party, string Operator, decimal Quantity, decimal Value);
 
     public async Task<ReportResult> RunAsync(ResolvedRequest r, CancellationToken ct = default)
@@ -43,20 +44,6 @@ public sealed class HistoryReport : IReportDefinition
             .Select(p => new { p.Id, p.Code, p.Description })
             .ToListAsync(ct).ConfigureAwait(false);
         var byId = names.ToDictionary(p => p.Id);
-        var byCode = names.GroupBy(p => p.Code).ToDictionary(g => g.Key, g => g.First().Description);
-
-        // RSI, in the till's local time as it was recorded.
-        var from = r.From.ToDateTime(TimeOnly.MinValue);
-        var to = r.To.ToDateTime(TimeOnly.MinValue).AddDays(1);
-
-        var legacy = await _db.LegacyRecords.AsNoTracking()
-            .Where(x => x.Kind == kind && x.OccurredAt >= from && x.OccurredAt < to)
-            .Select(x => new { x.OccurredAt, x.ProductCode, x.Description, x.Party, x.Operator, x.Quantity, x.Amount })
-            .ToListAsync(ct).ConfigureAwait(false);
-
-        lines.AddRange(legacy.Select(x => new Line(x.OccurredAt, "RSI", x.ProductCode ?? "",
-            x.ProductCode is not null && byCode.TryGetValue(x.ProductCode, out var d) ? d : x.Description,
-            x.Party ?? "", x.Operator ?? "", x.Quantity ?? 0m, x.Amount ?? 0m)));
 
         if (kind == "Sale")
         {
@@ -67,8 +54,8 @@ public sealed class HistoryReport : IReportDefinition
                 .ToListAsync(ct).ConfigureAwait(false);
 
             lines.AddRange(sales.SelectMany(s => s.Lines.Where(l => !l.IsVoided).Select(l => new Line(
-                s.OccurredAtUtc.ToLocalTime(), "PharmaX", byId.TryGetValue(l.ProductId, out var p) ? p.Code : "",
-                l.Description, s.Payments.FirstOrDefault()?.Tender.ToString() ?? "",
+                s.OccurredAtUtc.ToLocalTime(), byId.TryGetValue(l.ProductId, out var p) ? p.Code : "",
+                l.Description, s.Payments.FirstOrDefault()?.Tender.DisplayName() ?? "",
                 r.OperatorName(s.OperatorId), l.Quantity, l.LineTotal.Amount))));
         }
 
@@ -86,7 +73,7 @@ public sealed class HistoryReport : IReportDefinition
                 .ToDictionaryAsync(s => s.Id, s => s.PrescriberName, ct).ConfigureAwait(false);
 
             lines.AddRange(issued.SelectMany(x => x.Lines.Select(l => new Line(
-                x.IssuedAtUtc!.Value.ToLocalTime(), "PharmaX",
+                x.IssuedAtUtc!.Value.ToLocalTime(),
                 byId.TryGetValue(l.ProductId, out var p) ? p.Code : "", l.Description,
                 prescribers.GetValueOrDefault(x.ScriptId, ""),
                 r.OperatorName(x.PharmacistId ?? Guid.Empty), l.Quantity, l.TariffAmount.Amount))));
@@ -94,9 +81,9 @@ public sealed class HistoryReport : IReportDefinition
 
         if (kind is "Override" or "NoSale")
         {
-            // PharmaX's own: a price brought down at the till is a line
-            // discount; the drawer opened with nothing sold is logged by
-            // the till session. Both from the audit trail.
+            // A price brought down at the till is a line discount; the
+            // drawer opened with nothing sold is logged by the till
+            // session. Both from the audit trail.
             var action = kind == "Override" ? "pos.sale.discount" : "pos.drawer.nosale";
 
             var audits = await _db.AuditEntries.AsNoTracking()
@@ -112,11 +99,30 @@ public sealed class HistoryReport : IReportDefinition
                 .ToDictionaryAsync(l => l.Id, ct).ConfigureAwait(false);
 
             lines.AddRange(audits.Select(a => discounted.TryGetValue(a.EntityId, out var l)
-                ? new Line(a.OccurredAtUtc.ToLocalTime(), "PharmaX",
+                ? new Line(a.OccurredAtUtc.ToLocalTime(),
                     byId.TryGetValue(l.ProductId, out var p) ? p.Code : "", l.Description,
                     a.Reason ?? "", r.OperatorName(a.UserId), l.Quantity, l.Discount)
-                : new Line(a.OccurredAtUtc.ToLocalTime(), "PharmaX", "", a.Reason ?? "",
-                    "", r.OperatorName(a.UserId), 1m, 0m)));
+                : byId.TryGetValue(a.EntityId, out var product)
+                    ? new Line(a.OccurredAtUtc.ToLocalTime(), product.Code, product.Description,
+                        a.Reason ?? "", r.OperatorName(a.UserId), 1m, 0m)
+                    : new Line(a.OccurredAtUtc.ToLocalTime(), "", a.Reason ?? "",
+                        "", r.OperatorName(a.UserId), 1m, 0m)));
+        }
+
+        if (kind == "DayEnd")
+        {
+            // Each tender counted at a cash-up: what the till expected,
+            // what was counted, and the difference as the value.
+            var declarations = await _db.TillDeclarations.AsNoTracking()
+                .Where(d => d.IsFinal
+                            && d.DeclaredAtUtc >= r.FromUtc && d.DeclaredAtUtc < r.ToExclusiveUtc)
+                .ToListAsync(ct).ConfigureAwait(false);
+
+            lines.AddRange(declarations.SelectMany(d => d.Lines.Select(l => new Line(
+                d.DeclaredAtUtc.ToLocalTime(), "",
+                string.Create(CultureInfo.CurrentCulture,
+                    $"Expected {l.Expected}, counted {l.Declared}"),
+                l.Tender.DisplayName(), r.OperatorName(d.DeclaredBy), 1m, l.Variance.Amount))));
         }
 
         var builder = groupBy switch
@@ -134,7 +140,6 @@ public sealed class HistoryReport : IReportDefinition
     private static ReportBuilder Detail(List<Line> lines) =>
         ReportBuilder.For("History")
             .Column("When", "Date and time", "dd/MM/yyyy HH:mm")
-            .Column("Source", "From")
             .Column("Code", "Code")
             .Column("Item", "Item")
             .Column("Party", "Doctor, tender or authoriser")
@@ -143,8 +148,8 @@ public sealed class HistoryReport : IReportDefinition
             .Column("Operator", "By")
             .Rows(lines.OrderBy(l => l.When).Select(l => new Dictionary<string, object?>
             {
-                ["When"] = l.When, ["Source"] = l.Source, ["Code"] = l.Code, ["Item"] = l.Item,
-                ["Party"] = l.Party, ["Quantity"] = l.Quantity, ["Value"] = l.Value, ["Operator"] = l.Operator
+                ["When"] = l.When, ["Code"] = l.Code, ["Item"] = l.Item, ["Party"] = l.Party,
+                ["Quantity"] = l.Quantity, ["Value"] = l.Value, ["Operator"] = l.Operator
             }));
 
     private static ReportBuilder Grouped(List<Line> lines, string groupBy)
@@ -170,8 +175,7 @@ public sealed class HistoryReport : IReportDefinition
             g.Key,
             Lines = g.Count(),
             Quantity = g.Sum(l => l.Quantity),
-            Value = g.Sum(l => l.Value),
-            Rsi = g.Count(l => l.Source == "RSI")
+            Value = g.Sum(l => l.Value)
         });
 
         groups = groupBy is "day" or "month"
@@ -183,11 +187,9 @@ public sealed class HistoryReport : IReportDefinition
             .Column("Lines", "Lines", "N0", rightAlign: true)
             .Column("Quantity", "Qty", "N0", rightAlign: true)
             .Column("Value", "Value", "N2", rightAlign: true)
-            .Column("Rsi", "of which RSI", "N0", rightAlign: true)
             .Rows(groups.Select(g => new Dictionary<string, object?>
             {
-                ["Key"] = g.Key, ["Lines"] = g.Lines, ["Quantity"] = g.Quantity,
-                ["Value"] = g.Value, ["Rsi"] = g.Rsi
+                ["Key"] = g.Key, ["Lines"] = g.Lines, ["Quantity"] = g.Quantity, ["Value"] = g.Value
             }));
     }
 }

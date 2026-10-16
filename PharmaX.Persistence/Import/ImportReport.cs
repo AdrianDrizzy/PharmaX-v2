@@ -1,13 +1,14 @@
 using System.Globalization;
 using System.Text;
-using PharmaX.Application.Legacy;
+using PharmaX.Application.Import;
 
 namespace PharmaX.Persistence.Import;
 
 /// <summary>
 /// What an import did, written for the person who has to sign it off:
-/// what came in, whether the totals agree with the export's own, and
-/// what somebody should look at before the pharmacy trades.
+/// what was read and from where, what came in, whether the totals agree
+/// with the files' own, and what somebody should look at before the
+/// pharmacy trades.
 /// </summary>
 /// <remarks>
 /// Lists carry codes and file numbers, never patient names: the report
@@ -19,20 +20,26 @@ internal sealed class ImportReport
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
 
     private readonly bool _dryRun;
-    private readonly string _folder;
+    private readonly string _from;
     private readonly List<string> _sources = new();
+    private readonly List<string> _notes = new();
     private readonly List<string> _counts = new();
     private readonly List<string> _checks = new();
     private readonly List<string> _reviews = new();
     private bool _failedCheck;
 
-    public ImportReport(bool dryRun, string folder)
+    public ImportReport(bool dryRun, string from)
     {
         _dryRun = dryRun;
-        _folder = folder;
+        _from = from;
     }
 
-    public void Source(string sheet, string from) => _sources.Add($"  {sheet,-22} {from}");
+    public void Source(string what, string from, int? rows) =>
+        _sources.Add(rows is int n
+            ? string.Format(Invariant, "  {0,-34} {1,8:N0}  {2}", what, n, from)
+            : string.Format(Invariant, "  {0,-34} {1,8}  {2}", what, "", from));
+
+    public void Note(string text) => _notes.Add("  " + text);
 
     public void Count(string what, int count) =>
         _counts.Add(string.Format(Invariant, "  {0,-72}{1,10:N0}", what, count));
@@ -41,7 +48,8 @@ internal sealed class ImportReport
         _counts.Add(string.Format(Invariant, "  {0,-72}{1,13:N2}", what, amount));
 
     /// <summary>
-    /// A total the export recorded against the same total counted here.
+    /// A total the files recorded, or that the import read from them,
+    /// against the same total counted in the database afterwards.
     /// </summary>
     public void Check(string what, decimal expected, decimal actual,
                       decimal tolerance = 0.005m)
@@ -58,44 +66,45 @@ internal sealed class ImportReport
         var list = items.ToList();
         if (list.Count == 0) return;
 
-        _reviews.Add($"{title} - {list.Count}");
+        _reviews.Add($"{title} - {list.Count:N0}");
         _reviews.AddRange(list.Take(Shown).Select(i => "    " + i));
 
         if (list.Count > Shown)
-            _reviews.Add($"    ...and {list.Count - Shown} more");
+            _reviews.Add($"    ...and {list.Count - Shown:N0} more");
 
         _reviews.Add("");
     }
 
-    public LegacyImportReport Fail(string reason) =>
+    public ImportResult Fail(string reason) =>
         new(_dryRun, false, Render() + Environment.NewLine + "NOT IMPORTED. " + reason);
 
-    public LegacyImportReport Done() =>
+    public ImportResult Done() =>
         new(_dryRun, !_failedCheck, Render() + Environment.NewLine + (_failedCheck
-            ? "Totals that FAIL above do not agree with the export. Do not trade on this "
+            ? "Totals that FAIL above do not agree with the files. Do not trade on this "
               + "database until each one is explained."
             : _dryRun
                 ? "Every total agrees. Nothing was kept: run the import for real."
-                : "Every total agrees with the export."));
+                : "Every total agrees with the files."));
 
     private string Render()
     {
         var text = new StringBuilder();
 
         text.AppendLine(_dryRun
-            ? "RSI IMPORT - DRY RUN (checked, then rolled back; nothing was kept)"
-            : "RSI IMPORT");
-        text.AppendLine(string.Create(Invariant, $"{DateTime.Now:dd/MM/yyyy HH:mm} from {_folder}"));
+            ? "DATA IMPORT - DRY RUN (checked, then rolled back; nothing was kept)"
+            : "DATA IMPORT");
+        text.AppendLine(string.Create(Invariant, $"{DateTime.Now:dd/MM/yyyy HH:mm} from {_from}"));
         text.AppendLine();
 
-        Section(text, "Read from", _sources);
+        Section(text, "Read", _sources);
+        Section(text, "Notes", _notes);
         Section(text, "Brought in", _counts);
 
         if (_checks.Count > 0)
         {
-            text.AppendLine("Checked against the export's own totals");
+            text.AppendLine("Checked against the files' own totals");
             text.AppendLine(string.Format(Invariant, "  {0,-4} {1,-50}{2,16}{3,16}",
-                "", "", "Export", "PharmaX"));
+                "", "", "Files", "PharmaX"));
             foreach (var line in _checks) text.AppendLine(line);
             text.AppendLine();
         }

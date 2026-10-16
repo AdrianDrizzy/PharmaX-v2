@@ -1,6 +1,7 @@
 using System.Globalization;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Reporting;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Reports;
@@ -327,14 +328,13 @@ public partial class frmReports : PhxFormBase, IReportsView
             grdPreview.AddColumn(column.Key, column.Header,
                 format: column.Format, rightAlign: column.RightAlign);
 
-        foreach (var row in result.Rows)
-        {
-            var values = result.Columns
+        // A page at a time: a year of sale lines is forty thousand rows,
+        // and the export runs the report again for all of them.
+        GridPager.Attach(grdPreview).ShowRows(result.Rows
+            .Select(row => result.Columns
                 .Select(c => row.TryGetValue(c.Key, out var v) ? v : null)
-                .ToArray();
-
-            grdPreview.Rows.Add(values);
-        }
+                .ToArray())
+            .ToList());
 
         FitColumns();
 
@@ -384,8 +384,8 @@ public partial class frmReports : PhxFormBase, IReportsView
 
     public void ClearPreview(string caption)
     {
+        GridPager.Attach(grdPreview).ShowRows(Array.Empty<object?[]>());
         grdPreview.Columns.Clear();
-        grdPreview.Rows.Clear();
         lblProvenance.Text = caption;
     }
 

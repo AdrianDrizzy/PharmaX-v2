@@ -51,6 +51,31 @@ public interface IDispensingService
     Task<Result<DispensingStateDto>> RemoveItemAsync(Guid dispensingId,
         int lineNo, CancellationToken ct = default);
 
+    /// The dispensing as it stands, for a screen that opens one from the
+    /// patient's history.
+    Task<Result<DispensingStateDto>> GetAsync(Guid dispensingId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Changes an item's quantity and amount, while it is being dispensed
+    /// or after it was issued.
+    /// </summary>
+    /// <remarks>
+    /// After the issue the stock moves by the difference - more off the
+    /// shelf, or back onto the batch it came from - and it needs
+    /// dsp.dispensing.amend and a reason. One claimed from a medical aid
+    /// is reversed and dispensed again instead: the claim and its journals
+    /// were raised on the old figures.
+    /// </remarks>
+    /// <param name="amount">
+    /// What the item is charged. Null to price it for the new quantity:
+    /// as a new item would be before the issue, pro rata after it.
+    /// </param>
+    /// <param name="reason">Why an issued item is changed.</param>
+    Task<Result<ItemAmendedDto>> AmendItemAsync(Guid dispensingId, int lineNo,
+        decimal quantity, decimal? amount, string? reason,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<ClinicalWarningDto>> PendingWarningsAsync(
         Guid dispensingId, CancellationToken ct = default);
 
@@ -389,6 +414,140 @@ public sealed class DispensingService : IDispensingService
 
         return Result<DispensingStateDto>.Ok(
             DispensingStateDto.From(dispensing));
+    }
+
+    public async Task<Result<DispensingStateDto>> GetAsync(Guid dispensingId,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        return await _dispensings.GetAsync(dispensingId, ct) is { } dispensing
+            ? Result<DispensingStateDto>.Ok(DispensingStateDto.From(dispensing))
+            : Result<DispensingStateDto>.Fail("DSP-000", "Dispensing not found.");
+    }
+
+    public async Task<Result<ItemAmendedDto>> AmendItemAsync(Guid dispensingId,
+        int lineNo, decimal quantity, decimal? amount, string? reason,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        static Result<ItemAmendedDto> Fail(string code, string message) =>
+            Result<ItemAmendedDto>.Fail(code, message);
+
+        if (quantity <= 0m)
+            return Fail("DSP-024", "The quantity must be more than zero.");
+
+        if (amount < 0m)
+            return Fail("DSP-050", "The amount cannot be negative.");
+
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        if (dispensing is null) return Fail("DSP-000", "Dispensing not found.");
+
+        var line = dispensing.Lines.SingleOrDefault(l => l.LineNo == lineNo);
+        if (line is null)
+            return Fail("DSP-014", $"There is no item {lineNo} on this dispensing.");
+
+        var issued = dispensing.Status == DispensingStatus.Issued;
+
+        if (issued)
+        {
+            if (!_permissions.Has(PermissionCode.DispensingAmend))
+                return Fail("DSP-051", "Changing an item after it was issued "
+                    + "needs a pharmacist or a pharmacist assistant.");
+
+            if (string.IsNullOrWhiteSpace(reason))
+                return Fail("DSP-052", "Say why the issued item is being "
+                    + "changed: it is kept on the record.");
+
+            if (await _claims.ForDispensingAsync(dispensing.Id, ct) is
+                { Status: not Domain.Claims.ClaimStatus.Withdrawn } claim)
+                return Fail("DSP-053", $"{dispensing.DocumentNumber} was "
+                    + $"claimed from the medical aid ({claim.ClaimNumber}). "
+                    + "Reverse it and dispense it again to change it.");
+        }
+
+        var before = dispensing.CoPaymentTotal.Amount;
+        var was = $"{line.Description} x{line.Quantity:0.###} at "
+                  + $"{line.TariffAmount.Amount:0.00}";
+
+        try
+        {
+            if (issued)
+            {
+                var charged = amount ?? Math.Round(
+                    line.TariffAmount.Amount * quantity / line.Quantity, 2,
+                    MidpointRounding.AwayFromZero);
+                var units = quantity - line.Quantity;
+
+                dispensing.AmendLine(lineNo, quantity,
+                    Money.Of(charged, line.TariffAmount.Currency));
+                await _stock.ApplyDispensingAmendAsync(dispensing, line, units, ct);
+            }
+            else
+            {
+                if (await ReplaceLineAsync(dispensing, line, quantity, ct)
+                    is Error refused)
+                {
+                    _uow.Forget();
+                    return Fail(refused.Code, refused.Message);
+                }
+
+                line = dispensing.Lines.MaxBy(l => l.LineNo)!;
+
+                if (amount is decimal charged)
+                    dispensing.AmendLine(line.LineNo, quantity,
+                        Money.Of(charged, line.TariffAmount.Currency));
+            }
+        }
+        catch (DomainException ex)
+        {
+            _uow.Forget();
+            return Fail("DSP-054", ex.Message);
+        }
+
+        _audit.Applied("dsp.item.amend", "Dispensing", dispensing.Id,
+            $"{was} -> x{line.Quantity:0.###} at {line.TariffAmount.Amount:0.00}"
+            + (issued ? $": {reason!.Trim()}" : ""));
+
+        if (issued)
+            _outbox.Append("Dispensing", dispensing.Id,
+                $"{{\"id\":\"{dispensing.Id}\",\"amended\":{lineNo}}}");
+
+        await _uow.SaveChangesAsync(ct);
+        await tx.DisposeAsync();
+
+        return Result<ItemAmendedDto>.Ok(new ItemAmendedDto(
+            DispensingStateDto.From(dispensing), issued, before,
+            dispensing.CoPaymentTotal.Amount, dispensing.SaleId is not null));
+    }
+
+    /// <summary>
+    /// An item still being dispensed, taken off and put on again at the
+    /// new quantity: priced, allocated, owed and screened as a new one is.
+    /// </summary>
+    private async Task<Error?> ReplaceLineAsync(
+        Domain.Dispensing.Dispensing dispensing, DispensingLine line,
+        decimal quantity, CancellationToken ct)
+    {
+        var product = await _products.GetAsync(line.ProductId, ct);
+        if (product is null)
+            return new Error("DSP-001",
+                $"{line.Description} is no longer in the catalogue.");
+
+        dispensing.RemoveLine(line.LineNo);
+
+        if (await AddLineAsync(dispensing, product,
+                new DirectionsDto(quantity, line.Directions),
+                line.ScriptItemId, ct) is Error refused)
+            return refused;
+
+        if (line.SubstitutedForProductId is Guid original)
+            dispensing.Lines.MaxBy(l => l.LineNo)!.MarkSubstitution(original);
+
+        return null;
     }
 
     /// <summary>

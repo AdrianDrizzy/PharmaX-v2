@@ -199,4 +199,35 @@ public class StartUpTests : IClassFixture<PharmaXFixture>
 
         Count(db).Should().Be(before);
     }
+
+    /// <remarks>
+    /// The owner forgot the password they chose, and the account then
+    /// locked: --reset-admin puts it back as installed.
+    /// </remarks>
+    [Fact]
+    public async Task A_lost_administrator_sign_in_resets_to_the_starting_one()
+    {
+        using var scope = _fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+        var hasher = PharmaXFixture.Resolve<IPasswordHasher>(scope);
+
+        var admin = await db.Users.SingleAsync(u => u.Username == "admin");
+        admin.ChangeCredential(hasher.Hash("forgotten"), DateTime.UtcNow);
+        for (var i = 0; i < 5; i++) admin.RecordFailedLogin();
+        admin.Deactivate();
+        await db.SaveChangesAsync();
+
+        await PharmaXFixture
+            .Resolve<PharmaX.Persistence.Seeding.ReferenceDataSeeder>(scope)
+            .ResetAdministratorAsync();
+
+        db.ChangeTracker.Clear();
+        admin = await db.Users.AsNoTracking().SingleAsync(u => u.Username == "admin");
+
+        hasher.Verify("ChangeMe#1", admin.Credential).Should().BeTrue();
+        admin.MustChangePassword.Should().BeTrue();
+        admin.IsLockedOut.Should().BeFalse();
+        admin.IsActive.Should().BeTrue();
+        admin.Roles.Should().Contain(Role.Standard.Administrator);
+    }
 }

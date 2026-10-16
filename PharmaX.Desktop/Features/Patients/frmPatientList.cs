@@ -42,22 +42,15 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
             if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
         };
 
-        // An address kept over two lines reads as one on the list, and an
-        // imported file without its "RSI-".
+        // An address kept over two lines reads as one on the list.
         grdPatients.CellFormatting += (_, e) =>
         {
             if (e.ColumnIndex < 0 || e.Value is not string value) return;
 
-            switch (grdPatients.Columns[e.ColumnIndex].DataPropertyName)
+            if (grdPatients.Columns[e.ColumnIndex].DataPropertyName == "Address")
             {
-                case "Address":
-                    e.Value = Suggest.OneLine(value);
-                    e.FormattingApplied = true;
-                    break;
-                case "FileNumber":
-                    e.Value = Format.FileNumber(value);
-                    e.FormattingApplied = true;
-                    break;
+                e.Value = Suggest.OneLine(value);
+                e.FormattingApplied = true;
             }
         };
 
@@ -73,7 +66,7 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         btnDeactivate.Click += (_, _) =>
             DeactivateRequested?.Invoke(this, EventArgs.Empty);
         btnDocuments.Click += (_, _) => ShowDocuments();
-        btnExport.Click += (_, _) => Export();
+        btnExport.Click += (_, _) => _presenter?.ExportAll(Export);
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
@@ -106,20 +99,21 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     private readonly Application.Abstractions.ICurrentUser? _user;
 
     /// <summary>
-    /// The page on screen to a workbook, as every other list exports:
-    /// what is shown, with the search and the page it came from.
+    /// Every patient the search matches to a workbook, not only the page
+    /// on screen, in the columns the grid shows.
     /// </summary>
-    private void Export()
+    private void Export(IReadOnlyList<object> rows)
     {
         if (_workbooks is null || _user is null) return;   // designer
 
         var saved = GridExport.Offer(this, _workbooks, grdPatients, "Patients",
-            $"{(SearchText.Length == 0 ? "All patients" : $"\"{SearchText}\"")}, "
-            + lblCount.Text, _user.Username);
+            string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0}, {1:N0} rows",
+                SearchText.Length == 0 ? "All patients" : $"\"{SearchText}\"", rows.Count),
+            _user.Username, rows);
 
         if (saved is not null) ShowSaved(saved);
-        else if (grdPatients.Rows.Count == 0)
-            ShowInfo("There is nothing on the screen to export.");
+        else if (rows.Count == 0)
+            ShowInfo("There is nothing to export.");
     }
 
     /// <summary>

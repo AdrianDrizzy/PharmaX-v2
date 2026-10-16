@@ -54,7 +54,7 @@ public sealed record AdjustableBatchDto(Guid BatchId, string BatchNumber,
 
 public sealed record AdjustableProductDto(Guid ProductId, string Code,
     string Description, decimal QuantityOnHand, bool IsBatchTracked,
-    IReadOnlyList<AdjustableBatchDto> Batches);
+    IReadOnlyList<AdjustableBatchDto> Batches, decimal UnitsInPack = 1m);
 
 /// <param name="PrePack">
 /// For stock moved into another item: the label each of its packs
@@ -64,6 +64,22 @@ public sealed record StockAdjustmentResultDto(string Description,
     decimal QuantityOnHand, string Summary, LabelDto? PrePack = null,
     int PrePacks = 0);
 
+/// <summary>
+/// Bulk stock counted into pre-packs: a tin of a thousand into twenty-five
+/// packs of forty.
+/// </summary>
+/// <param name="BulkCode">The bulk item counted out of.</param>
+/// <param name="BatchId">Its batch, for a batch-tracked item.</param>
+/// <param name="UnitsPerPack">How many go into each pre-pack.</param>
+/// <param name="Packs">How many pre-packs are made.</param>
+/// <param name="PricePerPack">
+/// What one pre-pack sells for, where its item is made now; null for the
+/// bulk price pro rata. An item made before keeps its own price.
+/// </param>
+public sealed record PrepackEditDto(string BulkCode, Guid? BatchId,
+    decimal UnitsPerPack, int Packs, decimal? PricePerPack = null,
+    string? Reason = null);
+
 public interface IStockAdjustmentService
 {
     /// The product to adjust, with the batches stock can come out of.
@@ -72,6 +88,14 @@ public interface IStockAdjustmentService
 
     Task<Result<StockAdjustmentResultDto>> RecordAsync(
         StockAdjustmentEditDto edit, CancellationToken ct = default);
+
+    /// <summary>
+    /// Counts bulk stock into pre-packs, each its own item on the shelf -
+    /// "9001-P40", made the first time from the bulk item - and returns the
+    /// label each pre-pack carries.
+    /// </summary>
+    Task<Result<StockAdjustmentResultDto>> PrepackAsync(PrepackEditDto edit,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -120,7 +144,9 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
     public async Task<Result<AdjustableProductDto>> FindAsync(string code,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.StockTakePost);
+        // The pre-pack screen finds its bulk item here too.
+        if (!_permissions.Has(PermissionCode.StockPrepack))
+            _permissions.Demand(PermissionCode.StockTakePost);
 
         var product = await _products.FindByCodeOrBarcodeAsync(
             (code ?? "").Trim(), _permissions.ProductScope(), ct);
@@ -140,7 +166,8 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
 
         return Result<AdjustableProductDto>.Ok(new AdjustableProductDto(
             product.Id, product.Code, product.Description,
-            product.QuantityOnHand, product.IsBatchTracked, batches));
+            product.QuantityOnHand, product.IsBatchTracked, batches,
+            product.UnitsInPack));
     }
 
     public async Task<Result<StockAdjustmentResultDto>> RecordAsync(
@@ -150,6 +177,109 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
 
         _permissions.Demand(PermissionCode.StockTakePost);
 
+        return await RecordCoreAsync(edit, into: null, intoQuantity: null, ct);
+    }
+
+    public async Task<Result<StockAdjustmentResultDto>> PrepackAsync(
+        PrepackEditDto edit, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+
+        _permissions.Demand(PermissionCode.StockPrepack);
+
+        if (edit.UnitsPerPack <= 0m || edit.Packs <= 0)
+            return Fail("INV-040", "Say how many go into each pre-pack and how "
+                                   + "many pre-packs are made.");
+
+        if (edit.PricePerPack < 0m)
+            return Fail("INV-041", "A price cannot be negative.");
+
+        var bulk = await _products.FindByCodeOrBarcodeAsync(
+            (edit.BulkCode ?? "").Trim(), _permissions.ProductScope(), ct);
+
+        if (bulk is null)
+            return Fail("INV-020", $"No product for code {edit.BulkCode}.");
+
+        var units = edit.UnitsPerPack * edit.Packs;
+        var suffix = string.Create(CultureInfo.InvariantCulture,
+            $"-P{edit.UnitsPerPack:0.###}");
+        var code = bulk.Code[..Math.Min(bulk.Code.Length, 30 - suffix.Length)] + suffix;
+
+        if (bulk.UnitsInPack == edit.UnitsPerPack)
+            return Fail("INV-042", $"{bulk.Description} already comes in packs "
+                                   + $"of {edit.UnitsPerPack:0.###}.");
+
+        var prepack = await _products.FindByCodeOrBarcodeAsync(code,
+            _permissions.ProductScope(), ct);
+
+        if (prepack is not null && prepack.UnitsInPack != edit.UnitsPerPack)
+            return Fail("INV-043", $"{code} is already {prepack.Description}, "
+                + $"in packs of {prepack.UnitsInPack:0.###}, not "
+                + $"{edit.UnitsPerPack:0.###}.");
+
+        prepack ??= await NewPrepackAsync(bulk, code, edit, ct);
+
+        var result = await RecordCoreAsync(new StockAdjustmentEditDto(
+            StockAdjustmentKind.MoveToItem, bulk.Code, bulk.PacksFor(units),
+            string.IsNullOrWhiteSpace(edit.Reason)
+                ? string.Create(CultureInfo.InvariantCulture,
+                    $"Pre-packed {edit.Packs} x {edit.UnitsPerPack:0.###}")
+                : edit.Reason.Trim(),
+            edit.BatchId, prepack.Code), prepack, edit.Packs, ct);
+
+        // A pre-pack item made for a count that was then refused is not
+        // left behind half-saved.
+        if (result.IsFailure) _uow.Forget();
+
+        return result;
+    }
+
+    /// <summary>
+    /// The item the pre-packs go on the shelf as: the bulk item's
+    /// description, schedule, VAT, filing and batch tracking, in packs of
+    /// the new size, priced and costed pro rata unless a price is given.
+    /// </summary>
+    private async Task<Product> NewPrepackAsync(Product bulk, string code,
+        PrepackEditDto edit, CancellationToken ct)
+    {
+        var share = edit.UnitsPerPack / bulk.UnitsInPack;
+
+        var prepack = Product.Create(code,
+            string.Create(CultureInfo.InvariantCulture,
+                $"{bulk.Description} x{edit.UnitsPerPack:0.###} pre-pack"),
+            Money.Of(edit.PricePerPack ?? Math.Round(bulk.RetailPrice.Amount * share, 2,
+                         MidpointRounding.AwayFromZero), bulk.RetailPrice.Currency),
+            bulk.VatRatePercent, bulk.TaxCode, bulk.Schedule, bulk.IsBatchTracked);
+
+        prepack.SetUnitsPerPack(edit.UnitsPerPack);
+        prepack.ChangeCostPrice(Money.Of(Math.Round(bulk.CostPrice.Amount * share, 4,
+            MidpointRounding.AwayFromZero), bulk.CostPrice.Currency));
+        prepack.SetGenericName(bulk.GenericName);
+        prepack.Classify(bulk.DepartmentId, bulk.CategoryId, bulk.ManufacturerId);
+        prepack.SetPackSize(string.Create(CultureInfo.InvariantCulture,
+            $"PP {edit.UnitsPerPack:0.###}"));
+
+        await _products.AddAsync(prepack, ct);
+
+        _audit.Applied("inv.stock.prepack", "Product", prepack.Id,
+            $"{prepack.Code} made from {bulk.Code}");
+
+        return prepack;
+    }
+
+    /// <param name="into">
+    /// The item stock moves into, where the caller already has it - a
+    /// pre-pack item made a moment ago is not in the database to be found.
+    /// </param>
+    /// <param name="intoQuantity">
+    /// The packs it arrives as, where they were counted: twenty-five
+    /// pre-packs are twenty-five, not what the bulk packs come to after
+    /// rounding to the thousandth.
+    /// </param>
+    private async Task<Result<StockAdjustmentResultDto>> RecordCoreAsync(
+        StockAdjustmentEditDto edit, Product? into, decimal? intoQuantity,
+        CancellationToken ct)
+    {
         if (!Enum.IsDefined(edit.Kind))
             return Fail("INV-021", "Choose what happened to the stock.");
 
@@ -181,11 +311,13 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         if (product is null)
             return Fail("INV-020", $"No product for code {edit.ProductCode}.");
 
-        Product? into = null;
-
-        if (edit.Kind == StockAdjustmentKind.MoveToItem)
+        if (edit.Kind != StockAdjustmentKind.MoveToItem)
         {
-            into = await _products.FindByCodeOrBarcodeAsync(
+            into = null;
+        }
+        else
+        {
+            into ??= await _products.FindByCodeOrBarcodeAsync(
                 edit.OtherBranch!.Trim(), _permissions.ProductScope(), ct);
 
             if (into is null || into.Id == product.Id)
@@ -197,7 +329,8 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         var problem = edit.Kind switch
         {
             StockAdjustmentKind.TransferIn => await BringInAsync(product, edit, ct),
-            StockAdjustmentKind.MoveToItem => await MoveAsync(product, into!, edit, ct),
+            StockAdjustmentKind.MoveToItem => await MoveAsync(product, into!, edit,
+                intoQuantity ?? Moved(product, into!, edit.Quantity), ct),
             _ => await TakeOutAsync(product, edit, ct)
         };
 
@@ -238,7 +371,7 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
             new LabelDto("", into.Description, into.UnitsInPack, "",
                 batch?.BatchNumber, batch?.ExpiryDate, _user.Username, "Pre-pack",
                 _clock.Today, Array.Empty<string>()),
-            (int)Math.Floor(Moved(product, into, edit.Quantity))));
+            (int)Math.Floor(intoQuantity ?? Moved(product, into, edit.Quantity))));
     }
 
     /// <summary>
@@ -249,7 +382,7 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
     /// Checked before anything moves, so a refusal leaves both as they were.
     /// </remarks>
     private async Task<Error?> MoveAsync(Product from, Product into,
-        StockAdjustmentEditDto edit, CancellationToken ct)
+        StockAdjustmentEditDto edit, decimal arrives, CancellationToken ct)
     {
         var batch = edit.BatchId is Guid id ? await _batches.GetAsync(id, ct) : null;
 
@@ -263,7 +396,7 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
                {
                    Kind = StockAdjustmentKind.TransferIn,
                    OtherBranch = from.Code,
-                   Quantity = Moved(from, into, edit.Quantity),
+                   Quantity = arrives,
                    BatchNumber = batch?.BatchNumber,
                    Expiry = batch?.ExpiryDate
                }, ct);

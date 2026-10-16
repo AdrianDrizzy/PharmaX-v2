@@ -52,6 +52,7 @@ public sealed class frmAccountPicker : PhxFormBase
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
+            GridPager.Of(_grid)?.Restart();
             Operations.Enqueue(LoadAsync);
         };
 
@@ -97,7 +98,7 @@ public sealed class frmAccountPicker : PhxFormBase
             return;
         }
 
-        _grid.DataSource = result.Value.Select(AccountRow.From).ToList();
+        GridPager.Attach(_grid).Show(result.Value.Select(AccountRow.From));
 
         foreach (DataGridViewRow row in _grid.Rows)
         {

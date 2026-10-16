@@ -35,14 +35,20 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
             item => item is TariffListItemDto t && Equals(t.Id, chosen.Value));
 
         txtSearch.TextChanged += (_, _) => Restart();
+        // A new search or scheme opens on its first matches, not the page
+        // the last one was left on.
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
+            GridPager.Of(grdTariffs)?.Restart();
             SearchChanged?.Invoke(this, EventArgs.Empty);
         };
 
         cboScheme.SelectedIndexChanged += (_, _) =>
+        {
+            GridPager.Of(grdTariffs)?.Restart();
             SearchChanged?.Invoke(this, EventArgs.Empty);
+        };
 
         btnAdd.Click += (_, _) => AddRequested?.Invoke(this, EventArgs.Empty);
         btnEdit.Click += (_, _) => EditRequested?.Invoke(this, EventArgs.Empty);
@@ -110,7 +116,7 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
     {
         ArgumentNullException.ThrowIfNull(tariffs);
 
-        grdTariffs.DataSource = tariffs.ToList();
+        GridPager.Attach(grdTariffs).Show(tariffs);
 
         foreach (DataGridViewRow row in grdTariffs.Rows)
         {

@@ -31,9 +31,21 @@ public static class PrinterResolver
     /// The printer saved for this workstation in Printer Setup, if any.
     /// </param>
     /// <param name="purpose">"receipt" or "label", for the messages.</param>
-    public static PrinterChoice Resolve(string? chosen, string purpose) =>
-        Resolve(chosen, purpose, Installed(), DefaultPrinter(),
-                PrinterStatus.ProblemWith);
+    public static PrinterChoice Resolve(string? chosen, string purpose)
+    {
+        var installed = Installed();
+
+        // A printer on another computer that this Windows user has not been
+        // connected to - somebody else signed in to Windows here - is
+        // connected now, rather than reported missing.
+        if (NetworkPrinters.IsNetworkPath(chosen)
+            && !installed.Contains(chosen!.Trim(), StringComparer.OrdinalIgnoreCase)
+            && NetworkPrinters.Connect(chosen.Trim()) is null)
+            installed = Installed();
+
+        return Resolve(chosen, purpose, installed, DefaultPrinter(),
+                       PrinterStatus.ProblemWith);
+    }
 
     /// <summary>
     /// The decision on its own, with the machine's printers passed in, so
@@ -46,7 +58,9 @@ public static class PrinterResolver
         ArgumentNullException.ThrowIfNull(installed);
         ArgumentNullException.ThrowIfNull(problemWith);
 
-        if (installed.Count == 0)
+        var network = NetworkPrinters.ComputerOf(chosen?.Trim());
+
+        if (installed.Count == 0 && network is null)
             return PrinterChoice.None(
                 $"No printer is installed on this workstation, so the "
                 + $"{purpose} could not be printed. Add the printer in "
@@ -63,8 +77,12 @@ public static class PrinterResolver
             if (match is not null)
                 return Checked(match, purpose, problemWith, note: null);
 
-            note = $"The {purpose} printer chosen for this till, "
-                   + $"'{chosen}', is not installed any more";
+            note = network is null
+                ? $"The {purpose} printer chosen for this till, "
+                  + $"'{chosen}', is not installed any more"
+                : $"The {purpose} printer chosen for this till, "
+                  + $"{NetworkPrinters.Describe(chosen.Trim())}, could not be "
+                  + $"reached - check {network} is switched on";
         }
 
         if (string.IsNullOrWhiteSpace(windowsDefault)
@@ -88,11 +106,15 @@ public static class PrinterResolver
         Func<string, string?> problemWith, string? note)
     {
         var problem = problemWith(printer);
+        var network = NetworkPrinters.ComputerOf(printer);
 
         return problem is null
             ? PrinterChoice.Use(printer, note)
-            : PrinterChoice.Unusable(printer,
-                $"The {purpose} printer '{printer}' {problem}.");
+            : PrinterChoice.Unusable(printer, network is null
+                ? $"The {purpose} printer '{printer}' {problem}."
+                : $"The {purpose} printer {NetworkPrinters.Describe(printer)} "
+                  + $"{problem}. Check {network} is switched on and its "
+                  + "printer is on.");
     }
 
     private static string? DefaultPrinter()
@@ -193,7 +215,7 @@ internal static class PrinterStatus
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct PrinterInfo2
+    internal struct PrinterInfo2
     {
         public IntPtr ServerName;
         public IntPtr PrinterName;

@@ -71,7 +71,7 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
     {
         ArgumentNullException.ThrowIfNull(accounts);
 
-        grdAccounts.DataSource = accounts.Select(AccountRow.From).ToList();
+        GridPager.Attach(grdAccounts).Show(accounts.Select(AccountRow.From));
 
         foreach (DataGridViewRow row in grdAccounts.Rows)
         {

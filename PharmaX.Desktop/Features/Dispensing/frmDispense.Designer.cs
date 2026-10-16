@@ -27,6 +27,7 @@ partial class frmDispense
     private Button btnIssue = null!;
     private Button btnReprint = null!;
     private Button btnRemove = null!;
+    private Button btnChange = null!;
     private Button btnClose = null!;
     private Button btnSuspended = null!;
 
@@ -62,6 +63,8 @@ partial class frmDispense
         btnReprint.Name = "btnReprint";
         btnRemove = new Button();
         btnRemove.Name = "btnRemove";
+        btnChange = new Button();
+        btnChange.Name = "btnChange";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         btnSuspended = new Button();
@@ -194,34 +197,44 @@ partial class frmDispense
         btnRemove.Text = "Re&move item";
         btnRemove.UseVisualStyleBackColor = true;
 
+        // A different quantity or amount for an item before the issue:
+        // priced, taken from stock and screened again.
+        btnChange.Location = new Point(596, 8);
+        btnChange.Size = new Size(140, 32);
+        btnChange.Text = "C&hange item";
+        btnChange.UseVisualStyleBackColor = true;
+
         // What it will cost, for a customer who has not decided: priced,
         // saved, and dispensed here if they go ahead.
-        btnQuote.Location = new Point(596, 8);
+        btnQuote.Location = new Point(742, 8);
         btnQuote.Size = new Size(140, 32);
         btnQuote.Text = "&Quote";
         btnQuote.UseVisualStyleBackColor = true;
 
         // Scripts kept to finish later, picked up where they were left.
-        btnSuspended.Location = new Point(742, 8);
+        btnSuspended.Location = new Point(888, 8);
         btnSuspended.Size = new Size(140, 32);
         btnSuspended.Text = "S&uspended";
         btnSuspended.UseVisualStyleBackColor = true;
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(910, 8);
+        btnClose.Location = new Point(1056, 8);
         btnClose.Size = new Size(100, 32);
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
 
         pnlButtons.Controls.AddRange(new Control[]
-            { btnClose, btnSuspended, btnQuote, btnRemove, btnReprint, btnIssue, btnFindScript });
+        {
+            btnClose, btnSuspended, btnQuote, btnChange, btnRemove, btnReprint,
+            btnIssue, btnFindScript
+        });
         pnlButtons.Dock = DockStyle.Bottom;
         pnlButtons.Height = 50;
         pnlButtons.Name = "pnlButtons";
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(1024, 720);
+        ClientSize = new Size(1170, 720);
         Controls.Add(splMain);
         Controls.Add(scanBar);
         Controls.Add(pnlHeader);

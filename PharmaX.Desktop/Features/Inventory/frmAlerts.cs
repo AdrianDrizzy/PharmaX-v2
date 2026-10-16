@@ -1,4 +1,5 @@
 using PharmaX.Application.Alerts;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Inventory;
@@ -38,7 +39,10 @@ public partial class frmAlerts : PhxFormBase, IAlertView
         InitializeComponent();
 
         cboFilter.SelectedIndexChanged += (_, _) =>
+        {
+            GridPager.Of(grdAlerts)?.Restart();
             FilterChanged?.Invoke(this, EventArgs.Empty);
+        };
 
         btnProduct.Click += (_, _) =>
             OpenProductRequested?.Invoke(this, EventArgs.Empty);
@@ -94,7 +98,7 @@ public partial class frmAlerts : PhxFormBase, IAlertView
             ? current.Key
             : null;
 
-        grdAlerts.DataSource = alerts.Select(AlertRow.From).ToList();
+        GridPager.Attach(grdAlerts).Show(alerts.Select(AlertRow.From));
 
         foreach (DataGridViewRow row in grdAlerts.Rows)
         {

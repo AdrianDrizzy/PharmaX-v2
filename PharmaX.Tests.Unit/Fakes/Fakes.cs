@@ -401,6 +401,17 @@ public sealed class RecordingStockService : IStockService
         return Task.CompletedTask;
     }
 
+    public List<(int LineNo, decimal Units)> Amended { get; } = new();
+
+    public Task ApplyDispensingAmendAsync(
+        PharmaX.Domain.Dispensing.Dispensing dispensing,
+        PharmaX.Domain.Dispensing.DispensingLine line, decimal units,
+        CancellationToken ct = default)
+    {
+        Amended.Add((line.LineNo, units));
+        return Task.CompletedTask;
+    }
+
     public Task ApplyOwedAsync(PharmaX.Domain.Dispensing.Dispensing dispensing,
         PharmaX.Domain.Dispensing.DispensingLine line,
         CancellationToken ct = default)

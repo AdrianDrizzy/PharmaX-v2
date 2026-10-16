@@ -24,14 +24,15 @@ public sealed class frmToFollow : PhxFormBase
         _dispensing = dispensing;
         _labels = labels;
 
+        _grid.AutoGenerateColumns = false;
         _grid.Dock = DockStyle.Fill;
         _grid.Name = "grdToFollow";
-        _grid.AddColumn("Since", "Since", 70, "dd/MM/yyyy");
-        _grid.AddColumn("Patient", "Patient", 140);
-        _grid.AddColumn("Telephone", "Telephone", 80);
-        _grid.AddColumn("Description", "Owed", 220);
-        _grid.AddColumn("Owed", "Qty", 40, "0.###", rightAlign: true);
-        _grid.AddColumn("Document", "Dispensing", 70);
+        _grid.AddColumn("Since", "Since", 70, "dd/MM/yyyy").DataPropertyName = nameof(ToFollowDto.Since);
+        _grid.AddColumn("Patient", "Patient", 140).DataPropertyName = nameof(ToFollowDto.Patient);
+        _grid.AddColumn("Telephone", "Telephone", 80).DataPropertyName = nameof(ToFollowDto.Telephone);
+        _grid.AddColumn("Description", "Owed", 220).DataPropertyName = nameof(ToFollowDto.Description);
+        _grid.AddColumn("Owed", "Qty", 40, "0.###", rightAlign: true).DataPropertyName = nameof(ToFollowDto.Owed);
+        _grid.AddColumn("Document", "Dispensing", 70).DataPropertyName = nameof(ToFollowDto.DocumentNumber);
         Controls.Add(_grid);
 
         var header = PhxTheme.HeaderBand(64);
@@ -48,7 +49,7 @@ public sealed class frmToFollow : PhxFormBase
         });
         Controls.Add(header);
 
-        Controls.Add(Reports.frmLegacyHistory.Footer(_count, _give, _close));
+        Controls.Add(PhxTheme.Footer(_count, _give, _close));
 
         _give.Size = new Size(130, 32);
         _give.Text = "&Give";
@@ -76,9 +77,7 @@ public sealed class frmToFollow : PhxFormBase
     {
         _owed = await _dispensing.ToFollowAsync();
 
-        _grid.Rows.Clear();
-        foreach (var o in _owed)
-            _grid.Rows.Add(o.Since, o.Patient, o.Telephone, o.Description, o.Owed, o.DocumentNumber);
+        GridPager.Attach(_grid).Show(_owed);
 
         _count.Text = _owed.Count == 0 ? "Nothing is owed." : $"{_owed.Count} owed";
         _give.Enabled = _owed.Count > 0;
@@ -86,9 +85,7 @@ public sealed class frmToFollow : PhxFormBase
 
     private async Task GiveAsync()
     {
-        if (_grid.CurrentRow?.Index is not int i || i >= _owed.Count) return;
-
-        var owed = _owed[i];
+        if (_grid.CurrentRow?.DataBoundItem is not ToFollowDto owed) return;
         if (!Confirm($"Give {owed.Patient} {owed.Owed:0.###} of {owed.Description}?")) return;
 
         var result = await _dispensing.GiveOwedAsync(owed.DispensingId, owed.LineNo);

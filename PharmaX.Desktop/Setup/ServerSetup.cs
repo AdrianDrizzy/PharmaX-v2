@@ -159,17 +159,8 @@ public static class ServerSetup
 
     private static async Task CreateLoginAsync(string root, ServerLogin login)
     {
-        var builder = new MySqlConnectionStringBuilder
-        {
-            Server = "127.0.0.1",
-            Port = Port,
-            UserID = "root",
-            Password = root,
-            ConnectionTimeout = 30
-        };
-
-        await using var connection =
-            new MySqlConnection(builder.ConnectionString);
+        await using var connection = new MySqlConnection(
+            RootConnection(root, Port, timeout: 30));
 
         // The service the installer has just started can take a few
         // seconds to accept connections.
@@ -186,9 +177,54 @@ public static class ServerSetup
             }
         }
 
-        // Granted at both '%' and 'localhost': a till connects as the
-        // first, and the main computer itself as the second. Names and
-        // the password are ours, made above, so inlining them is safe.
+        await GrantAsync(connection, login);
+
+        Log($"Created database {login.Database} and login {login.User}.");
+    }
+
+    /// <summary>
+    /// The server's root account on this computer, as a connection string.
+    /// </summary>
+    /// <remarks>
+    /// User variables allowed because <c>'user'@'%'</c> would otherwise be
+    /// read as a parameter the command never defined.
+    /// </remarks>
+    public static string RootConnection(string password, int port,
+                                        int timeout = 5) =>
+        new MySqlConnectionStringBuilder
+        {
+            Server = "127.0.0.1",
+            Port = (uint)port,
+            UserID = "root",
+            Password = password,
+            ConnectionTimeout = (uint)timeout,
+            AllowUserVariables = true,
+            Pooling = false
+        }.ConnectionString;
+
+    /// <summary>
+    /// Makes the pharmacy's database and PharmaX's login on it, or gives a
+    /// login that is already there the password asked for.
+    /// </summary>
+    /// <remarks>
+    /// Granted at both '%' and 'localhost': a till connects as the first,
+    /// and the main computer itself as the second. Any password the server
+    /// will take - a short one somebody can type at every till is the
+    /// pharmacy's choice to make. It goes in as a parameter, so a quote in
+    /// it is only a quote; the names cannot, so they are refused unless
+    /// they are plain.
+    /// </remarks>
+    public static async Task GrantAsync(MySqlConnection root,
+        ServerLogin login, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(login);
+
+        if (!IsPlainName(login.Database) || !IsPlainName(login.User))
+            throw new ArgumentException(
+                "A database or user name may only contain letters, digits "
+                + "and underscores.", nameof(login));
+
         var sql =
             $"CREATE DATABASE IF NOT EXISTS `{login.Database}` "
             + "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
@@ -196,16 +232,42 @@ public static class ServerSetup
         foreach (var host in new[] { "%", "localhost" })
             sql +=
                 $"CREATE USER IF NOT EXISTS '{login.User}'@'{host}' "
-                + $"IDENTIFIED BY '{login.Password}';"
+                + "IDENTIFIED BY @password;"
+                + $"ALTER USER '{login.User}'@'{host}' IDENTIFIED BY @password;"
                 + $"GRANT ALL PRIVILEGES ON `{login.Database}`.* "
                 + $"TO '{login.User}'@'{host}';";
 
-        await using var command = connection.CreateCommand();
+        await using var command = root.CreateCommand();
         command.CommandText = sql;
-        await command.ExecuteNonQueryAsync();
-
-        Log($"Created database {login.Database} and login {login.User}.");
+        command.Parameters.AddWithValue("@password", login.Password);
+        await command.ExecuteNonQueryAsync(ct);
     }
+
+    /// <summary>
+    /// The root password the installer made, where this user may read it;
+    /// null otherwise.
+    /// </summary>
+    public static string? ReadRootPassword()
+    {
+        try
+        {
+            return File.Exists(AdminPath)
+                ? File.ReadLines(AdminPath)
+                      .Where(l => l.StartsWith("root: ", StringComparison.Ordinal))
+                      .Select(l => l["root: ".Length..].Trim())
+                      .FirstOrDefault()
+                : null;
+        }
+        catch (Exception ex) when (ex is IOException
+                                       or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    internal static bool IsPlainName(string name) =>
+        name.Length is > 0 and <= 64
+        && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 
     /// <summary>
     /// Opens the port to this network only. Every profile, because a

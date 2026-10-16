@@ -145,7 +145,7 @@ public sealed class AuthenticationService : IAuthenticationService
         if (user is null || !_hasher.Verify(currentPassword, user.Credential))
             return Result.Fail("SEC-001", "Your current password is incorrect.");
 
-        if (PasswordPolicy.Refuse(newPassword, user.Username) is Error weak)
+        if (PasswordPolicy.Refuse(newPassword) is Error weak)
             return Result.Fail(weak.Code, weak.Message);
 
         if (_hasher.Verify(newPassword, user.Credential))

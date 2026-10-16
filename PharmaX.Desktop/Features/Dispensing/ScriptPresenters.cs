@@ -27,6 +27,9 @@ public interface IScriptListView : IView
     event EventHandler? CancelScriptRequested;
     event EventHandler? ChooseRequested;
     event EventHandler? QuoteRequested;
+
+    /// A new script from the chosen one, changed as needed and captured.
+    event EventHandler? UseAgainRequested;
 }
 
 public interface IScriptEditView : IView
@@ -45,8 +48,16 @@ public interface IScriptEditView : IView
     /// The new script, once it is captured.
     void ScriptCaptured(Guid scriptId);
 
+    /// Asks which of what the patient has had before go on this script.
+    IReadOnlyList<SuppliedItemDto> PickFromHistory(
+        IReadOnlyList<SuppliedItemDto> supplied);
+
+    /// Puts lines on the script, to be changed like any other.
+    void AddItems(IReadOnlyList<ScriptItemEditDto> items);
+
     event EventHandler? SaveRequested;
     event EventHandler? CancelRequested;
+    event EventHandler? HistoryRequested;
 }
 
 public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
@@ -70,6 +81,7 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
         View.EditScriptRequested += (_, _) => Enqueue(EditAsync);
         View.CancelScriptRequested += (_, _) => Enqueue(CancelAsync);
         View.QuoteRequested += (_, _) => Enqueue(QuoteAsync);
+        View.UseAgainRequested += (_, _) => Enqueue(UseAgainAsync);
 
         View.ChooseRequested += (_, _) =>
         {
@@ -129,6 +141,39 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
         await LoadAsync();
 
         if (quote.CreatedScriptId is Guid scriptId) View.SelectScript(scriptId);
+    });
+
+    /// <summary>
+    /// Drafts a new script from the chosen one - imported ones included -
+    /// at what was last handed over, for the operator to change and
+    /// capture. The new script is left chosen, ready to dispense.
+    /// </summary>
+    private Task UseAgainAsync() => GuardAsync(async () =>
+    {
+        if (View.PatientId is not Guid patientId) return;
+
+        if (View.SelectedScriptId is not Guid id)
+        {
+            View.ShowInfo("Choose a script first.");
+            return;
+        }
+
+        var draft = await _scripts.RepeatAsync(id);
+
+        if (draft.IsFailure)
+        {
+            View.ShowError(draft.Error.Message);
+            return;
+        }
+
+        using var editor = _views.Create<frmScriptEdit>();
+        editor.LoadDraft(patientId, draft.Value);
+
+        if (editor.ShowDialog((Form)View) != DialogResult.OK) return;
+
+        await LoadAsync();
+
+        if (editor.CapturedScriptId is Guid scriptId) View.SelectScript(scriptId);
     });
 
     /// <summary>
@@ -201,7 +246,29 @@ public sealed class ScriptEditPresenter : PresenterBase<IScriptEditView>
     {
         View.SaveRequested += (_, _) => Enqueue(SaveAsync);
         View.CancelRequested += (_, _) => View.CloseView(false);
+        View.HistoryRequested += (_, _) => Enqueue(FromHistoryAsync);
     }
+
+    private Task FromHistoryAsync() => GuardAsync(async () =>
+    {
+        var supplied = await _scripts.SuppliedAsync(View.PatientId);
+
+        if (supplied.IsFailure)
+        {
+            View.ShowError(supplied.Error.Message);
+            return;
+        }
+
+        if (supplied.Value.Count == 0)
+        {
+            View.ShowInfo("Nothing has been prescribed or dispensed for this "
+                          + "patient before.");
+            return;
+        }
+
+        var picked = View.PickFromHistory(supplied.Value);
+        if (picked.Count > 0) View.AddItems(picked.Select(p => p.ToEdit()).ToList());
+    });
 
     public override Task InitialiseAsync() => GuardAsync(async () =>
     {

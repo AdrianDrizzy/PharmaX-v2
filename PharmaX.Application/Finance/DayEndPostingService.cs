@@ -32,7 +32,7 @@ public interface IJournalRepository
 {
     Task<JournalBatch?> GetAsync(Guid id, CancellationToken ct = default);
 
-    Task<IReadOnlyList<JournalBatch>> RecentAsync(int take = 100,
+    Task<IReadOnlyList<JournalBatch>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default);
 
     /// <summary>

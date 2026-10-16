@@ -51,6 +51,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         View.QuoteRequested += (_, _) => Enqueue(QuoteAsync);
         View.ProductScanned += (_, code) => Enqueue(() => AddItemAsync(code));
         View.RemoveItemRequested += (_, _) => Enqueue(RemoveItemAsync);
+        View.ChangeItemRequested += (_, _) => Enqueue(ChangeItemAsync);
         View.IssueRequested += (_, _) => Enqueue(IssueAsync);
         View.LabelReprintRequested += (_, _) => View.ShowLabelScreen();
         View.CloseRequested += (_, _) => Enqueue(CloseAsync);
@@ -232,6 +233,36 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         Render(result.Value);
     });
 
+    /// What is on the dispensing now, for the questions a change asks.
+    private IReadOnlyList<DispensingLineDto> _items = Array.Empty<DispensingLineDto>();
+
+    /// <summary>
+    /// A different quantity or amount for an item before the issue. It is
+    /// priced, taken from stock and screened again as a new item is.
+    /// </summary>
+    private Task ChangeItemAsync() => GuardAsync(async () =>
+    {
+        if (_dispensingId == Guid.Empty || _items.Count == 0)
+        {
+            View.ShowInfo("Put an item on first.");
+            return;
+        }
+
+        if (View.PromptItemChange(_items, View.SelectedLineNo) is not { } answer)
+            return;
+
+        var result = await _dispensing.AmendItemAsync(_dispensingId,
+            answer.LineNo, answer.Quantity, answer.Amount, reason: null);
+
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            return;
+        }
+
+        Render(result.Value.State);
+    });
+
     /// <summary>
     /// The patient DTO the patient screen returns carries more than the
     /// dispensing header needs, so it is narrowed here rather than the
@@ -246,6 +277,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
     private void Render(DispensingStateDto state)
     {
+        _items = state.Items;
         View.ShowWarnings(state.Warnings);
         View.ShowItems(state.Items);
         View.ShowCoPayment(state.TariffTotal, state.ContributionTotal,

@@ -1,3 +1,4 @@
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 using PharmaX.Domain.Primitives;
 
@@ -21,11 +22,25 @@ public sealed partial class frmFirstRun : Form
     private WorkstationProfile _profile;
     private bool _connectionProven;
 
+    // The logo as previewed, the file it came from, and whether that is a
+    // new choice still to be copied into PharmaX's own folder.
+    private readonly Branding _preview = new();
+    private string? _chosenLogo;
+    private bool _logoChanged;
+
     public frmFirstRun()
     {
         Icon = PhxIcons.AppIcon;
         InitializeComponent();
         PhxTheme.Apply(this);
+
+        // The card the logo sits on in the shell, so the preview shows it
+        // the way the tills will.
+        pnlLogo.BackColor = PhxTheme.Card;
+        pnlLogo.Paint += (_, e) => PaintLogo(e);
+        btnLogo.Click += (_, _) => ChooseLogo();
+        btnRemoveLogo.Click += (_, _) => SetLogo(null);
+        Disposed += (_, _) => _preview.Dispose();
 
         // An existing profile means the operator has asked to run setup
         // again, so start from what is already there rather than making
@@ -110,6 +125,10 @@ public sealed partial class frmFirstRun : Form
             c => string.Equals(c.Code, _profile.Currency,
                                StringComparison.OrdinalIgnoreCase))
             ?? Currencies.Default;
+
+        // Already PharmaX's own copy, from an earlier run: nothing to copy.
+        SetLogo(_profile.LogoPath);
+        _logoChanged = false;
     }
 
     private WorkstationKind Kind =>
@@ -125,14 +144,23 @@ public sealed partial class frmFirstRun : Form
     /// own address: it reaches its database over the loopback, which is
     /// both correct and one fewer thing to get wrong on a network with
     /// no DNS.
+    ///
+    /// On the server the password is being chosen, to be written down for
+    /// the tills, so it is shown as it is typed rather than typed twice; a
+    /// till is only repeating it.
     /// </remarks>
     private void KindChanged()
     {
         var shared = Kind != WorkstationKind.Standalone;
+        var till = Kind == WorkstationKind.Till;
 
         grpDatabase.Enabled = shared;
-        lblHost.Enabled = Kind == WorkstationKind.Till;
-        txtHost.Enabled = Kind == WorkstationKind.Till;
+        lblHost.Enabled = till;
+        txtHost.Enabled = till;
+        txtPassword.UseSystemPasswordChar = Kind != WorkstationKind.Server;
+        txtPassword.PlaceholderText = till
+            ? "The main computer's"
+            : "Any password";
 
         grpDatabase.Text = Kind switch
         {
@@ -143,8 +171,32 @@ public sealed partial class frmFirstRun : Form
             _ => "Database - not needed for a single computer"
         };
 
+        lblLoginHint.Text = Kind switch
+        {
+            WorkstationKind.Server =>
+                "Keep pharmax, and choose any password - a simple one is "
+                + "fine. PharmaX sets the login up; every till uses it too.",
+            WorkstationKind.Till =>
+                "The username and password the main computer showed when "
+                + "it was set up.",
+            _ => ""
+        };
+
+        // The pharmacy's logo is kept with its database, so a till shows
+        // the one the main computer has.
+        btnLogo.Enabled = !till;
+        btnRemoveLogo.Enabled = !till && _chosenLogo is not null;
+        lblLogoHint.Text = till
+            ? "A till shows the logo chosen on the main computer."
+            : "Optional. On receipts, reports and the sign-in screen; "
+              + "System setup can change it later.";
+
         if (Kind == WorkstationKind.Server && txtHost.Text.Length == 0)
             txtHost.Text = "127.0.0.1";
+
+        // Left by the server choice; a till is never its own main computer.
+        else if (till && txtHost.Text == "127.0.0.1")
+            txtHost.Text = "";
 
         Untested();
     }
@@ -170,9 +222,14 @@ public sealed partial class frmFirstRun : Form
 
         try
         {
-            var result = await ConnectionTest.TryAsync(Host,
-                (int)numPort.Value, txtDatabase.Text.Trim(),
-                txtUser.Text.Trim(), txtPassword.Text);
+            var result = await TryConnectAsync();
+
+            // On the main computer a login the server does not know is one
+            // PharmaX can make, so it is chosen here rather than having to
+            // be known already.
+            if (result.LoginRefused && Kind == WorkstationKind.Server
+                && await CreateLoginAsync() is { } made)
+                result = made.Succeeded ? await TryConnectAsync() : made;
 
             Report(result);
 
@@ -191,6 +248,71 @@ public sealed partial class frmFirstRun : Form
             btnTest.Enabled = true;
             UseWaitCursor = false;
         }
+    }
+
+    private Task<ConnectionTestResult> TryConnectAsync() =>
+        ConnectionTest.TryAsync(Host, (int)numPort.Value,
+            txtDatabase.Text.Trim(), txtUser.Text.Trim(), txtPassword.Text);
+
+    /// <summary>
+    /// Makes the login typed in on this computer's database server. Null
+    /// where the operator would rather not.
+    /// </summary>
+    /// <remarks>
+    /// Through the server's root account: the password the installer made,
+    /// then none - how MariaDB is left when installed without one - and
+    /// only then the operator, once. Never for root itself, whose password
+    /// this would change.
+    /// </remarks>
+    private async Task<ConnectionTestResult?> CreateLoginAsync()
+    {
+        var user = txtUser.Text.Trim();
+
+        if (string.Equals(user, "root", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (MessageBox.Show(this,
+                $"This computer's database has no login {user} with that "
+                + "password.\n\nSet it up now? Every till will use the same "
+                + "username and password.",
+                "PharmaX", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
+            return null;
+
+        lblTestResult.Text = $"Setting up {user}...";
+
+        var login = new ServerLogin(txtDatabase.Text.Trim(), user,
+                                    txtPassword.Text, (int)numPort.Value);
+
+        ConnectionTestResult made = new(false, "", LoginRefused: true);
+
+        foreach (var root in new[] { ServerSetup.ReadRootPassword(), "" })
+        {
+            if (root is null) continue;
+
+            made = await ConnectionTest.CreateLoginAsync(login.Port, root,
+                                                         login);
+
+            // Done, or stopped by something a password will not fix.
+            if (!made.LoginRefused) return made;
+        }
+
+        for (var attempt = 0; made.LoginRefused; attempt++)
+        {
+            var root = frmTextPrompt.Ask(this, "Database administrator",
+                (attempt == 0 ? "" : "That was not it. ")
+                + "To set the login up, PharmaX needs the database "
+                + "server's administrator (root) password, once. It is the "
+                + "one chosen when MariaDB or MySQL was installed here.",
+                hint: "The root password", secret: true);
+
+            if (root is null) return null;
+
+            made = await ConnectionTest.CreateLoginAsync(login.Port, root,
+                                                         login);
+        }
+
+        return made;
     }
 
     private void Report(ConnectionTestResult result)
@@ -220,6 +342,15 @@ public sealed partial class frmFirstRun : Form
         if (txtUser.Text.Trim().Length == 0)
         {
             Complain("The database needs a username.", txtUser);
+            return false;
+        }
+
+        // Simple is allowed; none at all would open the pharmacy's records
+        // to anything on the network.
+        if (Kind == WorkstationKind.Server && txtPassword.Text.Length == 0)
+        {
+            Complain("Choose a password for the database. Any will do - a "
+                     + "simple one is fine.", txtPassword);
             return false;
         }
 
@@ -274,7 +405,8 @@ public sealed partial class frmFirstRun : Form
             VatNumber = txtVatNumber.Text.Trim(),
             Currency = cboCurrency.SelectedItem is CurrencyOption chosen
                 ? chosen.Code
-                : Currencies.Default.Code
+                : Currencies.Default.Code,
+            LogoPath = StoreLogo()
         };
 
         try
@@ -364,6 +496,95 @@ public sealed partial class frmFirstRun : Form
 
         Report(created);
         return created.Succeeded;
+    }
+
+    // ---- The logo --------------------------------------------------------
+
+    private void PaintLogo(PaintEventArgs e)
+    {
+        var box = new Rectangle(4, 4, pnlLogo.Width - 9, pnlLogo.Height - 9);
+
+        if (_preview.HasLogo)
+        {
+            _preview.Draw(e.Graphics, box);
+            return;
+        }
+
+        TextRenderer.DrawText(e.Graphics, "No logo", Font, box,
+            PhxTheme.Muted, TextFormatFlags.HorizontalCenter
+                            | TextFormatFlags.VerticalCenter);
+    }
+
+    private void ChooseLogo()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp|All files|*.*",
+            Title = "Choose the pharmacy logo"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        // Kept in the database for every till, so it is kept small.
+        if (new FileInfo(dialog.FileName).Length > 2 * 1024 * 1024)
+        {
+            Complain("That image is over 2 MB. Choose a smaller one; a logo "
+                     + "a few hundred pixels wide is plenty for a receipt.",
+                     btnLogo);
+            return;
+        }
+
+        var (previous, changed) = (_chosenLogo, _logoChanged);
+
+        SetLogo(dialog.FileName);
+        if (_chosenLogo is not null) return;
+
+        // Not a picture: the one shown before stays.
+        SetLogo(previous);
+        _logoChanged = changed;
+
+        Complain("PharmaX cannot read that file as a picture. Choose a "
+                 + "PNG, JPEG or BMP image.", btnLogo);
+    }
+
+    /// The image to preview and keep, or null for none.
+    private void SetLogo(string? path)
+    {
+        _preview.Load(string.IsNullOrWhiteSpace(path) ? null : path);
+        _chosenLogo = _preview.LogoPath;
+        _logoChanged = true;
+
+        btnRemoveLogo.Enabled = btnLogo.Enabled && _chosenLogo is not null;
+        pnlLogo.Invalidate();
+    }
+
+    /// <summary>
+    /// PharmaX's own copy of the chosen logo, or blank for none.
+    /// </summary>
+    /// <remarks>
+    /// A logo that cannot be copied is not worth failing the setup over:
+    /// the pharmacy starts without one and adds it in System setup.
+    /// </remarks>
+    private string StoreLogo()
+    {
+        if (_chosenLogo is null || Kind == WorkstationKind.Till) return "";
+        if (!_logoChanged) return _chosenLogo;
+
+        try
+        {
+            return Branding.Keep(_chosenLogo);
+        }
+        catch (Exception ex) when (ex is IOException
+                                       or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this,
+                "PharmaX could not keep a copy of the logo, so it will "
+                + "start without one. Add it later in System setup.\n\n"
+                + ex.Message,
+                "PharmaX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+            return "";
+        }
     }
 
     private void Complain(string message, Control focus)

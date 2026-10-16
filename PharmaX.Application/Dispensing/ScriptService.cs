@@ -43,6 +43,18 @@ public sealed record ScriptDetailDto(ScriptDto Script,
     IReadOnlyList<ScriptItemDto> Items, string? PrescriberNumber = null,
     bool IsEditable = false);
 
+/// <summary>
+/// One item a patient has had before: what was last handed over against a
+/// script, or what it prescribed where it was never dispensed.
+/// </summary>
+public sealed record SuppliedItemDto(string ProductCode, string Description,
+    decimal Quantity, string Directions, bool AllowSubstitution, DateOnly On,
+    string ScriptNumber)
+{
+    public ScriptItemEditDto ToEdit() =>
+        new(ProductCode, Quantity, Directions, AllowSubstitution);
+}
+
 public interface IScriptService
 {
     Task<Result<IReadOnlyList<ScriptDto>>> ForPatientAsync(Guid patientId,
@@ -52,6 +64,21 @@ public interface IScriptService
         CancellationToken ct = default);
 
     Task<Result<Guid>> CaptureAsync(ScriptEditDto edit,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// A new script drafted from an earlier one: the same prescriber and
+    /// items, dated today, at the quantities last handed over against it.
+    /// Nothing is saved until the draft is captured.
+    /// </summary>
+    Task<Result<ScriptEditDto>> RepeatAsync(Guid scriptId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Everything the patient has had, newest first and imported history
+    /// included, to pick onto a script being captured.
+    /// </summary>
+    Task<Result<IReadOnlyList<SuppliedItemDto>>> SuppliedAsync(Guid patientId,
         CancellationToken ct = default);
 
     /// <summary>
@@ -238,6 +265,106 @@ public sealed class ScriptService : IScriptService
         await tx.DisposeAsync();
 
         return Result<Guid>.Ok(script.Id);
+    }
+
+    public async Task<Result<ScriptEditDto>> RepeatAsync(Guid scriptId,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptCapture);
+
+        var script = await _scripts.GetAsync(scriptId, ct);
+        if (script is null)
+            return Result<ScriptEditDto>.Fail("DSP-000", "Script not found.");
+
+        var items = await SuppliedFromAsync(script,
+            await _dispensings.ForPatientAsync(script.PatientId, ct),
+            new Dictionary<Guid, string?>(), ct);
+
+        if (items.Count == 0)
+            return Result<ScriptEditDto>.Fail("DSP-021",
+                $"Nothing on script {script.ScriptNumber} is still in the "
+                + "catalogue to use again.");
+
+        return Result<ScriptEditDto>.Ok(new ScriptEditDto(script.PatientId,
+            script.PrescriberName, script.PrescriberNumber, _clock.Today,
+            ValidUntil: null, RepeatsAuthorised: 0,
+            items.Select(i => i.ToEdit()).ToList()));
+    }
+
+    public async Task<Result<IReadOnlyList<SuppliedItemDto>>> SuppliedAsync(
+        Guid patientId, CancellationToken ct = default)
+    {
+        DemandScriptAccess();
+
+        var dispensings = await _dispensings.ForPatientAsync(patientId, ct);
+        var codes = new Dictionary<Guid, string?>();
+        var rows = new List<SuppliedItemDto>();
+
+        foreach (var script in await _scripts.ForPatientAsync(patientId, ct))
+        {
+            if (script.Status == ScriptStatus.Cancelled) continue;
+            rows.AddRange(await SuppliedFromAsync(script, dispensings, codes, ct));
+        }
+
+        return Result<IReadOnlyList<SuppliedItemDto>>.Ok(
+            rows.OrderByDescending(r => r.On).ToList());
+    }
+
+    /// <summary>
+    /// What one script supplied, item by item: as last handed over where
+    /// it was dispensed - the quantity the pharmacist actually gave, which
+    /// may differ from the prescriber's - else as it was prescribed. An
+    /// item no longer in the catalogue is left out: it cannot go on a new
+    /// script.
+    /// </summary>
+    private async Task<List<SuppliedItemDto>> SuppliedFromAsync(Script script,
+        IReadOnlyList<Domain.Dispensing.Dispensing> dispensings,
+        Dictionary<Guid, string?> codes, CancellationToken ct)
+    {
+        async Task<string?> CodeAsync(Guid productId)
+        {
+            if (!codes.TryGetValue(productId, out var code))
+                codes[productId] = code =
+                    (await _products.GetAsync(productId, ct))?.Code;
+
+            return code;
+        }
+
+        var last = dispensings
+            .Where(d => d.ScriptId == script.Id
+                        && d.Status == DispensingStatus.Issued)
+            .MaxBy(d => d.IssuedAtUtc);
+
+        var rows = new List<SuppliedItemDto>();
+
+        if (last is not null)
+        {
+            var on = DateOnly.FromDateTime(last.IssuedAtUtc!.Value.ToLocalTime());
+
+            foreach (var line in last.Lines.OrderBy(l => l.LineNo))
+            {
+                if (await CodeAsync(line.ProductId) is not string code) continue;
+
+                var item = script.Items.FirstOrDefault(i => i.Id == line.ScriptItemId);
+
+                rows.Add(new SuppliedItemDto(code, line.Description,
+                    line.Quantity, line.Directions,
+                    item?.AllowSubstitution ?? true, on, script.ScriptNumber));
+            }
+
+            return rows;
+        }
+
+        foreach (var item in script.Items.OrderBy(i => i.LineNo))
+        {
+            if (await CodeAsync(item.ProductId) is not string code) continue;
+
+            rows.Add(new SuppliedItemDto(code, item.Description, item.Quantity,
+                item.Directions, item.AllowSubstitution, script.PrescribedOn,
+                script.ScriptNumber));
+        }
+
+        return rows;
     }
 
     public async Task<Result> UpdateAsync(Guid id, ScriptEditDto edit,

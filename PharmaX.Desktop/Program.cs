@@ -25,6 +25,13 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
+        // First, before any window: Windows Forms refuses to change this
+        // once a control exists on the thread, and the first-run wizard
+        // makes some - so set later, it stopped every newly set-up machine
+        // the moment the wizard closed. The handlers come with the host.
+        System.Windows.Forms.Application.SetUnhandledExceptionMode(
+            UnhandledExceptionMode.CatchException);
+
         // The installer, elevated, on the pharmacy's main computer: set
         // up the database and stop. The wizard runs on the next start.
         if (args is ["--setup-server", var msi])
@@ -37,7 +44,8 @@ internal static class Program
         // A scheduled or scripted run has nobody to answer the first-run
         // wizard - the nightly backup runs where no window can be seen - so
         // on a machine not yet set up it stops rather than waiting forever.
-        if (args is ["--backup", ..] or ["--import-rsi", ..] && !WorkstationProvisioning.Exists)
+        if (args is ["--backup", ..] or ["--import", ..] or ["--reset-admin"]
+            && !WorkstationProvisioning.Exists)
         {
             Environment.ExitCode = 2;
             return;
@@ -73,16 +81,36 @@ internal static class Program
         if (!PrepareLocalDatabase(host)) return;
 
         // The change-over, from the installer or a technician:
-        //   PharmaX.Desktop.exe --import-rsi "D:\Exports" [--dry-run]
-        // loads the RSI export, saves its report beside the logs and stops.
-        // The exit code says whether every total agreed.
-        if (args is ["--import-rsi", var folder, ..])
+        //   PharmaX.Desktop.exe --import "D:\Exports" [more files or folders] [--dry-run]
+        // loads the exported data, saves its report beside the logs and
+        // stops. The exit code says whether every total agreed.
+        if (args is ["--import", _, ..])
         {
-            Environment.ExitCode = ImportRsi(host, folder, args.Contains("--dry-run"));
+            Environment.ExitCode = Import(host,
+                args.Skip(1).Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList(),
+                args.Contains("--dry-run"));
             host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             Log.CloseAndFlush();
             return;
         }
+
+        // The administrator's password lost, and nobody else can reset it:
+        //   PharmaX.Desktop.exe --reset-admin
+        // puts the "admin" sign-in back as installed and stops.
+        if (args is ["--reset-admin"])
+        {
+            using (var scope = host.Services.CreateScope())
+                scope.ServiceProvider.GetRequiredService<ReferenceDataSeeder>()
+                    .ResetAdministratorAsync().GetAwaiter().GetResult();
+
+            Log.Warning("The {Username} sign-in was reset to its starting password",
+                ReferenceDataSeeder.AdministratorUsername);
+            host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            Log.CloseAndFlush();
+            return;
+        }
+
+        PublishPrinters(host);
 
         // No scope of its own: ViewFactory gives each screen one.
         var views = host.Services.GetRequiredService<ViewFactory>();
@@ -134,6 +162,32 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Tells the shared database which printers this computer has, so the
+    /// others can list them: a till's receipt printer at the main
+    /// computer, the main computer's laser at a till.
+    /// </summary>
+    /// <remarks>
+    /// In the background, and a failure only logged: a computer that cannot
+    /// say what printers it has can still sell.
+    /// </remarks>
+    private static void PublishPrinters(IHost host) =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = host.Services.CreateScope();
+                await Adapters.Printing.NetworkPrinters.PublishAsync(
+                    scope.ServiceProvider.GetRequiredService<IPrinterDirectory>());
+            }
+#pragma warning disable CA1031 // Logged; see the remarks.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                Log.Warning(ex, "Could not report this computer's printers");
+            }
+        });
+
     private static IHost BuildHost()
     {
         // ContentRootPath, not the current directory. A shortcut on a
@@ -183,6 +237,11 @@ internal static class Program
         Directory.CreateDirectory(logDirectory);
 
         Log.Logger = new LoggerConfiguration()
+            // Every statement EF runs, at Information, is a line per row an
+            // import writes: two hundred megabytes for one change-over.
+            // Failed statements are still logged, as warnings and errors.
+            .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command",
+                Serilog.Events.LogEventLevel.Warning)
             .WriteTo.File(
                 path: Path.Combine(logDirectory, "pharmax-.log"),
                 rollingInterval: RollingInterval.Day,
@@ -260,17 +319,17 @@ internal static class Program
         }
     }
 
-    private static int ImportRsi(IHost host, string folder, bool dryRun)
+    private static int Import(IHost host, IReadOnlyList<string> paths, bool dryRun)
     {
         using var scope = host.Services.CreateScope();
 
         var report = scope.ServiceProvider
-            .GetRequiredService<PharmaX.Application.Legacy.ILegacyImporter>()
-            .ImportAsync(folder, dryRun).GetAwaiter().GetResult();
+            .GetRequiredService<PharmaX.Application.Import.IDataImporter>()
+            .ImportAsync(paths, dryRun).GetAwaiter().GetResult();
 
-        var saved = Features.Admin.frmRsiImport.Save(report);
+        var saved = Features.Admin.frmDataImport.Save(report);
 
-        Log.Information("RSI import {Outcome}; report at {Report}",
+        Log.Information("Data import {Outcome}; report at {Report}",
             report.Succeeded ? "agreed with the export" : "did NOT agree with the export",
             saved);
 
@@ -288,13 +347,16 @@ internal static class Program
         using var scope = host.Services.CreateScope();
         var services = scope.ServiceProvider;
         var branding = host.Services.GetRequiredService<Branding>();
+        var installedLogo = host.Services.GetRequiredService<PharmaXOptions>()
+                                .Pharmacy.LogoPath;
 
         // On the thread pool: after the first sign-in there is a window
         // synchronisation context, and blocking on its awaits would hang.
         var (palette, details, mode) = Task.Run(async () => (
             await branding.RefreshAsync(
                 services.GetRequiredService<IPharmacySettings>(),
-                services.GetRequiredService<IWorkstationSettings>()),
+                services.GetRequiredService<IWorkstationSettings>(),
+                installedLogo),
             await services
                 .GetRequiredService<PharmaX.Application.Pharmacy.IPharmacyDetailsService>()
                 .LoadAsync(),
@@ -427,9 +489,6 @@ internal static class Program
         // Constructed here so the static handler below has a logger to
         // write to before any form has been resolved.
         host.Services.GetRequiredService<ErrorHandler>();
-
-        System.Windows.Forms.Application.SetUnhandledExceptionMode(
-            UnhandledExceptionMode.CatchException);
 
         System.Windows.Forms.Application.ThreadException += (_, e) =>
             ErrorHandler.Handle(e.Exception);

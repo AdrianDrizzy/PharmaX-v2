@@ -1,4 +1,5 @@
 using PharmaX.Application.Suppliers.Dtos;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Suppliers;
@@ -75,7 +76,7 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
     {
         ArgumentNullException.ThrowIfNull(suppliers);
 
-        grdSuppliers.DataSource = suppliers.ToList();
+        GridPager.Attach(grdSuppliers).Show(suppliers);
 
         foreach (DataGridViewRow row in grdSuppliers.Rows)
         {

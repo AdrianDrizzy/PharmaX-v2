@@ -121,7 +121,7 @@ public partial class frmCollect : PhxFormBase, ICollectView
         // a patient does not lose them every five seconds.
         var chosen = SelectedDispensingId;
 
-        grdWaiting.DataSource = waiting.Select(WaitingRow.From).ToList();
+        GridPager.Attach(grdWaiting).Show(waiting.Select(WaitingRow.From));
 
         foreach (DataGridViewRow row in grdWaiting.Rows)
         {
