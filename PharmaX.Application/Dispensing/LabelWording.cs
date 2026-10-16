@@ -16,7 +16,7 @@ namespace PharmaX.Application.Dispensing;
 /// reprints of dispensings recorded before the wording changed.
 /// </para>
 /// <para>
-/// The warnings are chosen from the medicine's own name - the RSI
+/// The warnings are chosen from the medicine's own name - the imported
 /// catalogue names most products by what is in them ("AMOXYCILLIN
 /// CAPSULES 500MG", "CHLORPHENIRAMINE (VARICHEM) 4MG"), and the common
 /// brands are listed beside their ingredient. A medicine that matches

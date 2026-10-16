@@ -79,6 +79,18 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     public override Task InitialiseAsync() => LoadAsync();
 
+    /// <summary>
+    /// Every patient the search matches, for an export: the grid holds
+    /// only the page.
+    /// </summary>
+    internal void ExportAll(Action<IReadOnlyList<object>> export) =>
+        Enqueue(() => GuardAsync(async () =>
+        {
+            var result = await _patients.SearchAsync(View.SearchText, take: int.MaxValue);
+            if (result.IsFailure) View.ShowError(result.Error.Message);
+            else export(result.Value.ToList<object>());
+        }));
+
     /// Patients to a page, as on the product list.
     internal const int PageSize = 100;
 

@@ -62,6 +62,11 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         // every fifteen seconds would pile up behind it all afternoon.
         View.WaitingTick += (_, _) => _ = ShowWaitingAsync();
         View.WaitingTick += (_, _) => _ = ShowAlertsAsync();
+
+        // The tiles' figures too, so "today" stays today: another till's
+        // sales, a patient added at the dispensary, and the roll-over at
+        // midnight all show without waiting for a screen to close here.
+        View.WaitingTick += (_, _) => _ = ShowCountsAsync();
         _connectivity.StateChanged += (_, s) => View.SetConnectivity(Describe(s));
     }
 
@@ -108,6 +113,10 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     private static string Number(int value) =>
         value.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
 
+    /// "6,725", or "6,725 · 3 new today".
+    private static string OnFile(int total, int addedToday) =>
+        addedToday == 0 ? Number(total) : $"{Number(total)} · {Number(addedToday)} new today";
+
     private async Task ShowCountsAsync()
     {
         try
@@ -118,14 +127,20 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 .GetRequiredService<IHomeCounts>()
                 .ReadAsync(_permissions.ProductScope());
 
-            // Each on the tile it belongs to. Nothing for a figure that is
-            // nought and means "nothing to do", as the status bar does.
-            Show("patients", Number(c.Patients));
-            Show("products", Number(c.Products));
+            // Each on the tile it belongs to: what is on file with what was
+            // added to it today, and what has been done today. Nothing for
+            // a figure that is nought and means "nothing to do", as the
+            // status bar does.
+            Show("patients", OnFile(c.Patients, c.PatientsAddedToday));
+            Show("products", OnFile(c.Products, c.ProductsAddedToday));
             Show("pos", $"{Number(c.SalesToday)} today");
             Show("dispensing", $"{Number(c.ScriptsToday)} today");
+            Show("returns", $"{Number(c.ReturnsToday)} today");
+            Show("goods-receipt", $"{Number(c.DeliveriesToday)} today");
             Show("purchase-orders", c.OpenPurchaseOrders == 0
                 ? null : $"{Number(c.OpenPurchaseOrders)} open");
+            Show("stocktake-capture", c.OpenStocktakes == 0
+                ? null : $"{Number(c.OpenStocktakes)} open");
         }
         catch (InvalidOperationException)
         {
@@ -317,6 +332,9 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "stock-adjust":
                 _views.ShowDialog<frmStockAdjustment>((Form)View);
                 break;
+            case "prepack":
+                _views.ShowDialog<frmPrepack>((Form)View);
+                break;
             case "supplier-return":
             case "move-stock":
                 using (var adjust = _views.Create<frmStockAdjustment>())
@@ -451,14 +469,11 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "backup":
                 BackUpNow();
                 return;
-            case "rsi-import":
-                _views.ShowDialog<Features.Admin.frmRsiImport>((Form)View);
-                return;
+            case "data-import":
+                _views.ShowDialog<Features.Admin.frmDataImport>((Form)View);
+                break;
             case "mass-price":
                 await MassPriceChangeAsync();
-                return;
-            case "rsi-history":
-                _views.ShowDialog<Features.Reports.frmLegacyHistory>((Form)View);
                 return;
             case "system-setup":
                 _views.ShowDialog<Features.Admin.frmSystemSetup>((Form)View);

@@ -13,7 +13,7 @@ namespace PharmaX.Application.Dispensing;
 /// </summary>
 public sealed record DispensedItemDto(Guid DispensingId, string ScriptNumber,
     string DocumentNumber, string PatientName, DateOnly DispensedOn,
-    int Labels);
+    int Labels, Guid ScriptId = default, decimal CoPayment = 0m);
 
 /// <summary>
 /// How a run of labels went: how many printed, where, and any note about
@@ -107,7 +107,8 @@ public sealed class LabelReprintService : ILabelReprintService
                 patient.FullName,
                 DateOnly.FromDateTime(
                     (dispensing.IssuedAtUtc ?? DateTime.UtcNow).ToLocalTime()),
-                dispensing.Lines.Count));
+                dispensing.Lines.Count, dispensing.ScriptId,
+                dispensing.CoPaymentTotal.Amount));
         }
 
         return Result<IReadOnlyList<DispensedItemDto>>.Ok(rows);

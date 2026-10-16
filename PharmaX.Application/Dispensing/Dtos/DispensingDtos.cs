@@ -134,6 +134,22 @@ public sealed record DispensingStateDto(
 }
 
 /// <summary>
+/// An item corrected, and what that did to what the patient pays.
+/// </summary>
+/// <param name="WasCollected">
+/// The co-payment was taken at the till before the correction, so the
+/// difference is settled there: given back through returns, or taken as a
+/// sale. One not yet collected is simply collected at the new amount.
+/// </param>
+public sealed record ItemAmendedDto(DispensingStateDto State, bool WasIssued,
+    decimal CoPaymentBefore, decimal CoPaymentAfter, bool WasCollected)
+{
+    /// Still to settle at the till: more to take, or (negative) to give back.
+    public decimal ToSettle =>
+        WasCollected ? CoPaymentAfter - CoPaymentBefore : 0m;
+}
+
+/// <summary>
 /// One label to print. A plain record so that the printer adapter needs
 /// no reference to the domain.
 /// </summary>

@@ -213,7 +213,7 @@ public sealed class PurchasingService : IPurchasingService
     {
         _permissions.Demand(PermissionCode.PurchaseOrderRaise);
 
-        var products = await _products.SearchAsync("", take: 2000, ct: ct);
+        var products = await _products.SearchAsync("", take: int.MaxValue, ct: ct);
         var onOrder = await _orders.OnOrderAsync(ct);
 
         // Orders up to twice the reorder level, which is the simplest

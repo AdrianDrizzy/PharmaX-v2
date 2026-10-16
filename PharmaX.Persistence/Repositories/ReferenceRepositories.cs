@@ -223,7 +223,7 @@ public sealed class QuotationRepository : Application.Sales.IQuotationRepository
             .FirstOrDefaultAsync(q => q.Id == id, ct);
 
     public async Task<IReadOnlyList<Domain.Sales.Quotation>> RecentAsync(
-        int take = 100, Domain.Sales.QuotationKind? kind = null,
+        int take = int.MaxValue, Domain.Sales.QuotationKind? kind = null,
         CancellationToken ct = default) =>
         await _db.Quotations
             .Include(q => q.Lines)

@@ -23,7 +23,7 @@ public static class Suggest
 
         return new Suggestion(patient.Id,
             $"{patient.Surname}, {patient.FirstNames}",
-            Details(Format.FileNumber(patient.FileNumber), patient.Telephone,
+            Details(patient.FileNumber, patient.Telephone,
                     OneLine(patient.Address)));
     }
 

@@ -58,7 +58,7 @@ public interface IQuotationRepository
     Task<Quotation?> GetAsync(Guid id, CancellationToken ct = default);
 
     /// <param name="kind">One kind only, or every kind where null.</param>
-    Task<IReadOnlyList<Quotation>> RecentAsync(int take = 100,
+    Task<IReadOnlyList<Quotation>> RecentAsync(int take = int.MaxValue,
         QuotationKind? kind = null, CancellationToken ct = default);
 
     /// The number printed on the quotation the customer brings back.

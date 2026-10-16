@@ -527,37 +527,7 @@ public sealed class frmSystemSetup : PhxFormBase
         // currency and saved without touching the logo.
         if (!_logoChanged) return _chosenLogo;
 
-        Directory.CreateDirectory(Branding.Folder);
-
-        var destination = Path.Combine(Branding.Folder,
-            "logo" + Path.GetExtension(_chosenLogo).ToUpperInvariant()
-                         .ToLowerInvariant());
-
-        foreach (var stale in Directory.GetFiles(Branding.Folder, "logo.*"))
-        {
-            if (!string.Equals(stale, destination,
-                               StringComparison.OrdinalIgnoreCase))
-                TryDelete(stale);
-        }
-
-        File.Copy(_chosenLogo, destination, overwrite: true);
-        return destination;
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-            // An old logo still open somewhere is not worth failing a
-            // save over; it is overwritten on the next change anyway.
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        return Branding.Keep(_chosenLogo);
     }
 
     protected override void Dispose(bool disposing)

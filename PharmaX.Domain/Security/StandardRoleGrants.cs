@@ -70,6 +70,12 @@ public static class StandardRoleGrants
             PermissionCode.ScriptDispense,
             PermissionCode.ScriptAuthorise,
             PermissionCode.ScriptReverse,
+
+            // Correcting what was handed over and charged, after the
+            // issue, and pre-packing bulk stock: the dispensary's own.
+            PermissionCode.DispensingAmend,
+            PermissionCode.StockPrepack,
+
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,
@@ -88,6 +94,8 @@ public static class StandardRoleGrants
             PermissionCode.PatientMaintain,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
+            PermissionCode.DispensingAmend,
+            PermissionCode.StockPrepack,
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,

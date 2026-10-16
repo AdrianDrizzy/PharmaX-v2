@@ -43,8 +43,13 @@ public sealed class Branding : IDisposable
     /// before every sign-in, so a logo saved at one till reaches the
     /// others at their next sign-in. Returns the pharmacy's palette.
     /// </summary>
+    /// <param name="installedLogo">
+    /// The logo chosen when PharmaX was set up on this computer, taken
+    /// where the pharmacy has never had one.
+    /// </param>
     public async Task<string?> RefreshAsync(IPharmacySettings pharmacy,
-                                            IWorkstationSettings workstation)
+                                            IWorkstationSettings workstation,
+                                            string? installedLogo = null)
     {
         ArgumentNullException.ThrowIfNull(pharmacy);
         ArgumentNullException.ThrowIfNull(workstation);
@@ -53,10 +58,11 @@ public sealed class Branding : IDisposable
         var palette = await pharmacy.GetAsync(PharmacySettingKey.Palette).ConfigureAwait(false);
 
         // A till set up when the logo and colours were its own: what it
-        // had becomes the pharmacy's, and so every other till's.
+        // had becomes the pharmacy's, and so every other till's. Failing
+        // that, the one chosen at setup. Never once removed: that is blank.
         if (image is null
-            && Encode(await workstation.GetAsync(WorkstationSettingKey.LogoPath).ConfigureAwait(false))
-                is { } promoted)
+            && (Encode(await workstation.GetAsync(WorkstationSettingKey.LogoPath).ConfigureAwait(false))
+                ?? Encode(installedLogo)) is { } promoted)
             await pharmacy.SetAsync(PharmacySettingKey.LogoImage, image = promoted).ConfigureAwait(false);
 
         if (palette is null
@@ -66,6 +72,48 @@ public sealed class Branding : IDisposable
 
         Load(Cache(image));
         return palette;
+    }
+
+    /// <summary>
+    /// Copies a chosen image into <see cref="Folder"/> in place of any logo
+    /// kept there before, and returns the path to the copy.
+    /// </summary>
+    public static string Keep(string chosen)
+    {
+        Directory.CreateDirectory(Folder);
+
+        var destination = Path.Combine(Folder,
+            "logo" + Path.GetExtension(chosen).ToUpperInvariant()
+                         .ToLowerInvariant());
+
+        foreach (var stale in Directory.GetFiles(Folder, "logo.*"))
+        {
+            if (!string.Equals(stale, destination,
+                               StringComparison.OrdinalIgnoreCase))
+                TryDelete(stale);
+        }
+
+        if (!string.Equals(Path.GetFullPath(chosen), destination,
+                           StringComparison.OrdinalIgnoreCase))
+            File.Copy(chosen, destination, overwrite: true);
+
+        return destination;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // An old logo still open somewhere is not worth failing a
+            // save over; it is overwritten on the next change anyway.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     /// An image file as text the shared settings can hold; null for none.

@@ -36,7 +36,10 @@ public partial class frmClaims : PhxFormBase, IClaimsView
         dtpReceived.Value = DateTime.Today;
 
         cboScheme.SelectedIndexChanged += (_, _) =>
+        {
+            GridPager.Of(grdClaims)?.Restart();
             SchemeChanged?.Invoke(this, EventArgs.Empty);
+        };
 
         grdClaims.CellValueChanged += (_, _) => ShowTotals();
 
@@ -116,7 +119,7 @@ public partial class frmClaims : PhxFormBase, IClaimsView
     {
         ArgumentNullException.ThrowIfNull(claims);
 
-        grdClaims.DataSource = claims.Select(ClaimRow.From).ToList();
+        GridPager.Attach(grdClaims).Show(claims.Select(ClaimRow.From));
 
         foreach (DataGridViewRow row in grdClaims.Rows)
         {

@@ -17,7 +17,7 @@ namespace PharmaX.Persistence.Backup;
 /// A shared MariaDB or MySQL database is dumped with the server's own
 /// mariadb-dump or mysqldump, in one transaction so a till trading at the
 /// same moment cannot leave it half-written, and zipped: the history taken
-/// over from RSI is a hundred thousand rows of text, which shrinks tenfold.
+/// over from the previous system is a hundred thousand rows, which shrinks tenfold.
 /// The login goes to the tool in a temporary option file, never on its
 /// command line, where any user listing processes could read it.
 /// A standalone SQLite file is copied with VACUUM INTO, which makes a

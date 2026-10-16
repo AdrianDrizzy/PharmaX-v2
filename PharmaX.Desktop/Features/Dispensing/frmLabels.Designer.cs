@@ -15,6 +15,8 @@ partial class frmLabels
     private Button btnReprint = null!;
     private Button btnReverse = null!;
     private Button btnClaimForm = null!;
+    private Button btnChangeItem = null!;
+    private Button btnUseAgain = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -40,6 +42,10 @@ partial class frmLabels
         btnReverse.Name = "btnReverse";
         btnClaimForm = new Button();
         btnClaimForm.Name = "btnClaimForm";
+        btnChangeItem = new Button();
+        btnChangeItem.Name = "btnChangeItem";
+        btnUseAgain = new Button();
+        btnUseAgain.Name = "btnUseAgain";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -75,6 +81,8 @@ partial class frmLabels
         Bind(grdDispensings, "ScriptNumber", "Script", 130);
         Bind(grdDispensings, "DocumentNumber", "Document", 150);
         Bind(grdDispensings, "Labels", "Labels", 70, rightAlign: true);
+        Bind(grdDispensings, "CoPayment", "Patient pays", 90, "N2",
+             rightAlign: true);
 
         btnPreview.Location = new Point(12, 8);
         btnPreview.Size = new Size(120, 30);
@@ -104,22 +112,42 @@ partial class frmLabels
         btnClaimForm.Text = "Claim &form";
         btnClaimForm.UseVisualStyleBackColor = true;
 
+        // The quantity handed over or the amount charged for one item,
+        // corrected after the issue: the stock and what the patient pays
+        // follow. Shown only to those who may.
+        btnChangeItem.Location = new Point(526, 8);
+        btnChangeItem.Size = new Size(120, 30);
+        btnChangeItem.TabIndex = 5;
+        btnChangeItem.Text = "C&hange item...";
+        btnChangeItem.UseVisualStyleBackColor = true;
+
+        // A new script from this one - imported history included - to
+        // change and dispense again.
+        btnUseAgain.Location = new Point(652, 8);
+        btnUseAgain.Size = new Size(110, 30);
+        btnUseAgain.TabIndex = 6;
+        btnUseAgain.Text = "&Use again...";
+        btnUseAgain.UseVisualStyleBackColor = true;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(590, 8);
+        btnClose.Location = new Point(870, 8);
         btnClose.Size = new Size(90, 30);
-        btnClose.TabIndex = 5;
+        btnClose.TabIndex = 7;
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
 
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnClaimForm, btnReverse, btnReprint, btnPreview });
+        {
+            btnClose, btnUseAgain, btnChangeItem, btnClaimForm, btnReverse,
+            btnReprint, btnPreview
+        });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
         pnlBottom.Name = "pnlBottom";
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(700, 480);
+        ClientSize = new Size(980, 480);
         Controls.Add(grdDispensings);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

@@ -58,7 +58,12 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
         {
             if (entry.State == EntityState.Added)
             {
-                entry.Entity.CreatedAtUtc = now;
+                // Kept where the record already says when it was made: an
+                // imported sale was created when it was rung up, not on the
+                // day it was brought across.
+                if (entry.Entity.CreatedAtUtc == default)
+                    entry.Entity.CreatedAtUtc = now;
+
                 entry.Entity.CreatedBy = _user.Id;
             }
 

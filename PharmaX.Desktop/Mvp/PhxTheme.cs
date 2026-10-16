@@ -649,6 +649,43 @@ public static class PhxTheme
         Padding = new Padding(Gutter, 8, Gutter, 8)
     };
 
+    /// <summary>
+    /// A footer band with a message on the left and buttons on the right,
+    /// docked rather than placed, so it holds together at any width.
+    /// </summary>
+    public static Panel Footer(Label message, params Button[] buttons)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(buttons);
+
+        var footer = FooterBand(56);
+
+        var right = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Right,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false
+        };
+
+        foreach (var button in buttons)
+        {
+            button.Margin = new Padding(8, 2, 0, 0);
+            right.Controls.Add(button);
+        }
+
+        message.AutoSize = false;
+        message.Dock = DockStyle.Fill;
+        message.ForeColor = Muted;
+        message.TextAlign = ContentAlignment.MiddleLeft;
+
+        // Fill first: docking is resolved from the last control added, so
+        // the buttons take their room and the message what is left.
+        footer.Controls.Add(message);
+        footer.Controls.Add(right);
+        return footer;
+    }
+
     /// A one-pixel rule, for separating a band from the content.
     public static Panel Rule(DockStyle edge = DockStyle.Top) => new()
     {

@@ -3,6 +3,7 @@ using System.Text;
 using PharmaX.Application.Claims;
 using PharmaX.Application.Dispensing;
 using PharmaX.Desktop.Features.Patients;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Dispensing;
@@ -43,6 +44,8 @@ public partial class frmLabels : PhxFormBase
         btnReprint.Click += (_, _) => Operations.Enqueue(ReprintAsync);
         btnReverse.Click += (_, _) => Operations.Enqueue(ReverseAsync);
         btnClaimForm.Click += (_, _) => Operations.Enqueue(PrintClaimFormAsync);
+        btnChangeItem.Click += (_, _) => Operations.Enqueue(ChangeItemAsync);
+        btnUseAgain.Click += (_, _) => Operations.Enqueue(UseAgainAsync);
         btnClose.Click += (_, _) => CloseView(true);
 
         grdDispensings.DoubleClick += (_, _) => Operations.Enqueue(PreviewAsync);
@@ -54,9 +57,11 @@ public partial class frmLabels : PhxFormBase
                      Application.Security.IPermissionService permissions,
                      IClaimFormService claimForms,
                      IClaimFormPrinter claimFormPrinter,
-                     Application.Abstractions.PharmacyProfile pharmacy)
+                     Application.Abstractions.PharmacyProfile pharmacy,
+                     IScriptService scripts)
         : this()
     {
+        _scripts = scripts;
         _pharmacy = Adapters.Printing.LabelDocument.DispensedBy(
             pharmacy.TradingName, pharmacy.Address);
 
@@ -73,7 +78,80 @@ public partial class frmLabels : PhxFormBase
 
         btnReverse.Visible = Application.Security.PermissionServiceExtensions
             .Has(permissions, Domain.Security.PermissionCode.ScriptReverse);
+        btnChangeItem.Visible = Application.Security.PermissionServiceExtensions
+            .Has(permissions, Domain.Security.PermissionCode.DispensingAmend);
+        btnUseAgain.Visible = Application.Security.PermissionServiceExtensions
+            .Has(permissions, Domain.Security.PermissionCode.ScriptCapture);
     }
+
+    private readonly IScriptService? _scripts;
+
+    /// <summary>
+    /// Corrects one item of what was issued: the quantity handed over, the
+    /// amount charged, or both. The stock moves by the difference and the
+    /// labels can be printed again to match.
+    /// </summary>
+    private Task ChangeItemAsync() => GuardAsync(async () =>
+    {
+        if (_dispensing is null || Selected() is not Guid id) return;
+
+        var state = await _dispensing.GetAsync(id);
+
+        if (state.IsFailure)
+        {
+            ShowError(state.Error.Message);
+            return;
+        }
+
+        if (ItemChange.Ask(this, state.Value.Items, null, issued: true)
+            is not { } answer)
+            return;
+
+        var result = await _dispensing.AmendItemAsync(id, answer.LineNo,
+            answer.Quantity, answer.Amount, answer.Reason);
+
+        if (result.IsFailure)
+        {
+            ShowError(result.Error.Message);
+            return;
+        }
+
+        await LoadAsync();
+        Suggest.SelectRow(grdDispensings,
+            item => item is DispensedItemDto d && d.DispensingId == id);
+
+        if (Confirm("Item changed. " + ItemChange.Describe(result.Value)
+                    + "\n\nPrint the labels again to match?"))
+            await PrintAgainAsync(id);
+    });
+
+    /// <summary>
+    /// A new script from the chosen one, to change and capture, ready for
+    /// dispensing.
+    /// </summary>
+    private Task UseAgainAsync() => GuardAsync(async () =>
+    {
+        if (_scripts is null || _views is null || _patientId is not Guid patientId
+            || grdDispensings.CurrentRow?.DataBoundItem is not DispensedItemDto row)
+        {
+            Selected();
+            return;
+        }
+
+        var draft = await _scripts.RepeatAsync(row.ScriptId);
+
+        if (draft.IsFailure)
+        {
+            ShowError(draft.Error.Message);
+            return;
+        }
+
+        using var editor = _views.Create<frmScriptEdit>();
+        editor.LoadDraft(patientId, draft.Value);
+
+        if (editor.ShowDialog(this) == DialogResult.OK)
+            ShowInfo("The new script is captured. Open Dispensing to dispense it.");
+    });
 
     private void ChoosePatient()
     {
@@ -101,7 +179,7 @@ public partial class frmLabels : PhxFormBase
             return;
         }
 
-        grdDispensings.DataSource = result.Value.ToList();
+        GridPager.Attach(grdDispensings).Show(result.Value);
 
         txtPatient.Text = result.Value.Count > 0
             ? result.Value[0].PatientName
@@ -175,6 +253,13 @@ public partial class frmLabels : PhxFormBase
                    + "the same script number as the first one."))
             return;
 
+        await PrintAgainAsync(id);
+    });
+
+    private async Task PrintAgainAsync(Guid id)
+    {
+        if (_labels is null) return;
+
         var result = await _labels.ReprintAsync(id);
 
         if (result.IsFailure)
@@ -187,7 +272,7 @@ public partial class frmLabels : PhxFormBase
             "{0:N0} label(s) printed on {1}.{2}", result.Value.Printed,
             result.Value.PrinterName ?? "the label printer",
             result.Value.Note is null ? "" : "\n" + result.Value.Note));
-    });
+    }
 
     /// <summary>
     /// Prints the medical aid claim form for the selected dispensing.

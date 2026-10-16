@@ -38,6 +38,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             LabelReprintRequested?.Invoke(this, EventArgs.Empty);
         btnRemove.Click += (_, _) =>
             RemoveItemRequested?.Invoke(this, EventArgs.Empty);
+        btnChange.Click += (_, _) =>
+            ChangeItemRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) =>
             CloseRequested?.Invoke(this, EventArgs.Empty);
         btnSuspended.Click += (_, _) =>
@@ -280,6 +282,11 @@ public partial class frmDispense : PhxFormBase, IDispenseView
     public event EventHandler? IssueRequested;
     public event EventHandler? LabelReprintRequested;
     public event EventHandler? RemoveItemRequested;
+    public event EventHandler? ChangeItemRequested;
+
+    public ItemChange.Answer? PromptItemChange(
+        IReadOnlyList<DispensingLineDto> items, int? lineNo) =>
+        ItemChange.Ask(this, items, lineNo, issued: false);
     public event EventHandler? CloseRequested;
     public event EventHandler? SuspendedRequested;
 

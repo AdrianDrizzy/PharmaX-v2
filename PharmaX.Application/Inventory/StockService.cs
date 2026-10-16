@@ -30,6 +30,15 @@ public interface IStockService
                         CancellationToken ct = default);
 
     /// <summary>
+    /// An issued item's quantity corrected by so many units: more off the
+    /// shelf, or (negative) put back on it, written against the
+    /// dispensing so a later reversal returns only what is still out.
+    /// </summary>
+    Task ApplyDispensingAmendAsync(Domain.Dispensing.Dispensing dispensing,
+                                   Domain.Dispensing.DispensingLine line,
+                                   decimal units, CancellationToken ct = default);
+
+    /// <summary>
     /// Puts the restockable lines of a return back on the shelf and
     /// writes the rest off. Called inside the return's transaction.
     /// </summary>
@@ -141,6 +150,63 @@ public sealed class StockService : IStockService
                       _clock.UtcNow);
     }
 
+    public async Task ApplyDispensingAmendAsync(Domain.Dispensing.Dispensing dispensing,
+        Domain.Dispensing.DispensingLine line, decimal units, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dispensing);
+        ArgumentNullException.ThrowIfNull(line);
+
+        if (units > 0m)
+        {
+            if (await IssueAsync(dispensing.Id, line, units, ct) is { } taken)
+                line.TakeMore(taken);
+
+            return;
+        }
+
+        if (units == 0m) return;
+
+        var product = await _products.GetAsync(line.ProductId, ct)
+            ?? throw new Domain.Exceptions.DomainException(
+                $"{line.Description} is no longer in the catalogue.");
+
+        // A tracked product handed over before PharmaX recorded batches -
+        // an imported dispensing - goes back onto the batch the line names,
+        // or else its latest-expiry batch, so the shelf and its batches
+        // still agree.
+        Batch? fallback = null;
+
+        if (product.IsBatchTracked)
+            fallback = (line.BatchId is Guid named ? await _batches.GetAsync(named, ct) : null)
+                ?? (await _batches.ForProductAsync(product.Id, ct))
+                    .OrderByDescending(b => b.ExpiryDate)
+                    .FirstOrDefault();
+
+        var balance = product.QuantityOnHand;
+
+        foreach (var (batchId, back) in line.GiveBack(-units))
+        {
+            var packs = product.PacksFor(back);
+            var batch = batchId is Guid id ? await _batches.GetAsync(id, ct) : fallback;
+
+            batch?.Return(packs);
+            balance += packs;
+
+            _movements.Add(StockMovement.Record(
+                productId: product.Id,
+                batchId: batch?.Id,
+                movementType: MovementType.Return,
+                quantity: packs,
+                balanceAfter: balance,
+                occurredAtUtc: _clock.UtcNow,
+                reasonCode: "DISPENSING-AMENDED",
+                sourceDocumentType: "Dispensing",
+                sourceDocumentId: dispensing.Id));
+        }
+
+        product.SetQuantityOnHand(balance);
+    }
+
     /// Takes a dispensed quantity off the shelf: the batches it came from
     /// for a batch-tracked product, null for one that is not.
     private async Task<IReadOnlyList<Domain.Dispensing.BatchAllocation>?> IssueAsync(
@@ -240,38 +306,51 @@ public sealed class StockService : IStockService
     /// <remarks>
     /// Read off the movements the issue wrote rather than worked out
     /// again from the tablets, so a broken pack goes back to the
-    /// thousandth it came off at.
+    /// thousandth it came off at. What a correction already put back is
+    /// taken off first, so nothing comes back twice.
     /// </remarks>
     public async Task ApplyDispensingReversalAsync(
         Domain.Dispensing.Dispensing dispensing, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(dispensing);
 
-        var issued = await _movements.ForSourceAsync("Dispensing",
+        var moved = await _movements.ForSourceAsync("Dispensing",
             dispensing.Id, ct);
 
-        foreach (var group in issued
-                     .Where(m => m.MovementType == MovementType.Issue)
+        foreach (var group in moved
+                     .Where(m => m.MovementType is MovementType.Issue or MovementType.Return)
                      .GroupBy(m => m.ProductId))
         {
             var product = await _products.GetAsync(group.Key, ct);
             if (product is null) continue;
 
+            // Still out, batch by batch: issued less corrected back.
+            var still = group.GroupBy(m => m.BatchId)
+                .Select(b => (BatchId: b.Key, Packs: b.Sum(m =>
+                    m.MovementType == MovementType.Issue ? Math.Abs(m.Quantity) : -Math.Abs(m.Quantity))))
+                .ToList();
+
+            var corrected = still.Where(s => s.Packs < 0m).Sum(s => -s.Packs);
             var balance = product.QuantityOnHand;
 
-            foreach (var movement in group)
+            foreach (var (batchId, issued) in still.Where(s => s.Packs > 0m))
             {
-                var packs = Math.Abs(movement.Quantity);
+                // A correction put back on another batch than the one the
+                // packs left from still comes off the total once.
+                var less = Math.Min(corrected, issued);
+                var packs = issued - less;
+                corrected -= less;
 
-                if (movement.BatchId is Guid batchId
-                    && await _batches.GetAsync(batchId, ct) is { } batch)
+                if (packs <= 0m) continue;
+
+                if (batchId is Guid id && await _batches.GetAsync(id, ct) is { } batch)
                     batch.Return(packs);
 
                 balance += packs;
 
                 _movements.Add(StockMovement.Record(
                     productId: product.Id,
-                    batchId: movement.BatchId,
+                    batchId: batchId,
                     movementType: MovementType.Return,
                     quantity: packs,
                     balanceAfter: balance,

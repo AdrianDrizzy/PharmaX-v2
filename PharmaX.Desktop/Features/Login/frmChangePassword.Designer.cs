@@ -64,7 +64,7 @@ partial class frmChangePassword
 
         txtNew.Location = new Point(170, 93);
         txtNew.Name = "txtNew";
-        txtNew.PlaceholderText = "At least 8 characters, e.g. a short phrase";
+        txtNew.PlaceholderText = "At least 4 characters";
         txtNew.Size = new Size(250, 23);
         txtNew.TabIndex = 4;
         txtNew.UseSystemPasswordChar = true;

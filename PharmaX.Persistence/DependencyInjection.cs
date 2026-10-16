@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkstationSettings,
             WorkstationSettingStore>();
         services.AddScoped<IPharmacySettings, PharmacySettingStore>();
+        services.AddScoped<IPrinterDirectory, PrinterDirectoryStore>();
 
         // Both interceptors depend only on singletons, so they can be
         // singletons themselves. That matters: the context factory below
@@ -162,8 +163,7 @@ public static class DependencyInjection
         services.AddScoped<DemoTradingSeeder>();
         services.AddScoped<DemoDataSeeder>();
         services.AddScoped<CurrencyNormaliser>();
-        services.AddScoped<Application.Legacy.ILegacyImporter, Import.RsiImporter>();
-        services.AddScoped<Application.Legacy.ILegacyHistory, Repositories.LegacyHistory>();
+        services.AddScoped<Application.Import.IDataImporter, Import.DataImporter>();
         services.AddScoped<Application.Home.IHomeCounts, Repositories.HomeCounts>();
         services.AddScoped<IDatabaseBackup, Backup.DatabaseBackup>();
         services.AddScoped<ICurrencyChanger, CurrencyChanger>();

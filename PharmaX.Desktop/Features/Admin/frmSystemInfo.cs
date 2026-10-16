@@ -1,4 +1,5 @@
 ﻿using PharmaX.Application.Abstractions;
+using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Admin;
@@ -61,7 +62,7 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
     {
         ArgumentNullException.ThrowIfNull(rows);
 
-        grdRows.DataSource = rows.ToList();
+        GridPager.Attach(grdRows).Show(rows);
 
         // A value the till holds itself is the one that overrode the
         // installed file, so it is worth being able to pick out.

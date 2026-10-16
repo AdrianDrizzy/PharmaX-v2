@@ -56,7 +56,7 @@ public partial class frmUserList : PhxFormBase, IUserListView
     {
         ArgumentNullException.ThrowIfNull(users);
 
-        grdUsers.DataSource = users.ToList();
+        GridPager.Attach(grdUsers).Show(users);
 
         foreach (DataGridViewRow row in grdUsers.Rows)
         {
@@ -81,7 +81,8 @@ public partial class frmUserList : PhxFormBase, IUserListView
 
     public string? PromptNewPassword(string username) =>
         frmPasswordPrompt.Ask(this, "Reset password",
-            $"New password for {username} (at least 8 characters). They "
+            $"New password for {username} (at least "
+            + $"{Application.Security.PasswordPolicy.MinimumLength} characters). They "
             + "will have to change it at their next sign-in.");
 
     public event EventHandler? RefreshRequested;

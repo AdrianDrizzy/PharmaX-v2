@@ -48,6 +48,35 @@ public class HomeCountsTests : IClassFixture<PharmaXFixture>
             .Should().Be(shop.Products + 1, "the scheduled medicine is not the shop's");
     }
 
+    /// <remarks>
+    /// "New today" is what was added today, not what was brought across
+    /// today from records years old.
+    /// </remarks>
+    [Fact]
+    public async Task Patients_added_today_are_counted_apart_from_those_on_file()
+    {
+        var before = await ReadAsync(ProductScope.All);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            var imported = Domain.Patients.Patient.Create(Code("PAT"), "Longstanding", "On file");
+            imported.CreatedAtUtc = DateTime.UtcNow.AddYears(-3);
+
+            db.Patients.AddRange(imported,
+                Domain.Patients.Patient.Create(Code("PAT"), "Walkin", "New today"));
+
+            await db.SaveChangesAsync();
+        }
+
+        var after = await ReadAsync(ProductScope.All);
+
+        after.Patients.Should().Be(before.Patients + 2);
+        after.PatientsAddedToday.Should().Be(before.PatientsAddedToday + 1,
+            "the one on file for three years was not added today");
+    }
+
     private static string Code(string kind) =>
         $"HC-{kind}-{Guid.NewGuid():N}"[..20];
 

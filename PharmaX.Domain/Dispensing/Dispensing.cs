@@ -132,6 +132,37 @@ public sealed class Dispensing : AuditableEntity
         _warnings.RemoveAll(w => w.DispensingLineId == line.Id);
     }
 
+    /// <summary>
+    /// Corrects an item's quantity and amount, while the dispensing is
+    /// being made or after it was issued.
+    /// </summary>
+    /// <remarks>
+    /// The record of the issue stays: same number, same date, same
+    /// pharmacist. What changes is the item, and the stock and money that
+    /// follow from it are the service's to move. An item still owed is
+    /// settled first - what is owed is worked out from the quantity, and
+    /// changing one under the other leaves the shelf owing nobody knows
+    /// what. A reversed or abandoned dispensing is a record, not a supply.
+    /// </remarks>
+    public DispensingLine AmendLine(int lineNo, decimal quantity, Money tariff)
+    {
+        if (Status is not (DispensingStatus.InProgress or DispensingStatus.Issued))
+            throw new DomainException(
+                "Only a dispensing being made or issued can be corrected.");
+
+        var line = _lines.SingleOrDefault(l => l.LineNo == lineNo)
+                   ?? throw new DomainException($"Item {lineNo} not found.");
+
+        if (Status == DispensingStatus.Issued && line.Owed is not null
+            && line.OwedGivenAtUtc is null && quantity != line.Quantity)
+            throw new DomainException(
+                $"{line.Description}: {line.Owed:0.###} is still owed. Give it "
+                + "under To follow before changing the quantity.");
+
+        line.Amend(quantity, tariff);
+        return line;
+    }
+
     /// Part of an item the shelf is short of, owed to the patient.
     public void Owe(int lineNo, decimal owed)
     {

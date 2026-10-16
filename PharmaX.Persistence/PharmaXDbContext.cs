@@ -74,8 +74,6 @@ public class PharmaXDbContext : DbContext
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Prescriber> Prescribers => Set<Prescriber>();
     public DbSet<DosageCode> DosageCodes => Set<DosageCode>();
-    public DbSet<Domain.Legacy.LegacyRecord> LegacyRecords =>
-        Set<Domain.Legacy.LegacyRecord>();
     public DbSet<MedicalAidScheme> MedicalAidSchemes =>
         Set<MedicalAidScheme>();
     public DbSet<Tariff> Tariffs => Set<Tariff>();

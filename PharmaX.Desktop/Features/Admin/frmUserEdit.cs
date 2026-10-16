@@ -105,7 +105,8 @@ public partial class frmUserEdit : PhxFormBase, IUserEditView
 
     public string? CollectInitialPassword() =>
         frmPasswordPrompt.Ask(this, "Starting password",
-            "Starting password for this account (at least 8 characters). "
+            "Starting password for this account (at least "
+            + $"{Application.Security.PasswordPolicy.MinimumLength} characters). "
             + "They will have to change it at their first sign-in.");
 
     private void UpdateRegistrationField()

@@ -45,6 +45,10 @@ public interface IDispenseView : Mvp.IView
     /// printed again.
     void ShowLabelScreen();
 
+    /// Asks how an item on the dispensing should change. Null if cancelled.
+    ItemChange.Answer? PromptItemChange(IReadOnlyList<DispensingLineDto> items,
+                                        int? lineNo);
+
     event EventHandler? PatientRequested;
     event EventHandler? ScriptRequested;
     event EventHandler? QuoteRequested;
@@ -52,6 +56,7 @@ public interface IDispenseView : Mvp.IView
     event EventHandler? IssueRequested;
     event EventHandler? LabelReprintRequested;
     event EventHandler? RemoveItemRequested;
+    event EventHandler? ChangeItemRequested;
     event EventHandler? CloseRequested;
     event EventHandler? SuspendedRequested;
 

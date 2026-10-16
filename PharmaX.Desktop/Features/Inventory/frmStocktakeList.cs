@@ -62,7 +62,7 @@ public partial class frmStocktakeList : PhxFormBase, IStocktakeListView
     {
         ArgumentNullException.ThrowIfNull(stocktakes);
 
-        grdStocktakes.DataSource = stocktakes.ToList();
+        GridPager.Attach(grdStocktakes).Show(stocktakes);
 
         foreach (DataGridViewRow row in grdStocktakes.Rows)
         {

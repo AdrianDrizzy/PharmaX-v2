@@ -127,7 +127,7 @@ public sealed class StocktakeService : IStocktakeService
                 + "is still counting. Post or cancel it first.");
 
         var products = await _products.SearchAsync(scope.SearchTerm ?? "",
-                                                   take: 5000, ct: ct);
+                                                   take: int.MaxValue, ct: ct);
 
         var included = products
             .Where(p => p.IsActive)

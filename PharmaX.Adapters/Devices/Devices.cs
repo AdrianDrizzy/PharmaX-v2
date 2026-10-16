@@ -104,6 +104,17 @@ public sealed class EscPosCashDrawer : ICashDrawer
 
             if (chosen is null) return null;
 
+            // A printer on another computer has that computer's drawer on
+            // it: a cash sale here would open the till at the other counter.
+            if (Printing.NetworkPrinters.IsNetworkPath(chosen))
+            {
+                _log.LogInformation(
+                    "Printer {Printer} is on another computer, so its cash "
+                    + "drawer is not this till's.", chosen);
+
+                return null;
+            }
+
             if (RawPrinter.IsFilePort(_portOf(chosen)))
             {
                 _log.LogInformation(

@@ -17,7 +17,7 @@ public sealed class JournalRepository : IJournalRepository
             .Include(b => b.Lines)
             .FirstOrDefaultAsync(b => b.Id == id, ct);
 
-    public async Task<IReadOnlyList<JournalBatch>> RecentAsync(int take = 100,
+    public async Task<IReadOnlyList<JournalBatch>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default) =>
         await _db.JournalBatches
             .Include(b => b.Lines)

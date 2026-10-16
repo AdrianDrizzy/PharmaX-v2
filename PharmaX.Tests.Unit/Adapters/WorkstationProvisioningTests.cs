@@ -141,6 +141,44 @@ public class WorkstationProvisioningTests
     }
 
     /// <remarks>
+    /// The database password is the pharmacy's to choose, so whatever it
+    /// holds must come back out of the connection string unchanged.
+    /// </remarks>
+    [Theory]
+    [InlineData("pharmacy1")]
+    [InlineData("a;b")]
+    [InlineData("it's=\"x\"")]
+    public void Any_password_survives_the_connection_string(string password)
+    {
+        var profile = new WorkstationProfile
+        {
+            Kind = WorkstationKind.Till,
+            ServerHost = "PHARMACY-PC",
+            DatabasePassword = password
+        };
+
+        new MySqlConnector.MySqlConnectionStringBuilder(profile.SharedConnection)
+            .Password.Should().Be(password);
+    }
+
+    [Fact]
+    public void The_login_defaults_to_the_one_the_installer_makes()
+    {
+        new WorkstationProfile().DatabaseUser.Should().Be("pharmax");
+    }
+
+    [Fact]
+    public void The_logo_chosen_at_setup_is_written_for_the_pharmacy()
+    {
+        var profile = new WorkstationProfile { LogoPath = @"C:\ProgramData\PharmaX\branding\logo.png" };
+
+        using var document = JsonDocument.Parse(Render(profile));
+
+        document.RootElement.GetProperty("Pharmacy").GetProperty("LogoPath")
+            .GetString().Should().Be(profile.LogoPath);
+    }
+
+    /// <remarks>
     /// The server is the host in the sense the rest of PharmaX means it:
     /// the machine that holds the database everything else reads.
     /// </remarks>

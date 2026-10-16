@@ -105,7 +105,7 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
     {
         ArgumentNullException.ThrowIfNull(patient);
 
-        lblFileNumberValue.Text = Format.FileNumber(patient.FileNumber);
+        lblFileNumberValue.Text = patient.FileNumber;
         txtSurname.Text = patient.Surname;
         txtFirstNames.Text = patient.FirstNames;
         txtIdNumber.Text = patient.IdNumber ?? "";

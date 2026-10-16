@@ -28,6 +28,7 @@ partial class frmFirstRun
     private TextBox txtDatabase = null!;
     private TextBox txtUser = null!;
     private TextBox txtPassword = null!;
+    private Label lblLoginHint = null!;
     private Button btnTest = null!;
     private Label lblTestResult = null!;
 
@@ -46,6 +47,11 @@ partial class frmFirstRun
     private TextBox txtTradingName = null!;
     private ComboBox cboCurrency = null!;
     private TextBox txtVatNumber = null!;
+    private Label lblLogo = null!;
+    private Panel pnlLogo = null!;
+    private Button btnLogo = null!;
+    private Button btnRemoveLogo = null!;
+    private Label lblLogoHint = null!;
 
     private Button btnFinish = null!;
     private Button btnQuit = null!;
@@ -85,6 +91,7 @@ partial class frmFirstRun
         txtDatabase = new TextBox();
         txtUser = new TextBox();
         txtPassword = new TextBox();
+        lblLoginHint = new Label();
         btnTest = new Button();
         lblTestResult = new Label();
 
@@ -103,6 +110,11 @@ partial class frmFirstRun
         txtTradingName = new TextBox();
         cboCurrency = new ComboBox();
         txtVatNumber = new TextBox();
+        lblLogo = new Label();
+        pnlLogo = new Panel();
+        btnLogo = new Button();
+        btnRemoveLogo = new Button();
+        lblLogoHint = new Label();
 
         btnFinish = new Button();
         btnQuit = new Button();
@@ -189,29 +201,35 @@ partial class frmFirstRun
         Caption(lblPassword, "Password", 370, 104);
         txtPassword.Location = new Point(460, 100);
         txtPassword.Name = "txtPassword";
-        txtPassword.PlaceholderText = "Database password";
+        txtPassword.PlaceholderText = "Any password";
         txtPassword.Size = new Size(136, 23);
         txtPassword.UseSystemPasswordChar = true;
 
-        btnTest.Location = new Point(150, 140);
+        lblLoginHint.AutoSize = false;
+        lblLoginHint.ForeColor = PhxTheme.Muted;
+        lblLoginHint.Location = new Point(150, 130);
+        lblLoginHint.Name = "lblLoginHint";
+        lblLoginHint.Size = new Size(446, 34);
+
+        btnTest.Location = new Point(150, 170);
         btnTest.Name = "btnTest";
         btnTest.Size = new Size(160, 32);
         btnTest.Text = "&Test connection";
         btnTest.UseVisualStyleBackColor = true;
 
         lblTestResult.AutoSize = false;
-        lblTestResult.Location = new Point(322, 140);
+        lblTestResult.Location = new Point(322, 170);
         lblTestResult.Size = new Size(274, 44);
 
         grpDatabase.Controls.AddRange(new Control[]
         {
-            lblTestResult, btnTest, txtPassword, lblPassword, txtUser,
-            lblUser, txtDatabase, lblDatabase, numPort, lblPort, txtHost,
-            lblHost
+            lblTestResult, btnTest, lblLoginHint, txtPassword, lblPassword,
+            txtUser, lblUser, txtDatabase, lblDatabase, numPort, lblPort,
+            txtHost, lblHost
         });
 
         grpDatabase.Dock = DockStyle.Top;
-        grpDatabase.Height = 196;
+        grpDatabase.Height = 226;
         grpDatabase.Text = "Database";
 
         // ---- This workstation --------------------------------------------
@@ -269,14 +287,40 @@ partial class frmFirstRun
         txtVatNumber.PlaceholderText = "e.g. 10012345 (optional)";
         txtVatNumber.Size = new Size(290, 23);
 
+        Caption(lblLogo, "Logo", 18, 140);
+        pnlLogo.BorderStyle = BorderStyle.FixedSingle;
+        pnlLogo.Location = new Point(150, 136);
+        pnlLogo.Name = "pnlLogo";
+        pnlLogo.Size = new Size(160, 68);
+
+        btnLogo.Location = new Point(322, 136);
+        btnLogo.Name = "btnLogo";
+        btnLogo.Size = new Size(140, 30);
+        btnLogo.Text = "C&hoose logo...";
+        btnLogo.UseVisualStyleBackColor = true;
+
+        btnRemoveLogo.Enabled = false;
+        btnRemoveLogo.Location = new Point(470, 136);
+        btnRemoveLogo.Name = "btnRemoveLogo";
+        btnRemoveLogo.Size = new Size(90, 30);
+        btnRemoveLogo.Text = "Re&move";
+        btnRemoveLogo.UseVisualStyleBackColor = true;
+
+        lblLogoHint.AutoSize = false;
+        lblLogoHint.ForeColor = PhxTheme.Muted;
+        lblLogoHint.Location = new Point(322, 172);
+        lblLogoHint.Name = "lblLogoHint";
+        lblLogoHint.Size = new Size(274, 34);
+
         grpPharmacy.Controls.AddRange(new Control[]
         {
+            lblLogoHint, btnRemoveLogo, btnLogo, pnlLogo, lblLogo,
             txtVatNumber, lblVatNumber, cboCurrency, lblCurrency,
             txtTradingName, lblTradingName
         });
 
         grpPharmacy.Dock = DockStyle.Top;
-        grpPharmacy.Height = 140;
+        grpPharmacy.Height = 220;
         grpPharmacy.Text = "The pharmacy";
 
         // Added bottom-up so the order on screen reads kind, database,

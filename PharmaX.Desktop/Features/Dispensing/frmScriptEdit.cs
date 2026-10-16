@@ -46,6 +46,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             if (grdItems.CurrentRow is { IsNewRow: false } row)
                 grdItems.Rows.Remove(row);
         };
+        btnFromHistory.Click += (_, _) =>
+            HistoryRequested?.Invoke(this, EventArgs.Empty);
 
         chkHasValidUntil.CheckedChanged += (_, _) =>
             dtpValidUntil.Enabled = chkHasValidUntil.Checked;
@@ -86,7 +88,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             if (chosen.Value is ProductListItemDto product) AddProduct(product);
         };
 
-        // The prescriber from the list RSI's doctors came across into:
+        // The prescriber from the list the imported doctors came into:
         // a few letters of the name or the practice number, and both
         // boxes are filled. Typing a name not on the list still works.
         _prescribers = new SearchSuggestions(txtPrescriber, Suggest.Prescribers(scopes));
@@ -243,6 +245,61 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     }
 
     /// <summary>
+    /// A new script drafted from an earlier one: its prescriber and items,
+    /// dated today, to change before it is captured. Called before
+    /// ShowDialog.
+    /// </summary>
+    public void LoadDraft(Guid patientId, ScriptEditDto draft)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        PatientId = patientId;
+        Text = "PharmaX - New script from an earlier one";
+
+        txtPrescriber.Text = draft.PrescriberName;
+        txtPrescriberNumber.Text = draft.PrescriberNumber ?? "";
+        dtpPrescribedOn.Value = draft.PrescribedOn.ToDateTime(TimeOnly.MinValue);
+        chkHasValidUntil.Checked = false;
+        numRepeats.Value = Math.Min(numRepeats.Maximum,
+            Math.Max(numRepeats.Minimum, draft.RepeatsAuthorised));
+
+        grdItems.Rows.Clear();
+
+        foreach (var item in draft.Items)
+            AddRow(item.ProductCode, item.Quantity, item.Directions,
+                   item.AllowSubstitution);
+    }
+
+    public IReadOnlyList<SuppliedItemDto> PickFromHistory(
+        IReadOnlyList<SuppliedItemDto> supplied)
+    {
+        ArgumentNullException.ThrowIfNull(supplied);
+
+        return frmChoicePrompt.AskMany(this, "Items from history",
+            "Pick what goes on this script (Ctrl+click for more than one).",
+            supplied.Select(s => (
+                $"{s.On:dd MMM yyyy}   {s.Description}   x{s.Quantity:0.###}   "
+                + $"{s.Directions}   (script {s.ScriptNumber})", s)).ToList());
+    }
+
+    public async void AddItems(IReadOnlyList<ScriptItemEditDto> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        // Into the empty line the screen opens with first.
+        foreach (DataGridViewRow blank in grdItems.Rows.Cast<DataGridViewRow>()
+                     .Where(r => !r.IsNewRow && string.IsNullOrWhiteSpace(
+                         r.Cells["ProductCode"].Value?.ToString()))
+                     .ToList())
+            grdItems.Rows.Remove(blank);
+
+        var added = items.Select(item => AddRow(item.ProductCode, item.Quantity,
+            item.Directions, item.AllowSubstitution)).ToList();
+
+        foreach (var row in added) await DescribeAsync(row);
+    }
+
+    /// <summary>
     /// Opens a captured script for correcting. Called before ShowDialog.
     /// </summary>
     public void LoadScript(Guid patientId, Guid scriptId)
@@ -349,4 +406,5 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 
     public event EventHandler? SaveRequested;
     public event EventHandler? CancelRequested;
+    public event EventHandler? HistoryRequested;
 }

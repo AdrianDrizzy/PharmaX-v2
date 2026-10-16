@@ -52,4 +52,23 @@ public sealed class SharedBrandingTests : IDisposable
         firstTill.HasLogo.Should().BeFalse();
         pharmacy.Values[PharmacySettingKey.LogoImage].Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task The_logo_chosen_at_setup_becomes_the_pharmacys_until_it_is_removed()
+    {
+        var file = Path.Combine(_dir, "chosen.png");
+        using (var bitmap = new Bitmap(30, 12)) bitmap.Save(file);
+
+        var pharmacy = new Store();
+
+        using var till = new Branding { CacheFolder = Path.Combine(_dir, "c") };
+        await till.RefreshAsync(pharmacy, new Store(), installedLogo: file);
+
+        till.Logo!.Width.Should().Be(30);
+        pharmacy.Values[PharmacySettingKey.LogoImage].Should().NotBeNullOrEmpty();
+
+        pharmacy.Values[PharmacySettingKey.LogoImage] = "";
+        await till.RefreshAsync(pharmacy, new Store(), installedLogo: file);
+        till.HasLogo.Should().BeFalse();
+    }
 }

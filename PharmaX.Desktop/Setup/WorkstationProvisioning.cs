@@ -46,7 +46,9 @@ public sealed record WorkstationProfile
     public string ServerHost { get; init; } = "";
     public int ServerPort { get; init; } = 3306;
     public string DatabaseName { get; init; } = "PharmaX";
-    public string DatabaseUser { get; init; } = "";
+
+    /// The login the installer makes, so nobody has to think of one.
+    public string DatabaseUser { get; init; } = "pharmax";
     public string DatabasePassword { get; init; } = "";
 
     /// "8.0.42-mysql" or "10.11.0-mariadb", detected by the wizard.
@@ -56,6 +58,11 @@ public sealed record WorkstationProfile
     public string Currency { get; init; } = "USD";
     public string VatNumber { get; init; } = "";
     public string Address { get; init; } = "";
+
+    /// PharmaX's own copy of the logo chosen at setup, or blank. Becomes
+    /// the pharmacy's - every till's - at the first sign-in, unless the
+    /// pharmacy already has one.
+    public string LogoPath { get; init; } = "";
 
     /// True where this machine reads and writes a database over the
     /// network rather than a file of its own.
@@ -78,13 +85,18 @@ public sealed record WorkstationProfile
         {
             if (!IsShared) return "";
 
-            var host = Kind == WorkstationKind.Server
-                ? "127.0.0.1"
-                : ServerHost;
-
-            return $"Server={host};Port={ServerPort};"
-                   + $"Database={DatabaseName};User ID={DatabaseUser};"
-                   + $"Password={DatabasePassword}";
+            // Built rather than joined, so a password with a ; or a quote
+            // in it is quoted instead of cutting the string short.
+            return new MySqlConnector.MySqlConnectionStringBuilder
+            {
+                Server = Kind == WorkstationKind.Server
+                    ? "127.0.0.1"
+                    : ServerHost,
+                Port = (uint)ServerPort,
+                Database = DatabaseName,
+                UserID = DatabaseUser,
+                Password = DatabasePassword
+            }.ConnectionString;
         }
     }
 }
@@ -159,7 +171,8 @@ public static class WorkstationProvisioning
                 ["TradingName"] = profile.TradingName,
                 ["Currency"] = profile.Currency,
                 ["VatNumber"] = profile.VatNumber,
-                ["Address"] = profile.Address
+                ["Address"] = profile.Address,
+                ["LogoPath"] = profile.LogoPath
             },
 
             ["Workstation"] = new Dictionary<string, object>
@@ -241,7 +254,8 @@ public static class WorkstationProvisioning
                 ServerPort = Number(setup, "ServerPort", 3306),
                 DatabaseName = Fallback(Text(setup, "DatabaseName"),
                                         "PharmaX"),
-                DatabaseUser = Text(setup, "DatabaseUser"),
+                DatabaseUser = Fallback(Text(setup, "DatabaseUser"),
+                                        "pharmax"),
 
                 BranchCode = Fallback(Text(workstation, "BranchCode"), "1"),
                 TillNumber = Fallback(Text(workstation, "TillNumber"), "1"),
@@ -260,7 +274,8 @@ public static class WorkstationProvisioning
                                        "PharmaX"),
                 Currency = Fallback(Text(pharmacy, "Currency"), "USD"),
                 VatNumber = Text(pharmacy, "VatNumber"),
-                Address = Text(pharmacy, "Address")
+                Address = Text(pharmacy, "Address"),
+                LogoPath = Text(pharmacy, "LogoPath")
             };
         }
         catch (JsonException)

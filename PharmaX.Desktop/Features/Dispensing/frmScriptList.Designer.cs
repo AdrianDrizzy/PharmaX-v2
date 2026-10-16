@@ -16,6 +16,7 @@ partial class frmScriptList
     private Button btnRefresh = null!;
     private Button btnChoose = null!;
     private Button btnQuote = null!;
+    private Button btnUseAgain = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -44,6 +45,8 @@ partial class frmScriptList
         btnChoose.Name = "btnChoose";
         btnQuote = new Button();
         btnQuote.Name = "btnQuote";
+        btnUseAgain = new Button();
+        btnUseAgain.Name = "btnUseAgain";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -86,7 +89,7 @@ partial class frmScriptList
         {
             (btnCapture, "&Capture new"), (btnEditScript, "&Edit script"),
             (btnCancelScript, "Cance&l script"), (btnRefresh, "&Refresh"),
-            (btnQuote, "&Quote")
+            (btnQuote, "&Quote"), (btnUseAgain, "&Use again")
         })
         {
             button.Location = new Point(x, 8);
@@ -105,7 +108,7 @@ partial class frmScriptList
         pnlBottom.Controls.Add(btnChoose);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Location = new Point(790, 8);
+        btnClose.Location = new Point(930, 8);
         btnClose.Size = new Size(110, 30);
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
@@ -118,7 +121,7 @@ partial class frmScriptList
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(920, 460);
+        ClientSize = new Size(1060, 460);
         Controls.Add(grdScripts);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);

@@ -182,6 +182,82 @@ public sealed class DispensingLine : Entity
         OwedGivenAtUtc = nowUtc;
     }
 
+    /// <summary>
+    /// Corrects how much was handed over and what it was charged at.
+    /// </summary>
+    /// <remarks>
+    /// A scheme cannot pay more than the item comes to, so its share comes
+    /// down with an amount brought below it.
+    /// </remarks>
+    internal void Amend(decimal quantity, Money tariff)
+    {
+        if (quantity <= 0m)
+            throw new DomainException($"{Description}: the quantity must be more than zero.");
+
+        if (tariff.IsNegative)
+            throw new DomainException($"{Description}: the amount cannot be negative.");
+
+        Quantity = quantity;
+        TariffAmount = tariff;
+
+        if (SchemeContribution.Amount > tariff.Amount) SchemeContribution = tariff;
+    }
+
+    /// <summary>
+    /// More of the item handed over after the issue, from the batches it
+    /// came off.
+    /// </summary>
+    public void TakeMore(IEnumerable<BatchAllocation> allocations)
+    {
+        ArgumentNullException.ThrowIfNull(allocations);
+
+        foreach (var allocation in allocations)
+        {
+            if (_batches.Find(b => b.BatchId == allocation.BatchId) is { } same)
+                same.Add(allocation.Quantity);
+            else
+                _batches.Add(DispensingLineBatch.Create(Id, allocation));
+        }
+
+        if (BatchId is null && _batches.Count > 0)
+        {
+            var first = _batches.OrderBy(b => b.ExpiryDate).First();
+            BatchId = first.BatchId;
+            BatchNumber = first.BatchNumber;
+            BatchExpiry = first.ExpiryDate;
+        }
+    }
+
+    /// <summary>
+    /// Part of what was handed over coming back, off the batches it came
+    /// from - the latest expiry first, so the patient keeps the stock that
+    /// runs out soonest. Returns what each batch takes back; what no batch
+    /// recorded comes back with no batch.
+    /// </summary>
+    public IReadOnlyList<(Guid? BatchId, decimal Units)> GiveBack(decimal units)
+    {
+        if (units <= 0m)
+            throw new DomainException("Give back more than nothing.");
+
+        var back = new List<(Guid?, decimal)>();
+        var remaining = units;
+
+        foreach (var batch in _batches.OrderByDescending(b => b.ExpiryDate).ToList())
+        {
+            if (remaining <= 0m) break;
+
+            var take = Math.Min(batch.Quantity, remaining);
+            batch.Add(-take);
+            remaining -= take;
+            back.Add((batch.BatchId, take));
+
+            if (batch.Quantity <= 0m) _batches.Remove(batch);
+        }
+
+        if (remaining > 0m) back.Add((null, remaining));
+        return back;
+    }
+
     public void MarkSubstitution(Guid substitutedForProductId)
     {
         IsSubstitution = true;
@@ -227,6 +303,9 @@ public sealed class DispensingLineBatch : Entity
             ExpiryDate = allocation.Expiry,
             Quantity = allocation.Quantity
         };
+
+    /// More taken off this batch, or (negative) given back to it.
+    internal void Add(decimal quantity) => Quantity += quantity;
 }
 
 public enum WarningSeverity { Information = 1, Caution = 2, HardStop = 3 }

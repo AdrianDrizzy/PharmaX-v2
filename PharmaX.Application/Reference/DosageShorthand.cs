@@ -66,7 +66,7 @@ public static class DosageShorthand
 
     /// <summary>
     /// The shorthand every dispensary uses the same way, seeded so the
-    /// list is never empty. A pharmacy's own codes - RSI's "AF", "UF" - are
+    /// list is never empty. A pharmacy's own codes - the previous system's "AF", "UF" - are
     /// added under Dispensary > Dosage Codes; the import report lists the
     /// ones its prescriptions used.
     /// </summary>
@@ -82,8 +82,8 @@ public static class DosageShorthand
         ("PO", "by mouth"), ("UD", "as directed"),
         ("Q4H", "every 4 hours"), ("Q6H", "every 6 hours"), ("Q8H", "every 8 hours"),
 
-        // The shorthand RSI's scripts were typed in: "1 T TDS AF". Only the
-        // ones with one meaning; RSI's "UF" is left for the pharmacy to say.
+        // The shorthand imported scripts were typed in: "1 T TDS AF". Only the
+        // ones with one meaning; "UF" is left for the pharmacy to say.
         ("T", "tablet"), ("TAB", "tablet"), ("C", "capsule"), ("CAP", "capsule"),
         ("AF", "after food"), ("BF", "before food")
     };

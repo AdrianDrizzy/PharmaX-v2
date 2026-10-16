@@ -87,6 +87,7 @@ partial class frmMain
                 Item("Prescribers", "prescribers"),
                 Item("Dosage Codes", "dosage-codes"),
                 Item("To Follow", "to-follow"),
+                Item("Pre-packs", "prepack"),
                 Item("Drug Returns", "drug-returns")),
 
             Menu("&Point of Sale", "pos",
@@ -135,8 +136,7 @@ partial class frmMain
                 Item("Day-End Posting", "day-end")),
 
             Menu("&Reports", "reports",
-                Item("Reports", "reports", Keys.F9),
-                Item("RSI History", "rsi-history")),
+                Item("Reports", "reports", Keys.F9)),
 
             Menu("&Stocktake", "stocktake",
                 Item("New Stocktake", "stocktake-new"),
@@ -154,7 +154,7 @@ partial class frmMain
                 Item("Branches", "branches"),
                 Item("Stock Transactions", "transaction-types"),
                 Item("System Setup", "system-setup"),
-                Item("Import from RSI", "rsi-import"),
+                Item("Import Data", "data-import"),
                 Item("Back Up Now", "backup"),
                 Item("System Console", "system-console"),
                 Item("Control Variables", "control-variables")),

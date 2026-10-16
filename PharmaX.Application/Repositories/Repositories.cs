@@ -62,7 +62,7 @@ public interface IReturnRepository
 {
     Task<SaleReturn?> GetAsync(Guid id, CancellationToken ct = default);
 
-    Task<IReadOnlyList<SaleReturn>> RecentAsync(int take = 100,
+    Task<IReadOnlyList<SaleReturn>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default);
 
     /// <summary>
@@ -260,7 +260,7 @@ public interface IStocktakeRepository
     /// shelf against two snapshots produce two contradictory variances.
     Task<Stocktake?> OpenCountAsync(CancellationToken ct = default);
 
-    Task<IReadOnlyList<Stocktake>> RecentAsync(int take = 50,
+    Task<IReadOnlyList<Stocktake>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default);
 
     Task AddAsync(Stocktake stocktake, CancellationToken ct = default);
@@ -301,7 +301,7 @@ public interface IGoodsReceiptRepository
 {
     Task<GoodsReceipt?> GetAsync(Guid id, CancellationToken ct = default);
 
-    Task<IReadOnlyList<GoodsReceipt>> RecentAsync(int take = 100,
+    Task<IReadOnlyList<GoodsReceipt>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default);
 
     Task AddAsync(GoodsReceipt receipt, CancellationToken ct = default);
@@ -360,7 +360,7 @@ public interface IAccountRepository
                                  CancellationToken ct = default);
 
     /// Accounts by name or number, for the picker at the till.
-    Task<IReadOnlyList<Account>> SearchAsync(string term, int take = 100,
+    Task<IReadOnlyList<Account>> SearchAsync(string term, int take = int.MaxValue,
                                              CancellationToken ct = default);
 
     /// <summary>

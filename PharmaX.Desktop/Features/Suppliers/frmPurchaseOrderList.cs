@@ -228,7 +228,7 @@ public partial class frmPurchaseOrderList : PhxFormBase,
     {
         ArgumentNullException.ThrowIfNull(orders);
 
-        grdOrders.DataSource = orders.ToList();
+        GridPager.Attach(grdOrders).Show(orders);
         lblCount.Text = $"{orders.Count} outstanding order(s)";
 
         ShowLinesOfSelected();
@@ -256,7 +256,7 @@ public partial class frmPurchaseOrderList : PhxFormBase,
     {
         ArgumentNullException.ThrowIfNull(suggestions);
 
-        grdOrders.DataSource = null;
+        GridPager.Attach(grdOrders).Show(Array.Empty<PurchaseOrderDto>());
         grdLines.Rows.Clear();
 
         foreach (var line in suggestions)

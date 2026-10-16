@@ -11,8 +11,13 @@ namespace PharmaX.Desktop.Setup;
 /// different SQL for each, so guessing wrong produces statements the
 /// server rejects at some later and much less obvious moment.
 /// </param>
+/// <param name="LoginRefused">
+/// The server answered but would not take that username and password -
+/// which, on the main computer, PharmaX can put right itself.
+/// </param>
 public sealed record ConnectionTestResult(bool Succeeded, string Message,
-    string ServerVersion = "", bool DatabaseExists = false);
+    string ServerVersion = "", bool DatabaseExists = false,
+    bool LoginRefused = false);
 
 /// <summary>
 /// Tries the database the operator has typed in, before anything is
@@ -50,7 +55,11 @@ public static class ConnectionTest
             // Short: an operator standing at a new till should be told
             // the machine is unreachable in a couple of seconds, not
             // after the default fifteen.
-            ConnectionTimeout = 5
+            ConnectionTimeout = 5,
+
+            // A test signs in every time. A pooled session would pass a
+            // password the server has since been told to forget.
+            Pooling = false
         };
 
         try
@@ -83,13 +92,59 @@ public static class ConnectionTest
         }
         catch (MySqlException ex)
         {
-            return new ConnectionTestResult(false, Explain(ex, host, user));
+            return Failed(ex, host, user);
         }
         catch (OperationCanceledException)
         {
             return new ConnectionTestResult(false, "Cancelled.");
         }
     }
+
+    /// <summary>
+    /// Makes the login typed in on this computer's own database server,
+    /// through its root account, and creates the database with it.
+    /// </summary>
+    /// <remarks>
+    /// So that the main computer can be given any username and password -
+    /// a simple one included - instead of its operator having to know one
+    /// the server already has. LoginRefused here means the root password
+    /// was wrong.
+    /// </remarks>
+    public static async Task<ConnectionTestResult> CreateLoginAsync(int port,
+        string rootPassword, ServerLogin login, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(login);
+
+        if (!ServerSetup.IsPlainName(login.User)
+            || !ServerSetup.IsPlainName(login.Database))
+            return new ConnectionTestResult(false,
+                "A username or database name may only contain letters, "
+                + "digits and underscores.");
+
+        try
+        {
+            await using var connection = new MySqlConnection(
+                ServerSetup.RootConnection(rootPassword, port));
+
+            await connection.OpenAsync(ct);
+            await ServerSetup.GrantAsync(connection, login, ct);
+
+            return new ConnectionTestResult(true,
+                $"Login {login.User} is ready.",
+                Describe(connection.ServerVersion ?? ""), true);
+        }
+        catch (MySqlException ex)
+        {
+            return Failed(ex, "127.0.0.1", "root");
+        }
+    }
+
+    private static ConnectionTestResult Failed(MySqlException ex,
+                                               string host, string user) =>
+        new(false, Explain(ex, host, user),
+            LoginRefused: ex.ErrorCode is MySqlErrorCode.AccessDenied
+                or MySqlErrorCode.PasswordNotAllowed
+                or MySqlErrorCode.HostNotPrivileged);
 
     /// <summary>
     /// Creates the pharmacy's database if the server has not got it.
@@ -119,7 +174,8 @@ public static class ConnectionTest
             Port = (uint)port,
             UserID = user,
             Password = password,
-            ConnectionTimeout = 5
+            ConnectionTimeout = 5,
+            Pooling = false
         };
 
         try
@@ -143,7 +199,7 @@ public static class ConnectionTest
         }
         catch (MySqlException ex)
         {
-            return new ConnectionTestResult(false, Explain(ex, host, user));
+            return Failed(ex, host, user);
         }
     }
 
@@ -158,8 +214,17 @@ public static class ConnectionTest
             + "that MySQL or MariaDB is running on it, and that its "
             + "firewall allows the port.",
 
+        // Said as a wrong login, not a weak password: "refused the
+        // password" read as PharmaX turning down a simple one.
         MySqlErrorCode.AccessDenied or MySqlErrorCode.PasswordNotAllowed =>
-            $"The server refused the password for {user}.",
+            $"The database has no login {user} with that password.",
+
+        // ER_NOT_VALID_PASSWORD, which the driver has no name for: a
+        // password-strength plugin on the server itself. PharmaX has no
+        // rules of its own for this password.
+        (MySqlErrorCode)1819 =>
+            "The database server's own password rules turned that "
+            + "password down. Try a longer one.",
 
         MySqlErrorCode.UnknownDatabase =>
             "The server is there but that database is not. PharmaX can "

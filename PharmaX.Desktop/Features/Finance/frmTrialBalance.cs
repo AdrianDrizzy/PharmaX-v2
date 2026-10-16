@@ -77,7 +77,7 @@ public partial class frmTrialBalance : PhxFormBase, ITrialBalanceView
     {
         ArgumentNullException.ThrowIfNull(balance);
 
-        grdBalance.DataSource = balance.Lines.Select(BalanceRow.From).ToList();
+        GridPager.Attach(grdBalance).Show(balance.Lines.Select(BalanceRow.From));
 
         lblTotals.Text = string.Format(CultureInfo.CurrentCulture,
             "Debits {0}    Credits {1}    {2}",
