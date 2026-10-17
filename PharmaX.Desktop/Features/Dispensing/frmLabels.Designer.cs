@@ -77,11 +77,19 @@ partial class frmLabels
         grdDispensings.Dock = DockStyle.Fill;
         grdDispensings.Name = "grdDispensings";
 
-        Bind(grdDispensings, "DispensedOn", "Dispensed", 110, "dd/MM/yyyy");
-        Bind(grdDispensings, "ScriptNumber", "Script", 130);
-        Bind(grdDispensings, "DocumentNumber", "Document", 150);
-        Bind(grdDispensings, "Labels", "Labels", 70, rightAlign: true);
-        Bind(grdDispensings, "CoPayment", "Patient pays", 90, "N2",
+        Bind(grdDispensings, "DispensedOn", "Dispensed", 90, "dd/MM/yyyy");
+        Bind(grdDispensings, "ScriptNumber", "Script", 100);
+
+        // What was handed over, one medicine a line: the dispensing to
+        // reprint, change or use again is found by what is on it.
+        Bind(grdDispensings, "Items", "Items", 320);
+        grdDispensings.Columns["Items"]!.DefaultCellStyle.WrapMode =
+            DataGridViewTriState.True;
+        grdDispensings.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
+
+        Bind(grdDispensings, "DocumentNumber", "Document", 110);
+        Bind(grdDispensings, "Labels", "Labels", 55, rightAlign: true);
+        Bind(grdDispensings, "CoPayment", "Patient pays", 80, "N2",
              rightAlign: true);
 
         btnPreview.Location = new Point(12, 8);

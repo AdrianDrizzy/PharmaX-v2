@@ -53,7 +53,8 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         };
 
         // Every word narrows the scripts, and the matches come up under the
-        // box, so a script is found by its number, its doctor or its date.
+        // box, so a script is found by its number, a medicine on it, its
+        // doctor or its date.
         _suggestions = new SearchSuggestions(txtSearch) { MinimumLength = 1 };
         _suggestions.Chosen += (_, chosen) =>
         {
@@ -158,7 +159,8 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         var search = txtSearch.Text.Trim();
         var scripts = _all
             .Where(s => Application.Abstractions.SearchTerms.Matches(search,
-                s.ScriptNumber, s.PrescriberName, Date(s.PrescribedOn), s.Status))
+                s.ScriptNumber, s.Items, s.PrescriberName, Date(s.PrescribedOn),
+                s.Status))
             .ToList();
 
         GridPager.Attach(grdScripts).Show(scripts);
@@ -179,8 +181,11 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
             ? $"{_all.Count} script(s)"
             : $"{scripts.Count} of {_all.Count} script(s)";
 
+        // The suggestion names the medicines too, on one line.
         _suggestions.Offer(scripts.Select(s => new Suggestion(s.Id, s.ScriptNumber,
-            Suggest.Details(s.PrescriberName, Date(s.PrescribedOn), s.Status))));
+            Suggest.Details(Date(s.PrescribedOn),
+                s.Items.Replace(Environment.NewLine, ", ", StringComparison.Ordinal),
+                s.PrescriberName, s.Status))));
     }
 
     public void SelectScript(Guid scriptId) =>

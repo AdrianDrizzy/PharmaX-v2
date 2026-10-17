@@ -54,6 +54,10 @@ public class ScriptPackPriceTests : IClassFixture<PharmaXFixture>
 
         captured.IsSuccess.Should().BeTrue(captured.Error.Message);
 
+        // The patient's list of scripts names what is on each one.
+        (await scripts.ForPatientAsync(patientId)).Value.Single().Items.Should().Be(
+            "Priced tablets 1000s  x40" + Environment.NewLine + "Shelf tablets 100s  x14");
+
         var items = (await scripts.GetAsync(captured.Value)).Value.Items;
         items[0].PackUnits.Should().Be(20m);
         items[0].PackPrice.Should().Be(1m);

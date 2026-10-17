@@ -74,12 +74,12 @@ partial class frmScriptList
         lblSearch.Location = new Point(12, 52);
         lblSearch.Text = "&Find";
 
-        // Any words of the script number, the prescriber, the date or
-        // whether it is still open.
+        // Any words of the script number, a medicine on it, the
+        // prescriber, the date or whether it is still open.
         txtSearch.Location = new Point(70, 48);
         txtSearch.Name = "txtSearch";
-        txtSearch.PlaceholderText = "Script number, prescriber, date or status";
-        txtSearch.Size = new Size(320, 23);
+        txtSearch.PlaceholderText = "Script number, medicine, prescriber, date or status";
+        txtSearch.Size = new Size(380, 23);
         txtSearch.TabIndex = 0;
 
         pnlTop.Controls.AddRange(new Control[]
@@ -92,14 +92,22 @@ partial class frmScriptList
         grdScripts.Dock = DockStyle.Fill;
         grdScripts.Name = "grdScripts";
 
-        Bind(grdScripts, "ScriptNumber", "Script", 100);
-        Bind(grdScripts, "PrescriberName", "Prescriber", 160);
-        Bind(grdScripts, "PrescribedOn", "Prescribed", 90, "dd/MM/yyyy");
-        Bind(grdScripts, "ValidUntil", "Valid until", 90, "dd/MM/yyyy");
-        Bind(grdScripts, "RepeatsAuthorised", "Repeats", 60,
+        Bind(grdScripts, "ScriptNumber", "Script", 95);
+        Bind(grdScripts, "PrescribedOn", "Prescribed", 80, "dd/MM/yyyy");
+
+        // Every medicine on the script, one a line, so the one to use
+        // again is picked by what is on it rather than opened to find out.
+        Bind(grdScripts, "Items", "Items", 330);
+        grdScripts.Columns["Items"]!.DefaultCellStyle.WrapMode =
+            DataGridViewTriState.True;
+        grdScripts.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
+
+        Bind(grdScripts, "PrescriberName", "Prescriber", 112);
+        Bind(grdScripts, "ValidUntil", "Valid until", 80, "dd/MM/yyyy");
+        Bind(grdScripts, "RepeatsAuthorised", "Repeats", 68,
              rightAlign: true);
-        Bind(grdScripts, "RepeatsRemaining", "Left", 50, rightAlign: true);
-        Bind(grdScripts, "Status", "Status", 100);
+        Bind(grdScripts, "RepeatsRemaining", "Left", 45, rightAlign: true);
+        Bind(grdScripts, "Status", "Status", 85);
 
         var x = 12;
         foreach (var (button, text) in new[]
