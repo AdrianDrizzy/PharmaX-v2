@@ -85,6 +85,11 @@ public static class StandardRoleGrants
             PermissionCode.DispensingAmend,
             PermissionCode.StockPrepack,
 
+            // The dispensary orders and books in its own stock (16
+            // October 2026).
+            PermissionCode.PurchaseOrderRaise,
+            PermissionCode.GoodsReceive,
+
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,
@@ -93,10 +98,10 @@ public static class StandardRoleGrants
         },
 
         // Captures patients and scripts, prepares and issues the
-        // dispensing and books deliveries in - hard-stop overrides and
-        // controlled medicines included, without a pharmacist signing in
-        // (DispensingService.ActsOnOwnAuthority). Merging patient files
-        // stays a pharmacist's.
+        // dispensing, orders stock and books deliveries in - hard-stop
+        // overrides and controlled medicines included, without a
+        // pharmacist signing in (DispensingService.ActsOnOwnAuthority).
+        // Merging patient files stays a pharmacist's.
         Role.Standard.PharmacistAssistant => new[]
         {
             PermissionCode.SaleCreate,
@@ -113,6 +118,7 @@ public static class StandardRoleGrants
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,
+            PermissionCode.PurchaseOrderRaise,
             PermissionCode.GoodsReceive,
             PermissionCode.ReportOperational
         },

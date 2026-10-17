@@ -125,9 +125,10 @@ public class StockWorkflowTests : IClassFixture<PharmaXFixture>
         movement.BalanceAfter.Should().Be(65m);
     }
 
+    // The pharmacist used to be the second case here; the dispensary has
+    // received its own deliveries since 16 October 2026.
     [Theory]
     [InlineData("stk.cashier", Role.Standard.Cashier)]
-    [InlineData("stk.pharm", Role.Standard.Pharmacist)]
     public async Task Goods_receipt_is_refused_to_roles_without_it(
         string username, string role)
     {
