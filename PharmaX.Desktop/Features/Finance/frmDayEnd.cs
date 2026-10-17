@@ -264,6 +264,9 @@ public partial class frmDayEnd : PhxFormBase
     private DayEndJournalBatchDto? Selected() =>
         grdBatches.CurrentRow?.DataBoundItem as DayEndJournalBatchDto;
 
+    // The batch whose lines are on the lower grid.
+    private Guid? _linesOf;
+
     private void ShowSelectedLines()
     {
         if (Selected() is not DayEndJournalBatchDto batch)
@@ -276,7 +279,11 @@ public partial class frmDayEnd : PhxFormBase
             return;
         }
 
-        GridPager.Attach(grdLines).Show(batch.Lines);
+        // Another batch's lines start at their first page.
+        var lines = GridPager.Attach(grdLines);
+        if (batch.Id != _linesOf) lines.Restart();
+        _linesOf = batch.Id;
+        lines.Show(batch.Lines);
 
         lblBalance.Text = batch.IsBalanced
             ? $"Debits {Format.Amount(batch.TotalDebits)} = credits "

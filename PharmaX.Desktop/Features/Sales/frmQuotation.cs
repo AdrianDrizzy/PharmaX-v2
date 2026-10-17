@@ -57,7 +57,8 @@ public partial class frmQuotation : PhxFormBase
     public frmQuotation(IQuotationService quotations, ViewFactory views,
         IDocumentPrinter printer, ReceiptHeaderFactory headers,
         Application.Reporting.IWorkbookWriter workbooks,
-        Application.Abstractions.ICurrentUser user)
+        Application.Abstractions.ICurrentUser user,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
         _quotations = quotations;
@@ -66,6 +67,11 @@ public partial class frmQuotation : PhxFormBase
         _headers = headers;
         _workbooks = workbooks;
         _user = user;
+
+        // A few words of a name offer the matching products under the scan
+        // bar, as at the till. Without it a name typed slowly was sent as
+        // a code a third of a second after the typing paused.
+        scanBar.SuggestFrom(Suggest.Products(scopes, overTheCounter: true));
     }
 
     private void ShowNoQuotation()

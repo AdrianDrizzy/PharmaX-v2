@@ -170,6 +170,23 @@ public class RoleMatrixTests
                                      Role.Standard.Administrator);
     }
 
+    /// <summary>
+    /// What a till asks a second person for - a refund, a discount over the
+    /// cashier's limit, another person's till - any of the senior roles can
+    /// give, and nobody below them (16 October 2026).
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCode.ReturnAuthorise)]
+    [InlineData(PermissionCode.SaleDiscountAboveLimit)]
+    [InlineData(PermissionCode.SessionCloseOtherUser)]
+    public void The_pharmacist_assistant_manager_and_administrator_authorise_the_till(
+        string authorisation) =>
+        Role.Standard.All
+            .Where(r => As(r).Has(authorisation))
+            .Should().BeEquivalentTo(
+                Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant,
+                Role.Standard.Manager, Role.Standard.Administrator);
+
     [Fact]
     public void A_cashier_holds_no_report_permission_at_all()
     {

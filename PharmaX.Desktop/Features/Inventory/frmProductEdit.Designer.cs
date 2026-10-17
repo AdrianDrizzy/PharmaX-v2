@@ -29,6 +29,12 @@ partial class frmProductEdit
     private Label lblBatchHint = null!;
     private Button btnSave = null!;
     private Button btnCancel = null!;
+    private Panel pnlFields = null!;
+    private FlowLayoutPanel pnlButtons = null!;
+
+    /// From one row of fields to the next. 32 rather than the 34 it was,
+    /// so the whole form fits a 1080-line screen at 150 per cent.
+    private const int Pitch = 32;
 
     protected override void Dispose(bool disposing)
     {
@@ -89,6 +95,20 @@ partial class frmProductEdit
         lblBatchHint = new Label();
         btnSave = new Button();
         btnCancel = new Button();
+
+        // The fields scroll and the buttons stay put: seventeen rows at
+        // 150 per cent are taller than a 1080-line screen, and laid out
+        // as one block Save and Cancel ended up below its bottom edge.
+        pnlFields = new Panel { AutoScroll = true, Dock = DockStyle.Fill, Name = "pnlFields" };
+        pnlButtons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            FlowDirection = FlowDirection.RightToLeft,
+            Height = 48,
+            Name = "pnlButtons",
+            Padding = new Padding(0, 8, 14, 8),
+            WrapContents = false
+        };
         ((System.ComponentModel.ISupportInitialize)numSchedule).BeginInit();
         SuspendLayout();
 
@@ -106,17 +126,17 @@ partial class frmProductEdit
         // Beside the pack description: how many tablets, capsules or
         // millilitres the priced pack holds, which is what a script for
         // fewer is priced against.
-        Controls.Add(new Label
+        pnlFields.Controls.Add(new Label
         {
             AutoSize = true,
-            Location = new Point(310, 24 + 9 * 34),
+            Location = new Point(310, 24 + 9 * Pitch),
             Text = "U&nits per pack"
         });
         txtUnitsPerPack.AccessibleName = "Units per pack";
-        txtUnitsPerPack.Location = new Point(410, 20 + 9 * 34);
+        txtUnitsPerPack.Location = new Point(410, 20 + 9 * Pitch);
         txtUnitsPerPack.Size = new Size(100, 23);
         txtUnitsPerPack.TabIndex = 9 * 2 + 1;
-        Controls.Add(txtUnitsPerPack);
+        pnlFields.Controls.Add(txtUnitsPerPack);
 
         // Where the product is filed. Three lists the pharmacy
         // maintains itself, so they are chosen rather than typed.
@@ -153,7 +173,7 @@ partial class frmProductEdit
         numSchedule.Name = "numSchedule";
 
         chkBatchTracked.AutoSize = true;
-        chkBatchTracked.Location = new Point(150, 20 + 15 * 34);
+        chkBatchTracked.Location = new Point(150, 20 + 15 * Pitch);
         chkBatchTracked.Name = "chkBatchTracked";
         chkBatchTracked.Size = new Size(180, 19);
         chkBatchTracked.TabIndex = 15 * 2;
@@ -164,7 +184,7 @@ partial class frmProductEdit
         // kept for the history it already has.
         chkActive.AutoSize = true;
         chkActive.Checked = true;
-        chkActive.Location = new Point(360, 20 + 15 * 34);
+        chkActive.Location = new Point(360, 20 + 15 * Pitch);
         chkActive.Name = "chkActive";
         chkActive.Size = new Size(160, 19);
         chkActive.TabIndex = 15 * 2 + 1;
@@ -180,7 +200,7 @@ partial class frmProductEdit
 
         lblOnHandNote.AutoSize = false;
         lblOnHandNote.ForeColor = SystemColors.GrayText;
-        lblOnHandNote.Location = new Point(300, 24 + 16 * 34);
+        lblOnHandNote.Location = new Point(300, 24 + 16 * Pitch);
         lblOnHandNote.Name = "lblOnHandNote";
         lblOnHandNote.Size = new Size(250, 20);
 
@@ -196,7 +216,7 @@ partial class frmProductEdit
         grdBatches.AccessibleName = "Batches and expiry";
         grdBatches.Location = new Point(570, 48);
         grdBatches.Name = "grdBatches";
-        grdBatches.Size = new Size(390, 20 + 15 * 34 - 48);
+        grdBatches.Size = new Size(390, 20 + 15 * Pitch - 48);
         grdBatches.TabIndex = 16 * 2 + 1;
 
         var batchNumber = grdBatches.AddColumn("BatchNumber", "Batch", 110);
@@ -218,41 +238,50 @@ partial class frmProductEdit
 
         lblBatchHint.AutoSize = false;
         lblBatchHint.ForeColor = SystemColors.GrayText;
-        lblBatchHint.Location = new Point(570, 24 + 15 * 34);
+        lblBatchHint.Location = new Point(570, 24 + 15 * Pitch);
         lblBatchHint.Name = "lblBatchHint";
         lblBatchHint.Size = new Size(390, 54);
         lblBatchHint.Text =
             "Type on the last row to add a batch. Days left moves the "
             + "expiry date. Set a batch's On hand to 0 to write it off.";
 
-        btnSave.Location = new Point(794, 40 + 17 * 34);
+        btnSave.Margin = new Padding(6, 0, 0, 0);
         btnSave.Name = "btnSave";
         btnSave.Size = new Size(80, 30);
-        btnSave.TabIndex = 17 * 2;
+        btnSave.TabIndex = 1;
         btnSave.Text = "&Save";
         btnSave.UseVisualStyleBackColor = true;
 
-        btnCancel.Location = new Point(880, 40 + 17 * 34);
+        btnCancel.Margin = new Padding(6, 0, 0, 0);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(80, 30);
-        btnCancel.TabIndex = 17 * 2 + 1;
+        btnCancel.TabIndex = 2;
         btnCancel.Text = "Cancel";
         btnCancel.UseVisualStyleBackColor = true;
 
-        Controls.Add(chkBatchTracked);
-        Controls.Add(chkActive);
-        Controls.Add(lblOnHandNote);
-        Controls.Add(lblBatches);
-        Controls.Add(grdBatches);
-        Controls.Add(lblBatchHint);
-        Controls.Add(btnSave);
-        Controls.Add(btnCancel);
+        pnlFields.Controls.Add(chkBatchTracked);
+        pnlFields.Controls.Add(chkActive);
+        pnlFields.Controls.Add(lblOnHandNote);
+        pnlFields.Controls.Add(lblBatches);
+        pnlFields.Controls.Add(grdBatches);
+        pnlFields.Controls.Add(lblBatchHint);
+        pnlFields.TabIndex = 0;
+
+        // Right to left, so Cancel is added first to sit on the right.
+        pnlButtons.Controls.Add(btnCancel);
+        pnlButtons.Controls.Add(btnSave);
+        pnlButtons.TabIndex = 1;
+
+        // The buttons docked first, along the bottom; the fields fill
+        // what is left.
+        Controls.Add(pnlFields);
+        Controls.Add(pnlButtons);
 
         AcceptButton = btnSave;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(980, 90 + 17 * 34);
+        ClientSize = new Size(980, 20 + 16 * Pitch + 40 + 48);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -278,9 +307,9 @@ partial class frmProductEdit
     /// </remarks>
     private void Field(string caption, Control input, int row, int width)
     {
-        var y = 20 + row * 34;
+        var y = 20 + row * Pitch;
 
-        Controls.Add(new Label
+        pnlFields.Controls.Add(new Label
         {
             AutoSize = true,
             Location = new Point(20, y + 4),
@@ -293,6 +322,6 @@ partial class frmProductEdit
         input.Location = new Point(150, y);
         input.Size = new Size(width, 23);
         input.TabIndex = row * 2;
-        Controls.Add(input);
+        pnlFields.Controls.Add(input);
     }
 }

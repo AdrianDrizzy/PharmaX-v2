@@ -8,7 +8,6 @@ partial class frmProductList
     private Panel pnlTop = null!;
     private Panel pnlBottom = null!;
     private Label lblSearch = null!;
-    private Label lblCount = null!;
     private TextBox txtSearch = null!;
     private PhxGrid grdProducts = null!;
     private PhxGrid grdBatches = null!;
@@ -19,9 +18,6 @@ partial class frmProductList
     private Button btnChoose = null!;
     private Button btnExport = null!;
     private Button btnClose = null!;
-    private Button btnPrevious = null!;
-    private Button btnNext = null!;
-    private Label lblPage = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -40,7 +36,6 @@ partial class frmProductList
         pnlTop = new Panel();
         pnlBottom = new Panel();
         lblSearch = new Label();
-        lblCount = new Label();
         txtSearch = new TextBox();
         grdProducts = new PhxGrid();
         grdBatches = new PhxGrid();
@@ -58,12 +53,6 @@ partial class frmProductList
         btnExport.Name = "btnExport";
         btnClose = new Button();
         btnClose.Name = "btnClose";
-        btnPrevious = new Button();
-        btnPrevious.Name = "btnPrevious";
-        btnNext = new Button();
-        btnNext.Name = "btnNext";
-        lblPage = new Label();
-        lblPage.Name = "lblPage";
         SuspendLayout();
 
         lblSearch.AutoSize = true;
@@ -76,12 +65,6 @@ partial class frmProductList
         txtSearch.Size = new Size(360, 23);
         txtSearch.TabIndex = 0;
 
-        lblCount.AutoSize = false;
-        lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        lblCount.Location = new Point(620, 17);
-        lblCount.Size = new Size(200, 20);
-        lblCount.TextAlign = ContentAlignment.MiddleRight;
-
         // Off by default: the product list is what this screen is for,
         // and most of the shelf is not batch tracked.
         chkBatches.AutoSize = true;
@@ -91,7 +74,7 @@ partial class frmProductList
         chkBatches.UseVisualStyleBackColor = true;
 
         pnlTop.Controls.AddRange(new Control[]
-            { lblCount, chkBatches, txtSearch, lblSearch });
+            { chkBatches, txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 50;
         pnlTop.Name = "pnlTop";
@@ -166,32 +149,10 @@ partial class frmProductList
         btnClose.Text = "&Close";
         btnClose.UseVisualStyleBackColor = true;
 
-        // The pages either side, after the other buttons. Not anchored
-        // right like Close: PhxTheme seats every right-anchored control
-        // that starts off the edge at the same spot, so three of them
-        // would land on top of each other.
-        btnPrevious.Enabled = false;
-        btnPrevious.Location = new Point(432, 8);
-        btnPrevious.Size = new Size(86, 30);
-        btnPrevious.TabIndex = 6;
-        btnPrevious.Text = "Pre&vious";
-        btnPrevious.UseVisualStyleBackColor = true;
-
-        lblPage.AutoSize = false;
-        lblPage.Location = new Point(522, 8);
-        lblPage.Size = new Size(110, 30);
-        lblPage.TextAlign = ContentAlignment.MiddleCenter;
-
-        btnNext.Enabled = false;
-        btnNext.Location = new Point(636, 8);
-        btnNext.Size = new Size(86, 30);
-        btnNext.TabIndex = 7;
-        btnNext.Text = "Ne&xt";
-        btnNext.UseVisualStyleBackColor = true;
-
+        // The pages are turned on the bar above these (PagerBar), as on
+        // every other list.
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnNext, lblPage, btnPrevious, btnExport, btnChoose, btnRefresh,
-              btnEdit, btnAdd });
+            { btnClose, btnExport, btnChoose, btnRefresh, btnEdit, btnAdd });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
         pnlBottom.Name = "pnlBottom";

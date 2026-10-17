@@ -26,6 +26,9 @@ public partial class frmProductList : PhxFormBase, IProductListView
     /// typed into.
     private readonly SearchSuggestions _suggestions;
 
+    /// The pages of the matches, under the list.
+    private readonly PagerBar _pager = new("pager") { Empty = "No products match" };
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ProductRead;
 
@@ -33,6 +36,13 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public frmProductList()
     {
         InitializeComponent();
+
+        // After InitializeComponent, which scales what it lays out: the
+        // bar is already sized for the display. Docked between the grid
+        // and the buttons.
+        Controls.Add(_pager);
+        Controls.SetChildIndex(_pager, Controls.GetChildIndex(pnlTop));
+        _pager.PageRequested += (_, move) => PageRequested?.Invoke(this, move);
 
         _suggestions = new SearchSuggestions(txtSearch);
         _suggestions.Chosen += (_, chosen) => OnSuggestionChosen(chosen);
@@ -52,10 +62,6 @@ public partial class frmProductList : PhxFormBase, IProductListView
         btnChoose.Click += (_, _) =>
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(IsPickerMode ? false : true);
-        btnPrevious.Click += (_, _) =>
-            PreviousPageRequested?.Invoke(this, EventArgs.Empty);
-        btnNext.Click += (_, _) =>
-            NextPageRequested?.Invoke(this, EventArgs.Empty);
         btnExport.Click += (_, _) => _presenter?.ExportAll(Export);
 
         // A double click means "this one" in both modes and in both
@@ -193,6 +199,21 @@ public partial class frmProductList : PhxFormBase, IProductListView
     }
 
     public bool IsPickerMode { get; private set; }
+
+    /// <summary>
+    /// The list as a picker, opened on what was typed: for a name typed
+    /// into a code cell that matched more than one product.
+    /// </summary>
+    /// <returns>The chosen product's code, or null.</returns>
+    public static string? Pick(ViewFactory views, IWin32Window owner, string term)
+    {
+        ArgumentNullException.ThrowIfNull(views);
+
+        using var picker = views.Create<frmProductList>();
+        picker.UseAsPicker(term);
+
+        return picker.ShowDialog(owner) == DialogResult.OK ? picker.SelectedCode : null;
+    }
 
     /// <summary>
     /// Called before ShowDialog by a screen that wants to pick a product
@@ -390,44 +411,16 @@ public partial class frmProductList : PhxFormBase, IProductListView
                     $"{Format.Quantity(g.Sum(r => r.QuantityOnHand))} on hand"))));
     }
 
-    public void ShowPage(int page, int pageSize, int shown, int total)
-    {
-        var first = page * pageSize + 1;
-        var pages = Math.Max(1, (total + pageSize - 1) / pageSize);
-
-        lblCount.Text = total == 0
-            ? "No products match"
-            : string.Format(CultureInfo.CurrentCulture,
-                "{0:N0} to {1:N0} of {2:N0}", first, first + shown - 1, total);
-
-        lblPage.Text = string.Format(CultureInfo.CurrentCulture,
-            "Page {0:N0} of {1:N0}", page + 1, pages);
-
-        btnPrevious.Enabled = page > 0;
-        btnNext.Enabled = page + 1 < pages;
-    }
+    public void ShowPage(int page, int pageSize, int shown, int total) =>
+        _pager.ShowPage(page, pageSize, shown, total);
 
     /// <summary>
     /// Ctrl+Page Down and Ctrl+Page Up turn the page from anywhere on the
-    /// screen, the grid included, as they do in a spreadsheet.
+    /// screen, the grid included, as they do in a spreadsheet; with Shift,
+    /// to the last and the first.
     /// </summary>
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-    {
-        var button = keyData switch
-        {
-            Keys.Control | Keys.PageDown => btnNext,
-            Keys.Control | Keys.PageUp => btnPrevious,
-            _ => null
-        };
-
-        if (button is { Enabled: true })
-        {
-            button.PerformClick();
-            return true;
-        }
-
-        return base.ProcessCmdKey(ref msg, keyData);
-    }
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData) =>
+        _pager.Press(keyData) || base.ProcessCmdKey(ref msg, keyData);
 
     public event EventHandler? SearchChanged;
     public event EventHandler? AddRequested;
@@ -436,8 +429,7 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public event EventHandler? ChooseRequested;
     public event EventHandler? ViewModeChanged;
     public event EventHandler? CellEdited;
-    public event EventHandler? NextPageRequested;
-    public event EventHandler? PreviousPageRequested;
+    public event EventHandler<PageMove>? PageRequested;
 
     private bool _showing;
     private Guid? _keepProduct;

@@ -51,7 +51,29 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
             else if (btnEditScript.Visible)
                 EditScriptRequested?.Invoke(this, EventArgs.Empty);
         };
+
+        // Every word narrows the scripts, and the matches come up under the
+        // box, so a script is found by its number, its doctor or its date.
+        _suggestions = new SearchSuggestions(txtSearch) { MinimumLength = 1 };
+        _suggestions.Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is not Guid id) return;
+
+            SelectScript(id);
+            if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
+        };
+
+        txtSearch.TextChanged += (_, _) =>
+        {
+            GridPager.Of(grdScripts)?.Restart();
+            ShowMatching();
+        };
     }
+
+    private readonly SearchSuggestions _suggestions;
+
+    /// Every script the patient has, before the search narrows them.
+    private IReadOnlyList<ScriptDto> _all = Array.Empty<ScriptDto>();
 
     /// Runtime. Resolved by the container.
     public frmScriptList(ScriptListPresenter presenter,
@@ -110,6 +132,7 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         base.OnLoad(e);
         ApplyPermissions();
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        txtSearch.Focus();
     }
 
     public Guid? SelectedScriptId => grdScripts.CurrentRow?.DataBoundItem
@@ -121,6 +144,22 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     public void ShowScripts(IReadOnlyList<ScriptDto> scripts)
     {
         ArgumentNullException.ThrowIfNull(scripts);
+
+        _all = scripts;
+        ShowMatching();
+    }
+
+    private static string Date(DateOnly date) =>
+        date.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.CurrentCulture);
+
+    /// The scripts with every word of the search, a page at a time.
+    private void ShowMatching()
+    {
+        var search = txtSearch.Text.Trim();
+        var scripts = _all
+            .Where(s => Application.Abstractions.SearchTerms.Matches(search,
+                s.ScriptNumber, s.PrescriberName, Date(s.PrescribedOn), s.Status))
+            .ToList();
 
         GridPager.Attach(grdScripts).Show(scripts);
 
@@ -136,7 +175,12 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
                 row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
-        lblCount.Text = $"{scripts.Count} script(s)";
+        lblCount.Text = search.Length == 0
+            ? $"{_all.Count} script(s)"
+            : $"{scripts.Count} of {_all.Count} script(s)";
+
+        _suggestions.Offer(scripts.Select(s => new Suggestion(s.Id, s.ScriptNumber,
+            Suggest.Details(s.PrescriberName, Date(s.PrescribedOn), s.Status))));
     }
 
     public void SelectScript(Guid scriptId) =>

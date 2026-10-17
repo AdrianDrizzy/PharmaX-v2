@@ -110,6 +110,11 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         View.SetTileCount(tile,
             ScreenAccess.CanOpen(tile, _permissions) ? count : null);
 
+    /// A line on a tile, where this user may open it.
+    private void Note(string tile, string note) =>
+        View.SetTileNote(tile,
+            ScreenAccess.CanOpen(tile, _permissions) ? note : null);
+
     private static string Number(int value) =>
         value.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
 
@@ -141,6 +146,18 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 ? null : $"{Number(c.OpenPurchaseOrders)} open");
             Show("stocktake-capture", c.OpenStocktakes == 0
                 ? null : $"{Number(c.OpenStocktakes)} open");
+
+            // And when the jobs that come round now and again were last
+            // done, so a count or an order that is overdue is seen.
+            Note("stocktake-capture", c.LastStocktakeUtc is DateTime counted
+                ? $"Last posted {Format.Date(counted.ToLocalTime())}"
+                : "No count posted yet");
+            Note("purchase-orders", c.LastPurchaseOrderOn is DateOnly ordered
+                ? $"Last raised {Format.Date(ordered)}"
+                : "No order raised yet");
+            Note("reports", c.LastReportRunUtc is DateTime run
+                ? $"Last run {Format.DateTimeShort(run.ToLocalTime())}"
+                : "No report run yet");
         }
         catch (InvalidOperationException)
         {

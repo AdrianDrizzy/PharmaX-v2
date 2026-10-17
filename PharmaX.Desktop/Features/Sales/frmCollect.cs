@@ -53,6 +53,10 @@ public partial class frmCollect : PhxFormBase, ICollectView
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
+
+            // A new search starts at the first page; the five-second
+            // refresh stays on the one being read.
+            GridPager.Of(grdWaiting)?.Restart();
             FilterChanged?.Invoke(this, EventArgs.Empty);
         };
 

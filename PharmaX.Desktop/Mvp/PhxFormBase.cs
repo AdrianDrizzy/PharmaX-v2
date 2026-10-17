@@ -268,27 +268,73 @@ public class PhxFormBase : Form, IView
         {
             PerformLayout();
 
-            var needed = Size.Empty;
-
-            foreach (Control child in Controls)
-            {
-                // A filled child takes the size it is given, so it can
-                // never be the reason the window is too small.
-                if (!child.Visible || child.Dock == DockStyle.Fill) continue;
-
-                needed.Width = Math.Max(needed.Width,
-                    child.Right + child.Margin.Right);
-                needed.Height = Math.Max(needed.Height,
-                    child.Bottom + child.Margin.Bottom);
-            }
+            var needed = Needed();
 
             if (needed.Width <= ClientSize.Width
-                && needed.Height <= ClientSize.Height) return;
+                && needed.Height <= ClientSize.Height) break;
 
             ClientSize = new Size(
                 Math.Max(ClientSize.Width, needed.Width + Padding.Right),
                 Math.Max(ClientSize.Height, needed.Height + Padding.Bottom));
         }
+
+        KeepOnScreen();
+    }
+
+    /// How far the children reach. A filled one takes the size it is
+    /// given, so it is never why the window is small - unless it scrolls,
+    /// when it asks for the room its contents need (the product form's
+    /// fields), so the window shows them whole wherever the screen can.
+    private Size Needed(bool scrolled = true)
+    {
+        var needed = Size.Empty;
+
+        foreach (Control child in Controls)
+        {
+            if (scrolled && child.Dock == DockStyle.Fill
+                && child is ScrollableControl { AutoScroll: true, Visible: true } scroller)
+            {
+                var content = scroller.DisplayRectangle.Size;
+
+                needed.Width = Math.Max(needed.Width,
+                    child.Left + content.Width + ClientSize.Width - child.Right);
+                needed.Height = Math.Max(needed.Height,
+                    child.Top + content.Height + ClientSize.Height - child.Bottom);
+                continue;
+            }
+
+            if (!child.Visible || child.Dock == DockStyle.Fill) continue;
+
+            needed.Width = Math.Max(needed.Width,
+                child.Right + child.Margin.Right);
+            needed.Height = Math.Max(needed.Height,
+                child.Bottom + child.Margin.Bottom);
+        }
+
+        return needed;
+    }
+
+    /// <summary>
+    /// No bigger than the screen it opens on, and scrolled where what is
+    /// on it cannot fit any other way.
+    /// </summary>
+    /// <remarks>
+    /// See PhxTheme.HoldToScreen for why. Held to the working area, a
+    /// screen built on docking gives the room back from its list and keeps
+    /// its buttons in sight; one placed at fixed points scrolls instead,
+    /// so nothing on it is out of reach.
+    /// </remarks>
+    private void KeepOnScreen()
+    {
+        if (!PhxTheme.HoldToScreen(this)) return;
+
+        PerformLayout();
+
+        // A filled panel that scrolls already shows what it cannot fit.
+        var needed = Needed(scrolled: false);
+
+        if (needed.Width > ClientSize.Width || needed.Height > ClientSize.Height)
+            AutoScroll = true;
     }
 
     /// <remarks>
@@ -431,6 +477,10 @@ public class PhxFormBase : Form, IView
         ResumeLayout(true);
 
         _bannerRoom = wanted;
+
+        // The banner can arrive after the window opened, and grow it past
+        // the bottom of the screen.
+        if (IsHandleCreated) KeepOnScreen();
     }
 
     /// <summary>

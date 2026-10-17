@@ -230,11 +230,25 @@ public static class FunctionKeys
     /// Every button on the form, top to bottom and left to right, so the
     /// keys handed out to the leftovers follow the order they are read.
     /// </summary>
+    /// <remarks>
+    /// Not a list's pager: it turns on Ctrl+Page Up and Ctrl+Page Down,
+    /// the same on every list, and a function key of its own would differ
+    /// from one screen to the next.
+    /// </remarks>
     private static IEnumerable<Button> ButtonsOf(Form form) =>
         Descendants(form)
             .OfType<Button>()
+            .Where(b => !InPager(b))
             .OrderBy(b => Offset(b).Y / 20)
             .ThenBy(b => Offset(b).X);
+
+    private static bool InPager(Control control)
+    {
+        for (var parent = control.Parent; parent is not null; parent = parent.Parent)
+            if (parent is Controls.PagerBar) return true;
+
+        return false;
+    }
 
     private static IEnumerable<Control> Descendants(Control root)
     {
@@ -304,7 +318,8 @@ public static class FunctionKeys
     /// </summary>
     private static void FitCaption(Button button)
     {
-        var room = button.Width - button.Padding.Horizontal - 12;
+        var room = button.Width - button.Padding.Horizontal
+                   - button.LogicalToDeviceUnits(12);
         if (room <= 0) return;
 
         var font = button.Font;

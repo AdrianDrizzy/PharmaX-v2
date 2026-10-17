@@ -118,12 +118,19 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             e.Handled = true;
             e.SuppressKeyPress = true;
 
-            if (await Suggest.FindProductAsync(scopes, typed) is { } product)
+            var (product, matches) = await Suggest.ResolveProductAsync(scopes, typed);
+
+            if (product is not null)
                 AddProduct(product);
             else
-                ShowError($"No product with the code {typed}. Type a few "
-                          + "words of its name to choose it from a list.");
+                ShowError(matches > 1
+                    ? $"\"{typed}\" fits {matches} products. Type more of the "
+                      + "name, or choose one from the list under the box."
+                    : $"No product has the code or name \"{typed}\".");
         };
+
+        // The line's own code cell takes a name too, a few words at a time.
+        CellSuggestions.Attach(grdItems, "ProductCode", Suggest.Products(scopes));
 
         _presenter.Attach(this);
     }
@@ -164,12 +171,15 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         return row;
     }
 
-    private static void Describe(DataGridViewRow row, ProductListItemDto? product)
+    private static void Describe(DataGridViewRow row, ProductListItemDto? product,
+                                 int matches = 0)
     {
         row.Cells["Product"].Value = product?.Description
             ?? (string.IsNullOrWhiteSpace(row.Cells["ProductCode"].Value?.ToString())
                 ? ""
-                : "No product with this code");
+                : matches > 1
+                    ? $"{matches} products fit - type more of the name"
+                    : "No product with this code or name");
 
         row.Cells["Details"].Value = product is null
             ? ""
@@ -181,8 +191,9 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     }
 
     /// <summary>
-    /// The name and details of whatever code a line holds: one typed into
-    /// the grid, or one brought from a quote or an earlier capture.
+    /// The name and details of whatever a line holds: a code typed into the
+    /// grid, a few words of a name - put right to the product's code - or a
+    /// code brought from a quote or an earlier capture.
     /// </summary>
     private async Task DescribeAsync(DataGridViewRow row)
     {
@@ -196,7 +207,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             return;
         }
 
-        var product = await Suggest.FindProductAsync(_scopes, code);
+        var (product, matches) = await Suggest.ResolveProductAsync(_scopes, code);
 
         // Typed over again while the answer was coming.
         if (row.DataGridView is null
@@ -204,7 +215,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
                               code, StringComparison.Ordinal))
             return;
 
-        Describe(row, product);
+        if (product is not null) row.Cells["ProductCode"].Value = product.Code;
+        Describe(row, product, matches);
     }
 
     public Guid PatientId { get; private set; }

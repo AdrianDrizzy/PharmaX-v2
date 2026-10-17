@@ -9,6 +9,8 @@ partial class frmScriptList
     private Panel pnlBottom = null!;
     private Label lblPatient = null!;
     private Label lblCount = null!;
+    private Label lblSearch = null!;
+    private TextBox txtSearch = null!;
     private PhxGrid grdScripts = null!;
     private Button btnCapture = null!;
     private Button btnCancelScript = null!;
@@ -32,6 +34,8 @@ partial class frmScriptList
         pnlBottom = new Panel();
         lblPatient = new Label();
         lblCount = new Label();
+        lblSearch = new Label();
+        txtSearch = new TextBox();
         grdScripts = new PhxGrid();
         btnCapture = new Button();
         btnCapture.Name = "btnCapture";
@@ -66,9 +70,22 @@ partial class frmScriptList
         lblCount.Size = new Size(150, 20);
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
-        pnlTop.Controls.AddRange(new Control[] { lblCount, lblPatient });
+        lblSearch.AutoSize = true;
+        lblSearch.Location = new Point(12, 52);
+        lblSearch.Text = "&Find";
+
+        // Any words of the script number, the prescriber, the date or
+        // whether it is still open.
+        txtSearch.Location = new Point(70, 48);
+        txtSearch.Name = "txtSearch";
+        txtSearch.PlaceholderText = "Script number, prescriber, date or status";
+        txtSearch.Size = new Size(320, 23);
+        txtSearch.TabIndex = 0;
+
+        pnlTop.Controls.AddRange(new Control[]
+            { lblCount, lblPatient, txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
-        pnlTop.Height = 46;
+        pnlTop.Height = 80;
         pnlTop.Name = "pnlTop";
 
         grdScripts.AutoGenerateColumns = false;

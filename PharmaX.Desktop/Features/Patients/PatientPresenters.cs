@@ -27,8 +27,7 @@ public interface IPatientListView : IView
     event EventHandler? EditRequested;
     event EventHandler? DeactivateRequested;
     event EventHandler? ChooseRequested;
-    event EventHandler? NextPageRequested;
-    event EventHandler? PreviousPageRequested;
+    event EventHandler<Controls.PageMove>? PageRequested;
 }
 
 public interface IPatientEditView : IView
@@ -62,8 +61,7 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
     {
         // A new search starts again at the top.
         View.SearchChanged += (_, _) => Enqueue(FirstPageAsync);
-        View.NextPageRequested += (_, _) => Enqueue(() => TurnAsync(+1));
-        View.PreviousPageRequested += (_, _) => Enqueue(() => TurnAsync(-1));
+        View.PageRequested += (_, move) => Enqueue(() => TurnAsync(move));
         View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
         View.EditRequested += (_, _) => Enqueue(() => OpenEditorAsync(View.SelectedId));
         View.DeactivateRequested += (_, _) => Enqueue(DeactivateAsync);
@@ -106,9 +104,9 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
         return LoadAsync();
     }
 
-    private Task TurnAsync(int by)
+    private Task TurnAsync(Controls.PageMove move)
     {
-        var page = Math.Clamp(_page + by, 0, LastPage(_total));
+        var page = Controls.PagerBar.Target(_page, _total, PageSize, move);
         if (page == _page) return Task.CompletedTask;
 
         _page = page;

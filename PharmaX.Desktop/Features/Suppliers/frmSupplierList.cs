@@ -26,15 +26,43 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
             ChooseRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
 
+        // A different list, so its first page.
         chkIncludeInactive.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(grdSuppliers)?.Restart();
             RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         grdSuppliers.DoubleClick += (_, _) =>
         {
             if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
             else EditRequested?.Invoke(this, EventArgs.Empty);
         };
+
+        // Every word typed narrows the list, and the matches come up under
+        // the box: a supplier is found by a few letters of any of its
+        // name, code, contact or telephone.
+        _suggestions = new SearchSuggestions(txtSearch) { MinimumLength = 1 };
+        _suggestions.Chosen += (_, chosen) =>
+        {
+            if (!Suggest.SelectRow(grdSuppliers, item =>
+                    item is SupplierListItemDto s && Equals(s.Id, chosen.Value)))
+                return;
+
+            if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
+        };
+
+        txtSearch.TextChanged += (_, _) =>
+        {
+            GridPager.Of(grdSuppliers)?.Restart();
+            ShowMatching();
+        };
     }
+
+    private readonly SearchSuggestions _suggestions;
+
+    /// Every supplier read, before the search narrows them.
+    private IReadOnlyList<SupplierListItemDto> _all = Array.Empty<SupplierListItemDto>();
 
     /// Runtime. Resolved by the container.
     public frmSupplierList(SupplierListPresenter presenter) : this()
@@ -58,6 +86,7 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
     {
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        txtSearch.Focus();
     }
 
     public Guid? SelectedId => grdSuppliers.CurrentRow?.DataBoundItem
@@ -76,7 +105,20 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
     {
         ArgumentNullException.ThrowIfNull(suppliers);
 
-        GridPager.Attach(grdSuppliers).Show(suppliers);
+        _all = suppliers;
+        ShowMatching();
+    }
+
+    /// The suppliers with every word of the search, a page at a time.
+    private void ShowMatching()
+    {
+        var search = txtSearch.Text.Trim();
+        var matching = _all
+            .Where(s => Application.Abstractions.SearchTerms.Matches(search,
+                s.Name, s.Code, s.ContactName, s.Telephone))
+            .ToList();
+
+        GridPager.Attach(grdSuppliers).Show(matching);
 
         foreach (DataGridViewRow row in grdSuppliers.Rows)
         {
@@ -84,8 +126,12 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
                 row.DefaultCellStyle.ForeColor = PhxTheme.Muted;
         }
 
-        lblCount.Text = $"{suppliers.Count} supplier(s)";
+        lblCount.Text = search.Length == 0
+            ? $"{_all.Count} supplier(s)"
+            : $"{matching.Count} of {_all.Count} supplier(s)";
         ShowSelectionState();
+
+        _suggestions.Offer(matching.Select(Suggest.Supplier));
     }
 
     public event EventHandler? RefreshRequested;

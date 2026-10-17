@@ -122,7 +122,7 @@ partial class frmScriptEdit
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "ProductCode", HeaderText = "Product code",
+            Name = "ProductCode", HeaderText = "Code or name",
             FillWeight = 85, SortMode = DataGridViewColumnSortMode.NotSortable
         });
 

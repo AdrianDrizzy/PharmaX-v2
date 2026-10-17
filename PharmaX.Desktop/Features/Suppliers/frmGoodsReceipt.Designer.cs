@@ -9,7 +9,7 @@ partial class frmGoodsReceipt
     private Panel pnlTotals = null!;
     private Panel pnlButtons = null!;
     private SplitContainer splMain = null!;
-    private Label lblSupplierValue = null!;
+    private TextBox txtSupplier = null!;
     private Label lblOrderValue = null!;
     private Label lblCapturedValue = null!;
     private Label lblVarianceValue = null!;
@@ -42,7 +42,7 @@ partial class frmGoodsReceipt
         pnlTotals = new Panel();
         pnlButtons = new Panel();
         splMain = new SplitContainer();
-        lblSupplierValue = new Label();
+        txtSupplier = new TextBox();
         lblOrderValue = new Label();
         lblCapturedValue = new Label();
         lblVarianceValue = new Label();
@@ -75,12 +75,12 @@ partial class frmGoodsReceipt
         // ---- Header -----------------------------------------------------
         Caption(pnlHeader, 12, 16, "Supplier");
 
-        lblSupplierValue.AutoSize = false;
-        lblSupplierValue.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        lblSupplierValue.Location = new Point(110, 14);
-        lblSupplierValue.Name = "lblSupplierValue";
-        lblSupplierValue.Size = new Size(330, 22);
-        lblSupplierValue.Text = "(none chosen)";
+        // Typed a few letters at a time, with the matches under it, or
+        // chosen from the list behind the button beside it.
+        txtSupplier.Location = new Point(110, 12);
+        txtSupplier.Name = "txtSupplier";
+        txtSupplier.PlaceholderText = "Type a few letters of the name or code";
+        txtSupplier.Size = new Size(330, 23);
 
         btnChooseSupplier.Location = new Point(446, 12);
         btnChooseSupplier.Size = new Size(110, 26);
@@ -118,7 +118,7 @@ partial class frmGoodsReceipt
 
         pnlHeader.Controls.AddRange(new Control[]
         {
-            lblSupplierValue, btnChooseSupplier, lblOrderValue,
+            txtSupplier, btnChooseSupplier, lblOrderValue,
             btnChooseOrder, txtInvoiceNumber, dtpReceivedOn
         });
         pnlHeader.Dock = DockStyle.Top;
@@ -142,7 +142,7 @@ partial class frmGoodsReceipt
         grdCapture.RowTemplate.Height = 24;
         grdCapture.SelectionMode = DataGridViewSelectionMode.CellSelect;
 
-        Column(grdCapture, "Code", "Product code", 80);
+        Column(grdCapture, "Code", "Code or name", 95);
 
         // What the code resolves to, filled in by the preview - or, for a
         // line from an order, by the order itself. Never typed: the

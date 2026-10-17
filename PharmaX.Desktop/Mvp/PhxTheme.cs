@@ -464,9 +464,87 @@ public static class PhxTheme
             form.Invalidate(true);
         }
 
-        form.Load += (_, _) => Colour(form);
+        form.Load += (_, _) =>
+        {
+            ScaleToDisplay(form);
+            Colour(form);
+            SeatRightAnchoredControls(form);
+            HoldToScreen(form);
+        };
         form.HandleCreated += (_, _) => Changed += OnChange;
         form.HandleDestroyed += (_, _) => Changed -= OnChange;
+    }
+
+    // The windows already scaled to the display, so none is scaled twice.
+    private static readonly System.Runtime.CompilerServices
+        .ConditionalWeakTable<Form, object> Scaled = new();
+
+    /// <summary>
+    /// Scales a window laid out in code, at points chosen at 100 per cent,
+    /// to the display's scaling - as AutoScaleMode scales a designer's.
+    /// </summary>
+    /// <remarks>
+    /// Text is drawn in points and grows with the display; the pixels these
+    /// windows gave their rows, bands and buttons did not. At 150 per cent,
+    /// which a pharmacy PC is commonly set to, every caption outgrew its
+    /// button: the function keys shrank them to 7 point to fit, and what
+    /// still did not fit was cut off along the bottom - Import data, the
+    /// accounts, printer setup, the prompts. Only a window that chose no
+    /// scaling of its own (AutoScaleMode left at Inherit), and only once.
+    /// A window that measures itself in device units already says so with
+    /// AutoScaleMode.None (frmMessage).
+    /// </remarks>
+    internal static void ScaleToDisplay(Form form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        if (form.AutoScaleMode != AutoScaleMode.Inherit
+            || form.DeviceDpi == 96
+            || Scaled.TryGetValue(form, out _)) return;
+
+        Scaled.Add(form, Mark);
+
+        var factor = form.DeviceDpi / 96f;
+        form.Scale(new SizeF(factor, factor));
+    }
+
+    /// <summary>
+    /// Holds a window to the working area of the screen it opens on.
+    /// </summary>
+    /// <remarks>
+    /// Windows will not make a window taller than the screen, and the
+    /// taskbar then covers its bottom edge - where the buttons are. A
+    /// window laid out 700 pixels high at 100 per cent wants 1,050 at 150,
+    /// on a display with 1,020 to spare.
+    /// </remarks>
+    /// <returns>True where the window had to be made smaller.</returns>
+    internal static bool HoldToScreen(Form form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        if (form.WindowState != FormWindowState.Normal) return false;
+
+        var work = (form.Owner is { } owner
+            ? Screen.FromControl(owner)
+            : Screen.FromPoint(Cursor.Position)).WorkingArea;
+
+        var size = new Size(Math.Min(form.Width, work.Width),
+                            Math.Min(form.Height, work.Height));
+
+        if (size == form.Size) return false;
+
+        form.MinimumSize = new Size(Math.Min(form.MinimumSize.Width, size.Width),
+                                    Math.Min(form.MinimumSize.Height, size.Height));
+        form.Size = size;
+
+        // Brought back inside where it opens at a fixed place; centred
+        // ones are centred inside the working area by Windows Forms.
+        if (form.StartPosition == FormStartPosition.Manual)
+            form.Location = new Point(
+                Math.Clamp(form.Left, work.Left, work.Right - form.Width),
+                Math.Clamp(form.Top, work.Top, work.Bottom - form.Height));
+
+        return true;
     }
 
     /// <summary>
@@ -766,6 +844,7 @@ public static class PhxTheme
     {
         ArgumentNullException.ThrowIfNull(form);
 
+        ScaleToDisplay(form);
         form.Font = Body;
         Colour(form);
         SeatRightAnchoredControls(form);
@@ -811,10 +890,17 @@ public static class PhxTheme
     /// anchor behaves correctly from then on. Only controls that are
     /// actually off the edge are touched, so a screen that was laid out
     /// properly is left exactly as its designer wrote it.
+    ///
+    /// The ones off the edge of the same band move together, by as far as
+    /// the furthest is over, so they keep their order and their spacing.
+    /// Each used to be put at the edge on its own, which stacked them on
+    /// one spot: Close lay hidden under Export on the chart of accounts,
+    /// the claims, the journal and the trial balance.
     /// </remarks>
     private static void SeatRightAnchoredControls(Control parent)
     {
         var available = parent.ClientSize.Width - parent.Padding.Right;
+        var over = new List<Control>();
 
         foreach (Control child in parent.Controls)
         {
@@ -825,11 +911,18 @@ public static class PhxTheme
             if (!anchor.HasFlag(AnchorStyles.Right)
                 || anchor.HasFlag(AnchorStyles.Left)) continue;
 
-            if (child.Right <= available) continue;
-
-            child.Left = available - Gutter - child.Width;
+            if (child.Right > available) over.Add(child);
         }
+
+        if (over.Count == 0) return;
+
+        var by = over.Max(c => c.Right) - (available - ScaledGutter(parent));
+        foreach (var child in over) child.Left -= by;
     }
+
+    /// The gutter at the display's scaling.
+    private static int ScaledGutter(Control control) =>
+        control.LogicalToDeviceUnits(Gutter);
 
     private static void ApplyTo(Control.ControlCollection controls)
     {

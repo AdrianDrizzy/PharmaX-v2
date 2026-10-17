@@ -203,7 +203,8 @@ public partial class frmReturn : PhxFormBase, IReturnView
     {
         if (_auth is null) return null;
 
-        using var dialog = new frmSupervisorPrompt(_auth, reason);
+        using var dialog = new frmSupervisorPrompt(_auth, reason,
+            Domain.Security.PermissionCode.ReturnAuthorise);
 
         return dialog.ShowDialog(this) == DialogResult.OK
             ? dialog.AuthoriserId

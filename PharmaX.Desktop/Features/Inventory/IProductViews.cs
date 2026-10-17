@@ -41,8 +41,7 @@ public interface IProductListView : IView
     event EventHandler? ChooseRequested;
     event EventHandler? ViewModeChanged;
     event EventHandler? CellEdited;
-    event EventHandler? NextPageRequested;
-    event EventHandler? PreviousPageRequested;
+    event EventHandler<Controls.PageMove>? PageRequested;
 }
 
 public interface IProductEditView : IView

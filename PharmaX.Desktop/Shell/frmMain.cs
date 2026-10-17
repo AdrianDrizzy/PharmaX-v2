@@ -380,6 +380,13 @@ public partial class frmMain : PhxFormBase, IMainView
             tile.ShowCount(count);
     }
 
+    public void SetTileNote(string menuKey, string? note)
+    {
+        foreach (var tile in flpTiles.Controls.OfType<HomeTile>()
+                     .Where(t => t.MenuKey == menuKey))
+            tile.ShowNote(note);
+    }
+
     /// <summary>
     /// Other words for a screen than its menu caption: what the staff call
     /// the job rather than what the menu calls the screen.

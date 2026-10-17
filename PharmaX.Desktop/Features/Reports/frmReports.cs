@@ -300,6 +300,9 @@ public partial class frmReports : PhxFormBase, IReportsView
             combo.Items.Add(new Choice(option.Value, option.Label));
 
         combo.SelectedIndex = 0;
+
+        // A department or a session found by any word of its name.
+        if (slicer.Options.Count > 0) WordFilter.Attach(combo);
         return combo;
     }
 
@@ -329,8 +332,11 @@ public partial class frmReports : PhxFormBase, IReportsView
                 format: column.Format, rightAlign: column.RightAlign);
 
         // A page at a time: a year of sale lines is forty thousand rows,
-        // and the export runs the report again for all of them.
-        GridPager.Attach(grdPreview).ShowRows(result.Rows
+        // and the export runs the report again for all of them. A new run
+        // starts at its first page.
+        var pager = GridPager.Attach(grdPreview);
+        pager.Restart();
+        pager.ShowRows(result.Rows
             .Select(row => result.Columns
                 .Select(c => row.TryGetValue(c.Key, out var v) ? v : null)
                 .ToArray())

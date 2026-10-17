@@ -8,7 +8,6 @@ partial class frmPatientList
     private Panel pnlTop = null!;
     private Panel pnlBottom = null!;
     private Label lblSearch = null!;
-    private Label lblCount = null!;
     private TextBox txtSearch = null!;
     private PhxGrid grdPatients = null!;
     private Button btnAdd = null!;
@@ -18,9 +17,6 @@ partial class frmPatientList
     private Button btnExport = null!;
     private Button btnChoose = null!;
     private Button btnClose = null!;
-    private Button btnPrevious = null!;
-    private Button btnNext = null!;
-    private Label lblPage = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -39,7 +35,6 @@ partial class frmPatientList
         pnlTop = new Panel();
         pnlBottom = new Panel();
         lblSearch = new Label();
-        lblCount = new Label();
         txtSearch = new TextBox();
         grdPatients = new PhxGrid();
         btnAdd = new Button();
@@ -56,12 +51,6 @@ partial class frmPatientList
         btnChoose.Name = "btnChoose";
         btnClose = new Button();
         btnClose.Name = "btnClose";
-        btnPrevious = new Button();
-        btnPrevious.Name = "btnPrevious";
-        btnNext = new Button();
-        btnNext.Name = "btnNext";
-        lblPage = new Label();
-        lblPage.Name = "lblPage";
         SuspendLayout();
 
         lblSearch.AutoSize = true;
@@ -75,14 +64,7 @@ partial class frmPatientList
         txtSearch.Size = new Size(320, 23);
         txtSearch.TabIndex = 0;
 
-        lblCount.AutoSize = false;
-        lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        lblCount.Location = new Point(840, 17);
-        lblCount.Size = new Size(150, 20);
-        lblCount.TextAlign = ContentAlignment.MiddleRight;
-
-        pnlTop.Controls.AddRange(new Control[]
-            { lblCount, txtSearch, lblSearch });
+        pnlTop.Controls.AddRange(new Control[] { txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 48;
         pnlTop.Name = "pnlTop";
@@ -131,29 +113,8 @@ partial class frmPatientList
         btnChoose.Visible = false;
         pnlBottom.Controls.Add(btnChoose);
 
-        // The pages either side, after Choose. Not anchored right like
-        // Close: PhxTheme seats every right-anchored control that starts
-        // off the edge at the same spot (see frmProductList).
-        btnPrevious.Enabled = false;
-        btnPrevious.Location = new Point(596, 8);
-        btnPrevious.Size = new Size(86, 30);
-        btnPrevious.Text = "Pre&vious";
-        btnPrevious.UseVisualStyleBackColor = true;
-
-        lblPage.AutoSize = false;
-        lblPage.Location = new Point(686, 8);
-        lblPage.Size = new Size(90, 30);
-        lblPage.TextAlign = ContentAlignment.MiddleCenter;
-
-        btnNext.Enabled = false;
-        btnNext.Location = new Point(780, 8);
-        btnNext.Size = new Size(86, 30);
-        btnNext.Text = "Ne&xt";
-        btnNext.UseVisualStyleBackColor = true;
-
-        pnlBottom.Controls.AddRange(new Control[]
-            { btnPrevious, lblPage, btnNext });
-
+        // The pages are turned on the bar above these (PagerBar), as on
+        // every other list.
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(880, 8);
         btnClose.Size = new Size(110, 30);

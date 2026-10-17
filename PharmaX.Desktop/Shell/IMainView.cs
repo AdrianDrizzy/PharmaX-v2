@@ -50,6 +50,12 @@ public interface IMainView : Mvp.IView
     /// </summary>
     void SetTileCount(string menuKey, string? count);
 
+    /// <summary>
+    /// When the job on a home tile was last done - "Last posted 12/10/2026"
+    /// on Stocktake - or none.
+    /// </summary>
+    void SetTileNote(string menuKey, string? note);
+
     event EventHandler<string>? MenuSelected;
 
     /// The id of the ThemeMode just put in use from the Theme menu.

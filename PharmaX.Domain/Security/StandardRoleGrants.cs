@@ -66,6 +66,15 @@ public static class StandardRoleGrants
         {
             PermissionCode.SaleCreate,
             PermissionCode.PatientMaintain,
+
+            // The authorisations a till asks for - a refund, a discount
+            // over the cashier's limit, another person's till - are given
+            // by whoever is senior on the floor: the pharmacist, an
+            // assistant, the manager or the administrator (16 October
+            // 2026). Held, they are also the holder's own to use.
+            PermissionCode.ReturnAuthorise,
+            PermissionCode.SaleDiscountAboveLimit,
+            PermissionCode.SessionCloseOtherUser,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
             PermissionCode.ScriptAuthorise,
@@ -92,6 +101,11 @@ public static class StandardRoleGrants
         {
             PermissionCode.SaleCreate,
             PermissionCode.PatientMaintain,
+
+            // The till's authorisations, as the pharmacist has them.
+            PermissionCode.ReturnAuthorise,
+            PermissionCode.SaleDiscountAboveLimit,
+            PermissionCode.SessionCloseOtherUser,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
             PermissionCode.DispensingAmend,

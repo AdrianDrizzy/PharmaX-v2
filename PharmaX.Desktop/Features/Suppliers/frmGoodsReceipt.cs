@@ -1,5 +1,8 @@
 using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Suppliers.Dtos;
+using PharmaX.Desktop.Controls;
+using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Suppliers;
@@ -29,21 +32,108 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
         btnRemoveLine.Click += (_, _) => RemoveCaptureRow();
 
         // Previewing on every committed cell is what turns a typed code
-        // into a description while the operator is still on the line.
-        grdCapture.CellEndEdit += (_, _) =>
+        // into a description while the operator is still on the line. A
+        // few words of a name are put right to the product's code first.
+        grdCapture.CellEndEdit += async (_, e) =>
+        {
+            if (e.RowIndex >= 0 && grdCapture.Columns[e.ColumnIndex].Name == "Code")
+                await NameToCodeAsync(grdCapture.Rows[e.RowIndex]);
+
             LinesChanged?.Invoke(this, EventArgs.Empty);
+        };
 
         txtInvoiceTotal.Leave += (_, _) =>
             LinesChanged?.Invoke(this, EventArgs.Empty);
+
+        // The supplier by a few letters of its name: the matches under the
+        // box, and the one taken goes through the same choice as the list.
+        _supplierSuggestions = new SearchSuggestions(txtSupplier) { MinimumLength = 1 };
+        _supplierSuggestions.Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is not Guid id) return;
+
+            _typedSupplierId = id;
+            SupplierRequested?.Invoke(this, EventArgs.Empty);
+        };
+
+        // Typing over the supplier chosen is choosing another: nothing is
+        // received against the one whose name is no longer in the box.
+        txtSupplier.TextChanged += (_, _) =>
+        {
+            if (!_showingSupplier) SupplierId = null;
+        };
+
+        txtSupplier.KeyDown += async (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter || _supplierSuggestions.HasHighlight) return;
+
+            e.Handled = e.SuppressKeyPress = true;
+            await ResolveSupplierAsync();
+        };
     }
 
     /// Runtime. Resolved by the container.
     public frmGoodsReceipt(GoodsReceiptPresenter presenter,
-                           ViewFactory views) : this()
+                           ViewFactory views, IServiceScopeFactory scopes) : this()
     {
         _presenter = presenter;
         _views = views;
+        _scopes = scopes;
+
+        _supplierSuggestions.Source = Suggest.Suppliers(scopes);
+        CellSuggestions.Attach(grdCapture, "Code", Suggest.Products(scopes));
+
         _presenter.Attach(this);
+    }
+
+    private readonly IServiceScopeFactory? _scopes;
+    private readonly SearchSuggestions _supplierSuggestions;
+
+    /// A supplier taken from under the box, for PromptSupplier to answer
+    /// with rather than opening the list.
+    private Guid? _typedSupplierId;
+
+    // Set while the box shows the supplier chosen, so that is not taken
+    // for typing a new one.
+    private bool _showingSupplier;
+
+    /// <summary>
+    /// A supplier typed and not picked: the one it matches, or the list to
+    /// choose from when it matches none or several.
+    /// </summary>
+    private async Task ResolveSupplierAsync()
+    {
+        if (_scopes is null || string.IsNullOrWhiteSpace(txtSupplier.Text)) return;
+
+        var matches = await Suggest.Suppliers(_scopes)(txtSupplier.Text.Trim(),
+                                                        CancellationToken.None);
+
+        if (matches.Count == 1 && matches[0].Value is Guid id) _typedSupplierId = id;
+
+        SupplierRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// A name typed into a line's code: the product it names, or the list
+    /// to choose from where it names several. A code or a barcode is left
+    /// for the preview to look up as it always has.
+    /// </summary>
+    private async Task NameToCodeAsync(DataGridViewRow row)
+    {
+        var typed = row.Cells["Code"].Value?.ToString()?.Trim() ?? "";
+        if (_scopes is null || !Suggest.IsName(typed)) return;
+
+        var (product, matches) = await Suggest.ResolveProductAsync(_scopes, typed);
+
+        var code = product?.Code
+                   ?? (matches > 1 && _views is not null
+                       ? frmProductList.Pick(_views, this, typed)
+                       : null);
+
+        if (code is not null && row.DataGridView is not null
+            && string.Equals(row.Cells["Code"].Value?.ToString()?.Trim(), typed,
+                             StringComparison.Ordinal))
+            row.Cells["Code"].Value = code;
     }
 
     public Guid? SupplierId { get; private set; }
@@ -113,7 +203,18 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
 
     public void ShowSupplier(string description)
     {
-        lblSupplierValue.Text = description;
+        _showingSupplier = true;
+
+        try
+        {
+            txtSupplier.Text = description;
+        }
+        finally
+        {
+            _showingSupplier = false;
+        }
+
+        _supplierSuggestions.Hide();
 
         // The presenter looked the supplier up, so the identifier it
         // resolved is the one to keep.
@@ -254,6 +355,14 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
 
     public Guid? PromptSupplier()
     {
+        // Taken from under the box already: no list to open.
+        if (_typedSupplierId is Guid typed)
+        {
+            _typedSupplierId = null;
+            _pendingSupplierId = typed;
+            return typed;
+        }
+
         if (_views is null) return null;
 
         using var picker = _views.Create<frmSupplierList>();

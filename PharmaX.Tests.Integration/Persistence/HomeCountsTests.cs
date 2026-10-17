@@ -77,6 +77,67 @@ public class HomeCountsTests : IClassFixture<PharmaXFixture>
             "the one on file for three years was not added today");
     }
 
+    /// <remarks>
+    /// The order raised last, not the last one entered: an order keyed in
+    /// late for last week does not make this week's look done. A cancelled
+    /// order was not raised at all.
+    /// </remarks>
+    [Fact]
+    public async Task The_last_order_raised_is_dated_and_a_cancelled_one_is_not()
+    {
+        var latest = new DateOnly(2099, 3, 14);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            var supplier = Domain.Suppliers.Supplier.Create(Code("SUP"), "Home count supplier");
+            db.Add(supplier);
+
+            var cancelled = Domain.Suppliers.PurchaseOrder.Raise(Code("PO"), supplier.Id,
+                latest.AddDays(30));
+            cancelled.Cancel("Raised in error");
+
+            db.AddRange(
+                Domain.Suppliers.PurchaseOrder.Raise(Code("PO"), supplier.Id, latest.AddDays(-7)),
+                Domain.Suppliers.PurchaseOrder.Raise(Code("PO"), supplier.Id, latest),
+                cancelled);
+
+            await db.SaveChangesAsync();
+        }
+
+        (await ReadAsync(ProductScope.All)).LastPurchaseOrderOn.Should().Be(latest);
+    }
+
+    /// <remarks>
+    /// Nothing recorded when a report was asked for, so the home screen
+    /// could not say. Each run is in the audit trail now.
+    /// </remarks>
+    [Fact]
+    public async Task A_report_run_is_recorded_and_dated_on_the_home_screen()
+    {
+        using (var scope = _fixture.NewScope())
+        {
+            var signedIn = await PharmaXFixture.Resolve<Application.Security.IAuthenticationService>(scope)
+                .AuthenticateAsync("admin", "ChangeMe#1");
+            signedIn.IsSuccess.Should().BeTrue();
+        }
+
+        var before = DateTime.UtcNow.AddSeconds(-1);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var clock = PharmaXFixture.Resolve<Application.Abstractions.IClock>(scope);
+
+            await PharmaXFixture.Resolve<Application.Reporting.IReportRunner>(scope)
+                .RunAsync(new Application.Reporting.ReportRequest("pos.transactions.all", "1",
+                    clock.Today, clock.Today, new Dictionary<string, string?>()));
+        }
+
+        (await ReadAsync(ProductScope.All)).LastReportRunUtc
+            .Should().NotBeNull().And.BeOnOrAfter(before);
+    }
+
     private static string Code(string kind) =>
         $"HC-{kind}-{Guid.NewGuid():N}"[..20];
 

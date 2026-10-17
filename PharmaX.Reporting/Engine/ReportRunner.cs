@@ -17,12 +17,15 @@ public sealed class ReportRunner : IReportRunner
     private readonly IUserRepository _users;
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
+    private readonly IAuditWriter _audit;
+    private readonly IUnitOfWork _uow;
 
     public ReportRunner(IPresetCatalogue presets,
         IEnumerable<IReportDefinition> definitions,
         IEnumerable<IReportExporter> exporters,
         IPermissionService permissions, IConnectivityMonitor connectivity,
-        IUserRepository users, ICurrentUser user, IClock clock)
+        IUserRepository users, ICurrentUser user, IClock clock,
+        IAuditWriter audit, IUnitOfWork uow)
     {
         _presets = presets;
         _definitions = definitions;
@@ -32,6 +35,8 @@ public sealed class ReportRunner : IReportRunner
         _users = users;
         _user = user;
         _clock = clock;
+        _audit = audit;
+        _uow = uow;
     }
 
     public async Task<ReportResult> RunAsync(ReportRequest request,
@@ -58,7 +63,36 @@ public sealed class ReportRunner : IReportRunner
             BuildProvenance(request, preset),
             await OperatorNamesAsync(ct).ConfigureAwait(false));
 
-        return await definition.RunAsync(resolved, ct).ConfigureAwait(false);
+        var result = await definition.RunAsync(resolved, ct).ConfigureAwait(false);
+
+        await RecordAsync(preset, ct).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>
+    /// Who asked for which report, and when. The home screen's Reports
+    /// tile says when one was last asked for, and nothing recorded it.
+    /// </summary>
+    /// <remarks>
+    /// A report already run is not taken away because its line in the
+    /// trail could not be written.
+    /// </remarks>
+    private async Task RecordAsync(ReportPreset preset, CancellationToken ct)
+    {
+        try
+        {
+            _audit.Applied(ReportRuns.Action, ReportRuns.EntityType, Guid.Empty,
+                           preset.DisplayName);
+            await _uow.SaveChangesAsync(ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // The database could not be reached.
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // As above.
+        }
     }
 
     public async Task<string> ExportAsync(ReportRequest request,
