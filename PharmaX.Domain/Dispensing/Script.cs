@@ -1,5 +1,6 @@
 using PharmaX.Domain.Common;
 using PharmaX.Domain.Exceptions;
+using PharmaX.Domain.Primitives;
 
 namespace PharmaX.Domain.Dispensing;
 
@@ -228,10 +229,26 @@ public sealed class ScriptItem : Entity
     public string Directions { get; private set; } = "";
     public bool AllowSubstitution { get; private set; } = true;
 
+    /// <summary>
+    /// The pack this line is priced by - how many units it holds - where
+    /// it was set for this script rather than taken from the product.
+    /// Null is the product's own.
+    /// </summary>
+    public decimal? PackUnits { get; private set; }
+
+    /// <summary>
+    /// The price of that pack for this script, where it was set rather
+    /// than taken from the shelf. Null is the shelf price. The patient
+    /// pays this price for every PackUnits handed over; the catalogue
+    /// is not changed.
+    /// </summary>
+    public Money? PackPrice { get; private set; }
+
     private ScriptItem() { }
 
     public static ScriptItem Create(Guid productId, string description,
-        decimal quantity, string directions, bool allowSubstitution = true)
+        decimal quantity, string directions, bool allowSubstitution = true,
+        decimal? packUnits = null, Money? packPrice = null)
     {
         if (quantity <= 0m)
             throw new DomainException("Quantity must be greater than zero.");
@@ -241,13 +258,22 @@ public sealed class ScriptItem : Entity
                 "Directions are mandatory: a label without them cannot be "
                 + "dispensed (DSP-004).");
 
+        if (packUnits is decimal units && units <= 0m)
+            throw new DomainException(
+                "The pack must hold more than nothing, or be left blank.");
+
+        if (packPrice is Money price && price.Amount < 0m)
+            throw new DomainException("A price cannot be less than nothing.");
+
         return new ScriptItem
         {
             ProductId = productId,
             Description = description,
             Quantity = quantity,
             Directions = directions,
-            AllowSubstitution = allowSubstitution
+            AllowSubstitution = allowSubstitution,
+            PackUnits = packUnits,
+            PackPrice = packPrice
         };
     }
 

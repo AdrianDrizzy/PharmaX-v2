@@ -663,6 +663,9 @@ public sealed class frmMessage : Form
         _message = message;
         Name = "frmMessage";
 
+        // Measured in the display's own pixels below, so not scaled again.
+        AutoScaleMode = AutoScaleMode.None;
+
         // Laid out by measuring rather than at fixed points, so a long
         // message and a display at 150 per cent both fit.
         var layout = new TableLayoutPanel

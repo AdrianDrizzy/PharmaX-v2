@@ -9,6 +9,8 @@ partial class frmSupplierList
     private Panel pnlBottom = null!;
     private CheckBox chkIncludeInactive = null!;
     private Label lblCount = null!;
+    private Label lblSearch = null!;
+    private TextBox txtSearch = null!;
     private PhxGrid grdSuppliers = null!;
     private Button btnAdd = null!;
     private Button btnEdit = null!;
@@ -29,6 +31,8 @@ partial class frmSupplierList
         pnlBottom = new Panel();
         chkIncludeInactive = new CheckBox();
         lblCount = new Label();
+        lblSearch = new Label();
+        txtSearch = new TextBox();
         grdSuppliers = new PhxGrid();
         btnAdd = new Button();
         btnAdd.Name = "btnAdd";
@@ -42,10 +46,21 @@ partial class frmSupplierList
         btnClose.Name = "btnClose";
         SuspendLayout();
 
+        lblSearch.AutoSize = true;
+        lblSearch.Location = new Point(12, 17);
+        lblSearch.Text = "&Search";
+
+        // A few words of the name, code, contact or telephone, in any order.
+        txtSearch.Location = new Point(70, 13);
+        txtSearch.Name = "txtSearch";
+        txtSearch.PlaceholderText = "Name, code, contact or telephone";
+        txtSearch.Size = new Size(300, 23);
+        txtSearch.TabIndex = 0;
+
         chkIncludeInactive.AutoSize = true;
-        chkIncludeInactive.Location = new Point(12, 16);
+        chkIncludeInactive.Location = new Point(390, 16);
         chkIncludeInactive.Name = "chkIncludeInactive";
-        chkIncludeInactive.TabIndex = 0;
+        chkIncludeInactive.TabIndex = 1;
         chkIncludeInactive.Text = "Show &deactivated suppliers";
         chkIncludeInactive.UseVisualStyleBackColor = true;
 
@@ -56,7 +71,7 @@ partial class frmSupplierList
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
         pnlTop.Controls.AddRange(new Control[]
-            { lblCount, chkIncludeInactive });
+            { lblCount, chkIncludeInactive, txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 46;
         pnlTop.Name = "pnlTop";

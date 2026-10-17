@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace PharmaX.Desktop.Controls;
@@ -11,70 +10,41 @@ namespace PharmaX.Desktop.Controls;
 /// <remarks>
 /// Attached to a grid a screen has already laid out, in the grid's own
 /// place in that layout, so no designer file had to change to get one.
-/// Ctrl+Page Up and Ctrl+Page Down turn the page from the grid, as on the
-/// product and patient lists.
+/// The bar itself is PagerBar, the one the product and patient lists use.
 /// </remarks>
-public sealed class GridPager : Panel
+public sealed class GridPager : PagerBar
 {
     public const int PageSize = 100;
 
     private static readonly ConditionalWeakTable<DataGridView, GridPager> Pagers = new();
 
     private readonly DataGridView _grid;
-    private readonly Button _first = new() { Text = "|<", Width = 44 };
-    private readonly Button _previous = new() { Text = "< Pre&vious", Width = 104 };
-    private readonly Button _next = new() { Text = "Ne&xt >", Width = 104 };
-    private readonly Button _last = new() { Text = ">|", Width = 44 };
-    private readonly Label _shown = new();
 
     private IReadOnlyList<object> _all = Array.Empty<object>();
     private Action<int, int> _bind = (_, _) => { };
     private int _page;
 
-    private GridPager(DataGridView grid)
+    private GridPager(DataGridView grid) : base(grid.Name + "Pager")
     {
         _grid = grid;
 
-        Dock = DockStyle.Bottom;
-        Height = 40;
-        Name = grid.Name + "Pager";
-        Padding = new Padding(0, 4, 0, 4);
-
-        var buttons = new FlowLayoutPanel
+        PageRequested += (_, move) =>
         {
-            AutoSize = true,
-            Dock = DockStyle.Right,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
+            var page = Target(_page, _all.Count, PageSize, move);
+            if (page == _page) return;
+
+            _page = page;
+            Bind();
         };
 
-        foreach (var button in new[] { _first, _previous, _next, _last })
-        {
-            button.Height = 30;
-            button.Margin = new Padding(4, 0, 0, 0);
-            button.UseVisualStyleBackColor = true;
-            buttons.Controls.Add(button);
-        }
-
-        _shown.AutoSize = false;
-        _shown.Dock = DockStyle.Fill;
-        _shown.Name = grid.Name + "Shown";
-        _shown.TextAlign = ContentAlignment.MiddleLeft;
-
-        Controls.Add(_shown);
-        Controls.Add(buttons);
-
-        _first.Click += (_, _) => Turn(-_page);
-        _previous.Click += (_, _) => Turn(-1);
-        _next.Click += (_, _) => Turn(1);
-        _last.Click += (_, _) => Turn(LastPage - _page);
-
+        // From the grid rather than the screen: a screen with two paged
+        // lists turns the one being read.
         grid.KeyDown += (_, e) =>
         {
-            if (!e.Control || e.KeyCode is not (Keys.PageUp or Keys.PageDown)) return;
+            if (!Press(e.KeyData)) return;
 
-            Turn(e.KeyCode == Keys.PageDown ? 1 : -1);
             e.Handled = true;
+            e.SuppressKeyPress = true;
         };
 
         Bind();
@@ -182,30 +152,15 @@ public sealed class GridPager : Panel
     /// Back to the first page, for a new search.
     public void Restart() => _page = 0;
 
-    private int LastPage => Math.Max(0, (_all.Count - 1) / PageSize);
-
-    private void Turn(int by)
-    {
-        var page = Math.Clamp(_page + by, 0, LastPage);
-        if (page == _page) return;
-
-        _page = page;
-        Bind();
-    }
+    /// The page on screen, from nought.
+    public int Page => _page;
 
     private void Bind()
     {
-        _page = Math.Clamp(_page, 0, LastPage);
+        _page = Math.Clamp(_page, 0, Pages(_all.Count, PageSize) - 1);
         _bind(_page * PageSize, PageSize);
 
-        var from = _all.Count == 0 ? 0 : _page * PageSize + 1;
-        var to = Math.Min(_all.Count, (_page + 1) * PageSize);
-
-        _shown.Text = string.Format(CultureInfo.CurrentCulture,
-            _all.Count <= PageSize ? "{2:N0} shown" : "{0:N0} to {1:N0} of {2:N0}  -  page {3:N0} of {4:N0}",
-            from, to, _all.Count, _page + 1, LastPage + 1);
-
-        _first.Enabled = _previous.Enabled = _page > 0;
-        _next.Enabled = _last.Enabled = _page < LastPage;
+        ShowPage(_page, PageSize,
+            Math.Clamp(_all.Count - _page * PageSize, 0, PageSize), _all.Count);
     }
 }

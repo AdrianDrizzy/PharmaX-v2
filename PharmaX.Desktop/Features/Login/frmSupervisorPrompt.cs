@@ -11,12 +11,20 @@ namespace PharmaX.Desktop.Features.Login;
 public partial class frmSupervisorPrompt : Form
 {
     private readonly IAuthenticationService _auth;
-    private readonly string _requiredRole;
+    private readonly string _permission;
 
     public Guid? AuthoriserId { get; private set; }
 
+    /// <param name="permission">
+    /// The permission the authoriser must hold: the one for what is being
+    /// authorised - a refund asks for the refund permission. Checking the
+    /// permission rather than a role name means a site that renames its
+    /// roles does not silently lose the control. Every prompt used to ask
+    /// for the discount permission, whatever it was authorising, which
+    /// only a manager held: a pharmacist could not authorise a refund.
+    /// </param>
     public frmSupervisorPrompt(IAuthenticationService auth, string reason,
-                               string requiredRole = "Manager",
+                               string permission = Domain.Security.PermissionCode.SaleDiscountAboveLimit,
                                string? username = null)
     {
         Icon = PhxIcons.AppIcon;
@@ -26,7 +34,7 @@ public partial class frmSupervisorPrompt : Form
         // A plain Form rather than PhxFormBase, so branded here.
         Text = WindowTitles.Brand(Text);
         _auth = auth;
-        _requiredRole = requiredRole;
+        _permission = permission;
         lblReason.Text = reason;
 
         // One person's own sign-in, as unlocking their till is.
@@ -47,7 +55,7 @@ public partial class frmSupervisorPrompt : Form
         // AuthoriseAsync, not AuthenticateAsync: verifying the second
         // person must not sign the first one out of their own session.
         var result = await _auth.AuthoriseAsync(
-            txtUsername.Text.Trim(), txtPassword.Text, PermissionForRole());
+            txtUsername.Text.Trim(), txtPassword.Text, _permission);
 
         if (result.IsFailure)
         {
@@ -61,16 +69,4 @@ public partial class frmSupervisorPrompt : Form
         DialogResult = DialogResult.OK;
         Close();
     }
-
-    /// <summary>
-    /// The permission the authoriser must actually hold. Checking the
-    /// permission rather than the role name means a site that renames
-    /// its roles does not silently lose the control.
-    /// </summary>
-    private string PermissionForRole() => _requiredRole switch
-    {
-        "Pharmacist" => Domain.Security.PermissionCode.ScriptAuthorise,
-        "Cashier" => Domain.Security.PermissionCode.SaleCreate,
-        _ => Domain.Security.PermissionCode.SaleDiscountAboveLimit
-    };
 }

@@ -145,6 +145,86 @@ public static class Suggest
     }
 
     /// <summary>
+    /// What a code cell or a code box was given, read as a code first and
+    /// as a name after: the product with that code, or else the one active
+    /// product whose name has every word typed.
+    /// </summary>
+    /// <returns>
+    /// The product, or null - with how many products the words matched,
+    /// so the screen can offer the list to choose from rather than say
+    /// nothing was found when several were.
+    /// </returns>
+    public static async Task<(ProductListItemDto? Product, int Matches)> ResolveProductAsync(
+        IServiceScopeFactory scopes, string text, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        var wanted = (text ?? "").Trim();
+        if (wanted.Length == 0) return (null, 0);
+
+        using var scope = scopes.CreateScope();
+
+        var found = await scope.ServiceProvider
+            .GetRequiredService<IProductService>()
+            .SearchAsync(wanted, take: 10, ct: ct);
+
+        if (found.IsFailure) return (null, 0);
+
+        var active = found.Value.Items.Where(p => p.IsActive).ToList();
+
+        var exact = active.FirstOrDefault(p =>
+            string.Equals(p.Code, wanted, StringComparison.OrdinalIgnoreCase));
+
+        if (exact is not null) return (exact, 1);
+
+        return active.Count == 1 ? (active[0], 1) : (null, active.Count);
+    }
+
+    /// <summary>
+    /// A supplier as an order is raised to one: its name, then its code,
+    /// who to speak to and the telephone.
+    /// </summary>
+    public static Suggestion Supplier(Application.Suppliers.Dtos.SupplierListItemDto supplier)
+    {
+        ArgumentNullException.ThrowIfNull(supplier);
+
+        return new Suggestion(supplier.Id, supplier.Name,
+            Details(supplier.Code, supplier.ContactName, supplier.Telephone));
+    }
+
+    /// <summary>
+    /// The active suppliers whose name, code, contact or telephone has
+    /// every word typed.
+    /// </summary>
+    /// <remarks>
+    /// Matched in memory: a pharmacy buys from tens of suppliers, not
+    /// thousands, and the supplier list has no search of its own.
+    /// </remarks>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> Suppliers(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            var found = await scope.ServiceProvider
+                .GetRequiredService<Application.Suppliers.ISupplierService>()
+                .ListAsync(includeInactive: false, ct);
+
+            return found.IsSuccess
+                ? found.Value
+                    .Where(s => Application.Abstractions.SearchTerms.Matches(term,
+                        s.Name, s.Code, s.ContactName, s.Telephone))
+                    .Take(8)
+                    .Select(Supplier)
+                    .ToList()
+                : Array.Empty<Suggestion>();
+        };
+    }
+
+    /// <summary>
     /// The active product a code belongs to, or null: for a code typed
     /// straight in rather than chosen from the suggestions.
     /// </summary>

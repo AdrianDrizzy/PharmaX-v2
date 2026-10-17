@@ -99,14 +99,11 @@ public sealed class CollectPresenter : PresenterBase<ICollectView>
 
     /// Patient name or either document number, whichever the cashier has
     /// in front of them: a name called across the shop, or a number off
-    /// the slip the patient is holding.
+    /// the slip the patient is holding. Word by word, as every search is,
+    /// so "moyo t" finds Tendai Moyo.
     private static bool Matches(CollectionDto waiting, string filter) =>
-        waiting.PatientName.Contains(filter,
-            StringComparison.CurrentCultureIgnoreCase)
-        || waiting.ScriptNumber.Contains(filter,
-            StringComparison.OrdinalIgnoreCase)
-        || waiting.DocumentNumber.Contains(filter,
-            StringComparison.OrdinalIgnoreCase);
+        Application.Abstractions.SearchTerms.Matches(filter,
+            waiting.PatientName, waiting.ScriptNumber, waiting.DocumentNumber);
 
     private static string Summarise(IReadOnlyList<CollectionDto> shown)
     {

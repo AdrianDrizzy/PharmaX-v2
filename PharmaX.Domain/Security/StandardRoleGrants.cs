@@ -66,6 +66,15 @@ public static class StandardRoleGrants
         {
             PermissionCode.SaleCreate,
             PermissionCode.PatientMaintain,
+
+            // The authorisations a till asks for - a refund, a discount
+            // over the cashier's limit, another person's till - are given
+            // by whoever is senior on the floor: the pharmacist, an
+            // assistant, the manager or the administrator (16 October
+            // 2026). Held, they are also the holder's own to use.
+            PermissionCode.ReturnAuthorise,
+            PermissionCode.SaleDiscountAboveLimit,
+            PermissionCode.SessionCloseOtherUser,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
             PermissionCode.ScriptAuthorise,
@@ -76,6 +85,11 @@ public static class StandardRoleGrants
             PermissionCode.DispensingAmend,
             PermissionCode.StockPrepack,
 
+            // The dispensary orders and books in its own stock (16
+            // October 2026).
+            PermissionCode.PurchaseOrderRaise,
+            PermissionCode.GoodsReceive,
+
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,
@@ -84,14 +98,19 @@ public static class StandardRoleGrants
         },
 
         // Captures patients and scripts, prepares and issues the
-        // dispensing and books deliveries in - hard-stop overrides and
-        // controlled medicines included, without a pharmacist signing in
-        // (DispensingService.ActsOnOwnAuthority). Merging patient files
-        // stays a pharmacist's.
+        // dispensing, orders stock and books deliveries in - hard-stop
+        // overrides and controlled medicines included, without a
+        // pharmacist signing in (DispensingService.ActsOnOwnAuthority).
+        // Merging patient files stays a pharmacist's.
         Role.Standard.PharmacistAssistant => new[]
         {
             PermissionCode.SaleCreate,
             PermissionCode.PatientMaintain,
+
+            // The till's authorisations, as the pharmacist has them.
+            PermissionCode.ReturnAuthorise,
+            PermissionCode.SaleDiscountAboveLimit,
+            PermissionCode.SessionCloseOtherUser,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
             PermissionCode.DispensingAmend,
@@ -99,6 +118,7 @@ public static class StandardRoleGrants
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,
+            PermissionCode.PurchaseOrderRaise,
             PermissionCode.GoodsReceive,
             PermissionCode.ReportOperational
         },

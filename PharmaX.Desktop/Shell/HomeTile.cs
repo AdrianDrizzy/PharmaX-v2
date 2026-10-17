@@ -17,6 +17,9 @@ internal sealed class HomeTile : Panel
 {
     private readonly Label _title = new();
     private readonly Label _hint = new();
+
+    /// When the job was last done, under the shortcut, where it says.
+    private readonly Label _note = new();
     private readonly string _shortcut;
     private readonly string _caption;
     private readonly PhxIcon _icon;
@@ -27,6 +30,8 @@ internal sealed class HomeTile : Panel
 
     private static readonly Font CountFont =
         new("Segoe UI", 8.25f, FontStyle.Bold);
+
+    private static readonly Font NoteFont = new("Segoe UI", 8.25f);
 
     internal HomeTile(string title, string hint, string menuKey,
                       string permissionGroup, PhxIcon icon)
@@ -40,7 +45,7 @@ internal sealed class HomeTile : Panel
         BackColor = PhxTheme.Card;
         Cursor = Cursors.Hand;
         Margin = new Padding(0, 0, 14, 14);
-        Size = new Size(212, 94);
+        Size = new Size(212, 110);
 
         // Named after its own caption. A panel has no name of its own, so
         // assistive technology borrowed the text before it in the window
@@ -71,12 +76,21 @@ internal sealed class HomeTile : Panel
         _hint.Size = new Size(180, 22);
         _hint.Text = hint;
 
+        _note.AutoEllipsis = true;
+        _note.AutoSize = false;
+        _note.BackColor = Color.Transparent;
+        _note.Font = NoteFont;
+        _note.ForeColor = PhxTheme.Muted;
+        _note.Location = new Point(16, 80);
+        _note.Size = new Size(184, 20);
+
+        Controls.Add(_note);
         Controls.Add(_hint);
         Controls.Add(_title);
 
         // The labels cover most of the card, so they have to answer to
         // the mouse as though they were part of it.
-        foreach (var control in new Control[] { this, _title, _hint })
+        foreach (var control in new Control[] { this, _title, _hint, _note })
         {
             control.Click += (_, _) => Choose();
             control.MouseEnter += (_, _) => Hot(true);
@@ -102,6 +116,18 @@ internal sealed class HomeTile : Panel
         _count = string.IsNullOrWhiteSpace(count) ? null : count;
         AccessibleName = _count is null ? _caption : $"{_caption}, {_count}";
         Invalidate(true);
+    }
+
+    /// <summary>
+    /// When the job was last done - "Last posted 12/10/2026" on Stocktake -
+    /// under the shortcut, or nothing. Read out after the shortcut.
+    /// </summary>
+    internal void ShowNote(string? note)
+    {
+        _note.Text = note ?? "";
+        AccessibleDescription = Enabled && _note.Text.Length > 0
+            ? $"{_shortcut}. {_note.Text}"
+            : _hint.Text;
     }
 
     private void Choose()
@@ -206,7 +232,8 @@ internal sealed class HomeTile : Panel
         _title.ForeColor = Enabled ? PhxTheme.Title : PhxTheme.Muted;
 
         _hint.Text = Enabled ? _shortcut : "Not permitted for this user";
-        AccessibleDescription = _hint.Text;
+        _note.Visible = Enabled;
+        ShowNote(_note.Text);
         Invalidate();
     }
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Home;
+using PharmaX.Application.Reporting;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Dispensing;
 using PharmaX.Domain.Inventory;
@@ -59,6 +60,23 @@ public sealed class HomeCounts : IHomeCounts
             DeliveriesToday: await _db.GoodsReceipts.CountAsync(g =>
                 g.IsPosted && g.ReceivedOn == day, ct),
             OpenStocktakes: await _db.Stocktakes.CountAsync(s =>
-                s.Status == StocktakeStatus.Counting, ct));
+                s.Status == StocktakeStatus.Counting, ct),
+
+            // Done means posted for a count, and raised - not cancelled -
+            // for an order.
+            LastStocktakeUtc: await _db.Stocktakes
+                .Where(s => s.Status == StocktakeStatus.Posted)
+                .MaxAsync(s => s.PostedAtUtc, ct),
+            LastPurchaseOrderOn: await _db.PurchaseOrders
+                .Where(o => o.Status != PurchaseOrderStatus.Cancelled)
+                .MaxAsync(o => (DateOnly?)o.OrderedOn, ct),
+
+            // Through the entity index: report runs are all filed against
+            // the one empty id, apart from everything else in the trail.
+            LastReportRunUtc: await _db.AuditEntries
+                .Where(a => a.EntityType == ReportRuns.EntityType
+                            && a.EntityId == Guid.Empty
+                            && a.Action == ReportRuns.Action)
+                .MaxAsync(a => (DateTime?)a.OccurredAtUtc, ct));
     }
 }

@@ -25,8 +25,12 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
     {
         InitializeComponent();
 
+        // A different list, so its first page.
         chkInactive.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(grdAccounts)?.Restart();
             RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         btnAdd.Click += (_, _) => AddRequested?.Invoke(this, EventArgs.Empty);
 

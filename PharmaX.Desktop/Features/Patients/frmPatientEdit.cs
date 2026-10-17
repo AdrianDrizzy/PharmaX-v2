@@ -21,6 +21,9 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
     {
         InitializeComponent();
 
+        // The medical aid by any word of its name or code.
+        PharmaX.Desktop.Controls.WordFilter.Attach(cboScheme);
+
         btnSave.Click += (_, _) => SaveRequested?.Invoke(this, EventArgs.Empty);
         btnCancel.Click += (_, _) =>
             CancelRequested?.Invoke(this, EventArgs.Empty);

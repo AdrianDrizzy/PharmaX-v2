@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Inventory;
 using PharmaX.Application.Sales;
@@ -30,8 +31,15 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
     private readonly IDocumentPrinter? _printer;
     private readonly ReceiptHeaderFactory? _headers;
     private readonly ViewFactory? _views;
+    private readonly IServiceScopeFactory? _scopes;
 
-    private readonly Label _supplier = new();
+    /// The supplier, typed a few letters at a time or chosen from the list.
+    private readonly TextBox _supplier = new();
+    private readonly SearchSuggestions _supplierSuggestions;
+
+    // Set while the box is filled in for a supplier already chosen, so
+    // writing its name there is not taken for typing a new one.
+    private bool _showingSupplier;
     private readonly Button _chooseSupplier = new();
     private readonly DateTimePicker _expected = new();
     private readonly PhxGrid _lines = new();
@@ -61,12 +69,32 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
             AutoSize = true, Location = new Point(12, 14), Text = "Supplier"
         });
 
-        _supplier.AutoSize = false;
-        _supplier.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        _supplier.Location = new Point(100, 12);
-        _supplier.Name = "lblSupplier";
-        _supplier.Size = new Size(380, 22);
-        _supplier.Text = "(choose a supplier)";
+        _supplier.Location = new Point(100, 10);
+        _supplier.Name = "txtSupplier";
+        _supplier.PlaceholderText = "Type a few letters of the name or code";
+        _supplier.Size = new Size(380, 26);
+
+        _supplierSuggestions = new SearchSuggestions(_supplier) { MinimumLength = 1 };
+        _supplierSuggestions.Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is Guid id) Operations.Enqueue(() => UseSupplierAsync(id));
+        };
+
+        // Typing over a supplier already chosen is choosing another.
+        _supplier.TextChanged += (_, _) =>
+        {
+            if (!_showingSupplier) _supplierId = null;
+        };
+
+        // Enter on a name nobody picked from the list: the one supplier it
+        // matches, or the list to choose from.
+        _supplier.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter || _supplierSuggestions.HasHighlight) return;
+
+            e.Handled = e.SuppressKeyPress = true;
+            if (_supplierId is null) Operations.Enqueue(ResolveSupplierAsync);
+        };
 
         _chooseSupplier.Location = new Point(490, 8);
         _chooseSupplier.Name = "btnChooseSupplier";
@@ -93,7 +121,11 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
         _lines.ReadOnly = false;
         _lines.AllowUserToAddRows = false;
         _lines.SelectionMode = DataGridViewSelectionMode.CellSelect;
-        _lines.AddColumn("Code", "Product code", 80);
+
+        // Tab along a line: code, quantity, unit cost - over the product
+        // name and the total - then the next line.
+        _lines.TabsThroughCells = true;
+        _lines.AddColumn("Code", "Code or name", 110);
         _lines.AddColumn("Product", "Product", 200);
         _lines.AddColumn("Qty", "Qty", 60, "0.###", true);
         _lines.AddColumn("Cost", "Unit cost", 70, "N2", true);
@@ -166,7 +198,7 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
     public frmPurchaseOrderEdit(IPurchasingService purchasing,
         ISupplierService suppliers, IProductService products,
         IDocumentPrinter printer, ReceiptHeaderFactory headers,
-        ViewFactory views) : this()
+        ViewFactory views, IServiceScopeFactory scopes) : this()
     {
         _purchasing = purchasing;
         _suppliers = suppliers;
@@ -174,6 +206,11 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
         _printer = printer;
         _headers = headers;
         _views = views;
+        _scopes = scopes;
+
+        // Looked up in scopes of their own, as the scan bars' are.
+        _supplierSuggestions.Source = Suggest.Suppliers(scopes);
+        CellSuggestions.Attach(_lines, "Code", Suggest.Products(scopes));
     }
 
     /// The order raised, once there is one.
@@ -228,31 +265,63 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
             || picker.SelectedId is not Guid id)
             return;
 
-        Operations.Enqueue(async () =>
+        Operations.Enqueue(() => UseSupplierAsync(id));
+    }
+
+    private async Task UseSupplierAsync(Guid id)
+    {
+        if (_suppliers is null) return;
+
+        var supplier = await _suppliers.GetAsync(id);
+
+        if (supplier.IsFailure)
         {
-            if (_suppliers is null) return;
+            ShowError(supplier.Error.Message);
+            return;
+        }
 
-            var supplier = await _suppliers.GetAsync(id);
+        _showingSupplier = true;
 
-            if (supplier.IsFailure)
-            {
-                ShowError(supplier.Error.Message);
-                return;
-            }
-
-            _supplierId = id;
+        try
+        {
             _supplier.Text = $"{supplier.Value.Name}  ({supplier.Value.Code})";
+        }
+        finally
+        {
+            _showingSupplier = false;
+        }
 
-            // The supplier's own lead time, until somebody picks a date.
-            if (!_expected.Checked)
-                _expected.Value = DateTime.Today.AddDays(
-                    supplier.Value.LeadTimeDays);
-        });
+        _supplierId = id;
+        _supplierSuggestions.Hide();
+        _problem.Text = "";
+
+        // The supplier's own lead time, until somebody picks a date.
+        if (!_expected.Checked)
+            _expected.Value = DateTime.Today.AddDays(
+                supplier.Value.LeadTimeDays);
     }
 
     /// <summary>
-    /// A typed code is looked up at once, so the operator sees the product
-    /// and its cost price while still on the line.
+    /// A supplier typed and not picked: the one it matches, or the list
+    /// to choose from when it matches none or several.
+    /// </summary>
+    private async Task ResolveSupplierAsync()
+    {
+        if (_scopes is null || string.IsNullOrWhiteSpace(_supplier.Text)) return;
+
+        var matches = await Suggest.Suppliers(_scopes)(_supplier.Text.Trim(),
+                                                        CancellationToken.None);
+
+        if (matches.Count == 1 && matches[0].Value is Guid id)
+            await UseSupplierAsync(id);
+        else
+            ChooseSupplier();
+    }
+
+    /// <summary>
+    /// A typed code - or a few words of the name - is looked up at once,
+    /// so the operator sees the product and its cost price while still on
+    /// the line.
     /// </summary>
     private void OnCellEdited(int rowIndex, int columnIndex)
     {
@@ -272,19 +341,22 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
 
     private async Task LookUpAsync(DataGridViewRow row, string code)
     {
-        if (_products is null || string.IsNullOrWhiteSpace(code)) return;
+        if (_products is null || _scopes is null || string.IsNullOrWhiteSpace(code))
+            return;
 
-        var page = await _products.SearchAsync(code, take: 5);
+        var (match, matches) = await Suggest.ResolveProductAsync(_scopes, code);
 
-        var match = page.IsSuccess
-            ? page.Value.Items.FirstOrDefault(p =>
-                string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase))
-            : null;
+        // A name that fits several: the list, opened on those words.
+        if (match is null && matches > 1 && _views is not null
+            && frmProductList.Pick(_views, this, code) is string picked)
+            (match, _) = await Suggest.ResolveProductAsync(_scopes, picked);
 
         if (match is null)
         {
             row.Cells["Product"].Value = "";
-            _problem.Text = $"No product for code {code}.";
+            _problem.Text = matches > 1
+                ? $"\"{code}\" fits {matches} products. Type more of the name, or pick one."
+                : $"No product has the code or name \"{code}\".";
             return;
         }
 

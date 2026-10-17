@@ -5,7 +5,7 @@ namespace PharmaX.Desktop.Controls;
 /// applied once. Set in the constructor rather than written into forty
 /// designer files, where they drift apart within a month.
 /// </summary>
-public sealed class PhxGrid : DataGridView
+public sealed class PhxGrid : CellTabGrid
 {
     public PhxGrid()
     {

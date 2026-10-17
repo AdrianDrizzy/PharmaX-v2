@@ -110,6 +110,34 @@ public class AuthorisedByTests
         act.Should().NotThrow();
     }
 
+    /// A refund and a discount over the limit are authorised by a
+    /// pharmacist, an assistant, a manager or the administrator alike.
+    [Theory]
+    [InlineData(Role.Standard.Pharmacist, PermissionCode.ReturnAuthorise)]
+    [InlineData(Role.Standard.PharmacistAssistant, PermissionCode.ReturnAuthorise)]
+    [InlineData(Role.Standard.Manager, PermissionCode.ReturnAuthorise)]
+    [InlineData(Role.Standard.Administrator, PermissionCode.ReturnAuthorise)]
+    [InlineData(Role.Standard.Pharmacist, PermissionCode.SaleDiscountAboveLimit)]
+    [InlineData(Role.Standard.PharmacistAssistant, PermissionCode.SaleDiscountAboveLimit)]
+    [InlineData(Role.Standard.Manager, PermissionCode.SaleDiscountAboveLimit)]
+    [InlineData(Role.Standard.Administrator, PermissionCode.SaleDiscountAboveLimit)]
+    public void The_senior_roles_authorise_a_cashiers_refund_and_discount(
+        string role, string permission)
+    {
+        var authoriser = Guid.NewGuid();
+        var service = new PermissionService(new FakeCurrentUser { Id = _cashier },
+            new PerUserPermissions(new Dictionary<Guid, string[]>
+            {
+                [_cashier] = StandardRoleGrants.For(Role.Standard.Cashier).ToArray(),
+                [authoriser] = StandardRoleGrants.For(role).ToArray()
+            }),
+            _audit);
+
+        var act = () => service.DemandOrAuthorised(permission, authoriser);
+
+        act.Should().NotThrow($"a {role} authorises {permission}");
+    }
+
     [Fact]
     public void An_authoriser_without_the_permission_is_refused_and_recorded()
     {

@@ -11,9 +11,11 @@ namespace PharmaX.Application.Dispensing;
 /// <summary>
 /// One issued dispensing, as the label screen lists it.
 /// </summary>
+/// <param name="Items">What was handed over, one medicine a line.</param>
 public sealed record DispensedItemDto(Guid DispensingId, string ScriptNumber,
     string DocumentNumber, string PatientName, DateOnly DispensedOn,
-    int Labels, Guid ScriptId = default, decimal CoPayment = 0m);
+    int Labels, Guid ScriptId = default, decimal CoPayment = 0m,
+    string Items = "");
 
 /// <summary>
 /// How a run of labels went: how many printed, where, and any note about
@@ -108,7 +110,9 @@ public sealed class LabelReprintService : ILabelReprintService
                 DateOnly.FromDateTime(
                     (dispensing.IssuedAtUtc ?? DateTime.UtcNow).ToLocalTime()),
                 dispensing.Lines.Count, dispensing.ScriptId,
-                dispensing.CoPaymentTotal.Amount));
+                dispensing.CoPaymentTotal.Amount,
+                ScriptDto.ItemList(dispensing.Lines.OrderBy(l => l.LineNo)
+                    .Select(l => (l.Description, l.Quantity)))));
         }
 
         return Result<IReadOnlyList<DispensedItemDto>>.Ok(rows);

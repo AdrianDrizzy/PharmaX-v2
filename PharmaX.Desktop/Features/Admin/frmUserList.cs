@@ -27,8 +27,12 @@ public partial class frmUserList : PhxFormBase, IUserListView
             ToggleActiveRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(true);
 
+        // A different list, so its first page.
         chkIncludeInactive.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(grdUsers)?.Restart();
             RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         grdUsers.DoubleClick += (_, _) =>
             EditRequested?.Invoke(this, EventArgs.Empty);

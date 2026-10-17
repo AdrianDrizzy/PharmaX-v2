@@ -17,6 +17,10 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
     {
         InitializeComponent();
 
+        // Where the product is filed, found by any word of the name.
+        foreach (var combo in new[] { cboDepartment, cboCategory, cboManufacturer })
+            PharmaX.Desktop.Controls.WordFilter.Attach(combo);
+
         btnSave.Click += (_, _) =>
         {
             // A cell still being typed in is part of what Save means.

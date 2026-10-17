@@ -374,10 +374,13 @@ public partial class frmPOS : PhxFormBase, IPosView
         // operator has gone: Cancel on one offers the other.
         for (var own = true; ; own = !own)
         {
+            // Another person's till is unlocked on the authority over
+            // other people's tills.
             using var dialog = own
                 ? new frmSupervisorPrompt(_auth, $"The till is locked. {username}, sign in to unlock it.",
-                                          "Cashier", username)
-                : new frmSupervisorPrompt(_auth, $"The till is locked by {username}. A supervisor can unlock it.");
+                                          Domain.Security.PermissionCode.SaleCreate, username)
+                : new frmSupervisorPrompt(_auth, $"The till is locked by {username}. A supervisor can unlock it.",
+                                          Domain.Security.PermissionCode.SessionCloseOtherUser);
 
             if (dialog.ShowDialog(this) == DialogResult.OK) return;
         }

@@ -22,8 +22,7 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
         View.SearchChanged += (_, _) => Enqueue(FirstPageAsync);
         View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.ViewModeChanged += (_, _) => Enqueue(FirstPageAsync);
-        View.NextPageRequested += (_, _) => Enqueue(() => TurnAsync(+1));
-        View.PreviousPageRequested += (_, _) => Enqueue(() => TurnAsync(-1));
+        View.PageRequested += (_, move) => Enqueue(() => TurnAsync(move));
         View.AddRequested += (_, _) => Enqueue(() => OpenEditorAsync(null));
         View.EditRequested += (_, _) =>
         {
@@ -91,9 +90,9 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
         return LoadAsync();
     }
 
-    private Task TurnAsync(int by)
+    private Task TurnAsync(Controls.PageMove move)
     {
-        var page = Math.Clamp(_page + by, 0, LastPage(_total));
+        var page = Controls.PagerBar.Target(_page, _total, PageSize, move);
         if (page == _page) return Task.CompletedTask;
 
         _page = page;

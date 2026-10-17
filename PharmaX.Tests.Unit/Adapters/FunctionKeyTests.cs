@@ -185,10 +185,13 @@ public class FunctionKeyTests
             .Where(t => t.GetConstructor(Type.EmptyTypes) is not null)
             .Where(t => t.Name is not ("frmMain" or "frmPOS" or "frmLogin"));
 
+    /// Every button but a list's pager, which turns on Ctrl+Page Up and
+    /// Ctrl+Page Down on every list instead.
     private static IEnumerable<Button> Buttons(Control root)
     {
         foreach (Control child in root.Controls)
         {
+            if (child is PharmaX.Desktop.Controls.PagerBar) continue;
             if (child is Button button) yield return button;
 
             foreach (var inner in Buttons(child)) yield return inner;

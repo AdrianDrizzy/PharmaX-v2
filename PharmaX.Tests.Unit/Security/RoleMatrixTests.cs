@@ -51,6 +51,8 @@ public class RoleMatrixTests
         { Role.Standard.Pharmacist, "script-maintenance" },
         { Role.Standard.Pharmacist, "dispensary-quote" },
         { Role.Standard.Pharmacist, "pos" },
+        { Role.Standard.Pharmacist, "purchase-orders" },
+        { Role.Standard.Pharmacist, "goods-receipt" },
 
         { Role.Standard.PharmacistAssistant, "patients" },
         { Role.Standard.PharmacistAssistant, "script-maintenance" },
@@ -169,6 +171,39 @@ public class RoleMatrixTests
             .Should().BeEquivalentTo(Role.Standard.Pharmacist,
                                      Role.Standard.Administrator);
     }
+
+    /// <summary>
+    /// What a till asks a second person for - a refund, a discount over the
+    /// cashier's limit, another person's till - any of the senior roles can
+    /// give, and nobody below them (16 October 2026).
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCode.ReturnAuthorise)]
+    [InlineData(PermissionCode.SaleDiscountAboveLimit)]
+    [InlineData(PermissionCode.SessionCloseOtherUser)]
+    public void The_pharmacist_assistant_manager_and_administrator_authorise_the_till(
+        string authorisation) =>
+        Role.Standard.All
+            .Where(r => As(r).Has(authorisation))
+            .Should().BeEquivalentTo(
+                Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant,
+                Role.Standard.Manager, Role.Standard.Administrator);
+
+    /// <summary>
+    /// The dispensary orders and books in its own stock, as the manager
+    /// and the stock controller do (16 October 2026).
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCode.PurchaseOrderRaise)]
+    [InlineData(PermissionCode.GoodsReceive)]
+    public void Everyone_but_the_cashier_orders_and_receives_stock(
+        string permission) =>
+        Role.Standard.All
+            .Where(r => As(r).Has(permission))
+            .Should().BeEquivalentTo(
+                Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant,
+                Role.Standard.Manager, Role.Standard.StockController,
+                Role.Standard.Administrator);
 
     [Fact]
     public void A_cashier_holds_no_report_permission_at_all()

@@ -40,6 +40,7 @@ public sealed class SearchSuggestions : IDisposable
     private readonly TextBox _box;
     private readonly SuggestionList _list = new();
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 250 };
+    private readonly KeyFilter _keys;
     private CancellationTokenSource? _pending;
     private bool _disposed;
     private bool _open;
@@ -52,6 +53,7 @@ public sealed class SearchSuggestions : IDisposable
         Func<string, CancellationToken, Task<IReadOnlyList<Suggestion>>>? source = null)
     {
         _box = box ?? throw new ArgumentNullException(nameof(box));
+        _keys = new KeyFilter(this);
         Source = source;
 
         _box.PreviewKeyDown += OnPreviewKeyDown;
@@ -126,6 +128,7 @@ public sealed class SearchSuggestions : IDisposable
         _open = false;
         _list.Visible = false;
         _list.Highlight(-1);
+        _keys.Listen(false);
     }
 
     /// <summary>
@@ -178,6 +181,7 @@ public sealed class SearchSuggestions : IDisposable
         _open = true;
         _list.Visible = true;
         _list.BringToFront();
+        _keys.Listen(true);
     }
 
     private void Restart()
@@ -292,10 +296,51 @@ public sealed class SearchSuggestions : IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        _keys.Listen(false);
         _pending?.Cancel();
         _pending?.Dispose();
         _debounce.Dispose();
         _list.Dispose();
+    }
+
+    /// <summary>
+    /// Down, Up, Enter and Escape for the list while it is open, taken
+    /// before anything else sees them.
+    /// </summary>
+    /// <remarks>
+    /// A grid's cell editor is a text box too, and a list under a product
+    /// code cell is as useful as one under a search box - but the grid
+    /// takes those four keys for itself, to move between rows and to end
+    /// the edit, before the editor ever hears of them. Read off the
+    /// message queue they reach the list first, in a cell or in a box.
+    /// </remarks>
+    private sealed class KeyFilter : IMessageFilter
+    {
+        private const int KeyDown = 0x0100;
+        private readonly SearchSuggestions _owner;
+        private bool _listening;
+
+        public KeyFilter(SearchSuggestions owner) => _owner = owner;
+
+        public void Listen(bool on)
+        {
+            if (on == _listening) return;
+
+            _listening = on;
+            if (on) System.Windows.Forms.Application.AddMessageFilter(this);
+            else System.Windows.Forms.Application.RemoveMessageFilter(this);
+        }
+
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg != KeyDown || !_owner._box.IsHandleCreated
+                || m.HWnd != _owner._box.Handle) return false;
+
+            var key = (Keys)(int)(long)m.WParam & Keys.KeyCode;
+
+            return key is Keys.Down or Keys.Up or Keys.Enter or Keys.Escape
+                   && _owner.Press(key);
+        }
     }
 
     /// <summary>

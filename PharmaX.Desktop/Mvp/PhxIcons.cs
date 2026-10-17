@@ -308,11 +308,12 @@ public static class PhxIcons
 
         var icon = ForCaption(button.Text);
         var size = button.Font.Height;
-        var room = button.Width - button.Padding.Horizontal - 12;
+        var room = button.Width - button.Padding.Horizontal
+                   - button.LogicalToDeviceUnits(12);
         var text = TextRenderer.MeasureText(button.Text, button.Font).Width;
 
         if (icon is not PhxIcon chosen
-            || (!button.AutoSize && text + size + 6 > room))
+            || (!button.AutoSize && text + size + button.LogicalToDeviceUnits(6) > room))
         {
             button.Image = null;
             return;

@@ -55,6 +55,16 @@ public interface IReportRunner
 }
 
 /// <summary>
+/// How a report asked for is recorded in the audit trail: who, when and
+/// which report. The home screen reads when one was last asked for.
+/// </summary>
+public static class ReportRuns
+{
+    public const string Action = "rpt.report.run";
+    public const string EntityType = "Report";
+}
+
+/// <summary>
 /// A preset is a name the pharmacy already recognises, bound to a report
 /// definition and a fixed set of slicer values. Forty-eight incumbent
 /// report names reach a handful of definitions this way.

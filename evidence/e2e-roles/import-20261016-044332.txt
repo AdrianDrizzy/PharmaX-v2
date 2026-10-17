@@ -1,0 +1,472 @@
+DATA IMPORT
+16/10/2026 04:43 from C:\Users\user\Downloads\Exports\Exports
+
+Read
+  Summary (not stored)                         By_Medical_Aid.csv
+  Stock counts                          2,259  Cycle_Counts.csv
+  Summary (not stored)                         Daily_By_Tender.csv
+  Cash-ups                                764  Day_End_Totals.csv
+  Departments                               8  DEPARTMENTS.csv
+  Prescribers                           3,750  Doctors.csv
+  Not recognised                               Export_Check.csv
+  Not recognised                               Goods_Received.csv
+  Summary (not stored)                         Monthly_By_Department.csv
+  Summary (not stored)                         Monthly_By_Supplier.csv
+  Summary (not stored)                         Monthly_Dispensing.csv
+  Patients                              6,725  Patients.csv
+  The files' own totals                     9  Prescriptions_Controls.csv
+  Prescription lines                   19,711  Prescription_Lines.csv
+  Price changes                         1,385  Price_History.csv
+  Products                              2,303  PRODUCTS.csv
+  Products                              2,304  Products_Stock.csv
+  The files' own totals                     9  Products_Stock_Controls.csv
+  Summary (not stored)                         Product_Sales_Summary.csv
+  Not recognised                               Report_Catalogue.csv
+  The files' own totals                     7  Sales_Controls.csv
+  Till sale lines                      40,819  Sales_Lines.csv
+  Till receipts                        26,707  Sales_Receipts.csv
+  Summary (not stored)                         Scripts_Summary.csv
+  Stock on the shelf                    2,304  STOCKMAST.csv
+  Stock by branch (not stored)          1,058  STOCK_BRS.csv
+  Stock movements                       6,493  Stock_Movements.csv
+  The files' own totals                     6  Stock_Movements_Controls.csv
+  Suppliers                               250  SUPPLIERS.csv
+  Till price overrides                  4,595  Till_Price_Overrides.csv
+  Summary (not stored)                         Top_Dispensed_Products.csv
+  Z-reads                                 341  Z_Read_History.csv
+
+Notes
+  Not read: export_common.ps1: not a data file
+  Not read: export_products.ps1: not a data file
+  Not read: export_sales.ps1: not a data file
+  Not read: export_scripts.ps1: not a data file
+  Not read: export_stock_movements.ps1: not a data file
+  Not read: toxlsx.ps1: not a data file
+  Not read: verify_exports.ps1: not a data file
+  Not read: Prescriptions_2026-10-06.xlsx [By_Medical_Aid]: the same table as By_Medical_Aid.csv, read once from there
+  Not read: Stock_Movements_2026-10-06.xlsx [Cycle_Counts]: the same table as Cycle_Counts.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Daily_By_Tender]: the same table as Daily_By_Tender.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Daily_By_Tender]: the same table as Daily_By_Tender.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Day_End_Totals]: the same table as Day_End_Totals.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Day_End_Totals]: the same table as Day_End_Totals.csv, read once from there
+  Not read: Products_Stock_2026-10-05.xlsx [DEPARTMENTS]: the same table as DEPARTMENTS.csv, read once from there
+  Not read: Products_Stock_2026-10-06.xlsx [DEPARTMENTS]: the same table as DEPARTMENTS.csv, read once from there
+  Not read: Prescriptions_2026-10-06.xlsx [Doctors]: the same table as Doctors.csv, read once from there
+  Not read: Export_Check_2026-10-06.xlsx [Export_Check]: the same table as Export_Check.csv, read once from there
+  Not read: Stock_Movements_2026-10-06.xlsx [Goods_Received]: the same table as Goods_Received.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Monthly_By_Department]: the same table as Monthly_By_Department.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Monthly_By_Department]: the same table as Monthly_By_Department.csv, read once from there
+  Not read: Stock_Movements_2026-10-06.xlsx [Monthly_By_Supplier]: the same table as Monthly_By_Supplier.csv, read once from there
+  Not read: Prescriptions_2026-10-06.xlsx [Monthly_Dispensing]: the same table as Monthly_Dispensing.csv, read once from there
+  Not read: Prescriptions_2026-10-06.xlsx [Patients]: the same table as Patients.csv, read once from there
+  Not read: Prescriptions_2026-10-06.xlsx [Prescription_Lines]: the same table as Prescription_Lines.csv, read once from there
+  Not read: Prescriptions_2026-10-06.xlsx [Scripts_Summary]: the same table as Scripts_Summary.csv, read once from there
+  Not read: Prescriptions_2026-10-06.xlsx [Top_Dispensed_Products]: the same table as Top_Dispensed_Products.csv, read once from there
+  Not read: Stock_Movements_2026-10-06.xlsx [Price_History]: the same table as Price_History.csv, read once from there
+  Not read: Products_Stock_2026-10-05.xlsx [PRODUCTS]: the same table as PRODUCTS.csv, read once from there
+  Not read: Products_Stock_2026-10-06.xlsx [PRODUCTS]: the same table as PRODUCTS.csv, read once from there
+  Not read: Products_Stock_2026-10-05.xlsx [Products_Stock]: the same table as Products_Stock.csv, read once from there
+  Not read: Products_Stock_2026-10-06.xlsx [Products_Stock]: the same table as Products_Stock.csv, read once from there
+  Not read: Products_Stock_2026-10-05.xlsx [STOCKMAST]: the same table as STOCKMAST.csv, read once from there
+  Not read: Products_Stock_2026-10-06.xlsx [STOCKMAST]: the same table as STOCKMAST.csv, read once from there
+  Not read: Products_Stock_2026-10-05.xlsx [STOCK_BRS]: the same table as STOCK_BRS.csv, read once from there
+  Not read: Products_Stock_2026-10-06.xlsx [STOCK_BRS]: the same table as STOCK_BRS.csv, read once from there
+  Not read: Products_Stock_2026-10-05.xlsx [SUPPLIERS]: the same table as SUPPLIERS.csv, read once from there
+  Not read: Products_Stock_2026-10-06.xlsx [SUPPLIERS]: the same table as SUPPLIERS.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Product_Sales_Summary]: the same table as Product_Sales_Summary.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Product_Sales_Summary]: the same table as Product_Sales_Summary.csv, read once from there
+  Not read: Report_Catalogue_2026-10-06.xlsx [Report_Catalogue]: the same table as Report_Catalogue.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Sales_Lines]: the same table as Sales_Lines.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Sales_Lines]: the same table as Sales_Lines.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Sales_Receipts]: the same table as Sales_Receipts.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Sales_Receipts]: the same table as Sales_Receipts.csv, read once from there
+  Not read: Sales_2026-10-05.xlsx [Z_Read_History]: the same table as Z_Read_History.csv, read once from there
+  Not read: Sales_2026-10-06.xlsx [Z_Read_History]: the same table as Z_Read_History.csv, read once from there
+  Not read: Stock_Movements_2026-10-06.xlsx [Stock_Movements]: the same table as Stock_Movements.csv, read once from there
+  Not read: Stock_Movements_2026-10-06.xlsx [Till_Price_Overrides]: the same table as Till_Price_Overrides.csv, read once from there
+  By_Medical_Aid: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Daily_By_Tender: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Export_Check: not recognised as anything PharmaX keeps (WORKBOOK, SHEET, CHECK, EXCEL, EXPECTED, RESULT).
+  Goods_Received: not recognised as anything PharmaX keeps (RECEIVEDDATE, TYPE, GRNO, INVOICENO, INVOICEDATE, SUPPLIER, LINES, QUANTITY, ...).
+  Monthly_By_Department: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Monthly_By_Supplier: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Monthly_Dispensing: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Product_Sales_Summary: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Report_Catalogue: not recognised as anything PharmaX keeps (APP, MENU_GROUP, REPORT, RPT_FILE, FILE_STATUS, FOUND_AT).
+  Scripts_Summary: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  Top_Dispensed_Products: totals worked out from other tables, not stored - PharmaX's reports work them out again from what is imported.
+  STOCK_BRS: stock by branch, not stored - PharmaX keeps one figure per product, taken from the stock on the shelf.
+
+Brought in
+  Departments                                                                      8
+  Suppliers                                                                      250
+  Products added                                                               2,306
+  Products updated (already in PharmaX)                                            0
+  Products imported inactive (discontinued, or no price and no stock)            988
+  Products split out for a second pack size                                        1
+  Batches on the shelf                                                           621
+  Products with stock on hand                                                    932
+  Stock at cost (packs x pack cost)                                           26,738.15
+  Stock at selling price                                                     110,239.01
+  Patients added                                                               6,725
+  Patients updated                                                                 0
+  Patients with no surname in the files                                            2
+  ID numbers dropped as not ID numbers                                             3
+  Prescribers                                                                  3,750
+  Till sessions closed with a cash-up                                            341
+  Till sessions no cash-up covered (left suspended)                                1
+  Cash-ups: expected by the till                                             124,096.08
+  Cash-ups: counted                                                          132,259.20
+  Prescriptions (scripts, each with its dispensing)                           14,074
+  Prescription lines                                                          19,338
+  Prescriptions collected by a till receipt                                   14,059
+  Prescription lines the files mark deleted, left out                            371
+  Patients added from prescriptions (not in the patient list)                      0
+  Till sales                                                                  26,612
+  Till sale lines                                                             40,775
+  Refunds (each a return against the sale it refunded)                            34
+  Till lines of no quantity, left out                                              0
+  Till sales value                                                            98,274.48
+  Refunds value                                                                  117.02
+  Goods receipts (deliveries, posted)                                          1,450
+  Goods receipt lines                                                          4,909
+  Stock movements with no date, left out                                           0
+  Stock movements: adjusted                                                      867
+  Stock movements: returned to the supplier                                      717
+  Stocktakes (counts, posted)                                                    278
+  Stocktake lines                                                              2,259
+  Stocktakes: net variance at cost                                           -62,356.11
+  Price changes (in the audit trail)                                           1,385
+  Till price overrides (in the audit trail)                                    4,595
+  Till price overrides matched to the sale line they were rung up on           3,898
+  Stock ledger entries                                                        49,418
+  Products found only in the history, added inactive                               0
+
+Checked against the files' own totals
+                                                                    Files         PharmaX
+  PASS Cycle_Counts: rows read                                   2,259.00        2,259.00
+  PASS Day_End_Totals: rows read                                   764.00          764.00
+  PASS Day_End_Totals: ACTUALTOTAL read                        132,259.20      132,259.20
+  PASS DEPARTMENTS: rows read                                        8.00            8.00
+  PASS Doctors: rows read                                        3,750.00        3,750.00
+  PASS Patients: rows read                                       6,725.00        6,725.00
+  PASS Prescription_Lines: rows read                            19,711.00       19,711.00
+  PASS Prescription_Lines: POS_AMOUNTPAID read                  52,044.96       52,044.96
+  PASS Price_History: rows read                                  1,385.00        1,385.00
+  PASS PRODUCTS: rows read                                       2,303.00        2,303.00
+  PASS Products_Stock: rows read                                 2,304.00        2,304.00
+  PASS Products_Stock: QUANTITY read                           398,733.50      398,733.50
+  PASS Products_Stock: STOCKVALUE_COST read                    202,926.62      202,926.62
+  PASS Sales_Lines: rows read                                   40,819.00       40,819.00
+  PASS Sales_Lines: LINETOTAL read                              98,274.49       98,274.49
+  PASS Sales_Receipts: rows read                                26,707.00       26,707.00
+  PASS Sales_Receipts: TRANSTOTAL read                         132,442.11      132,442.11
+  PASS STOCKMAST: rows read                                      2,304.00        2,304.00
+  PASS STOCK_BRS: rows read                                      1,058.00        1,058.00
+  PASS Stock_Movements: rows read                                6,493.00        6,493.00
+  PASS Stock_Movements: LINETOTAL read                         219,435.71      219,435.71
+  PASS SUPPLIERS: rows read                                        250.00          250.00
+  PASS Till_Price_Overrides: rows read                           4,595.00        4,595.00
+  PASS Z_Read_History: rows read                                   341.00          341.00
+  PASS Stock in units (negatives counted as set to 0)          398,733.50      398,733.99
+  PASS Products                                                  2,305.00        2,305.00
+  PASS Patients                                                  6,725.00        6,725.00
+  PASS Prescribers                                               3,750.00        3,750.00
+  PASS Cash-up lines                                               764.00          764.00
+  PASS Prescription lines                                       19,340.00       19,340.00
+  PASS Value dispensed (price and fees)                         51,775.96       51,775.96
+  PASS Till sales: items as charged                             98,274.49       98,274.48
+  PASS Deliveries at cost                                      125,573.60      125,573.82
+  PASS Stock count lines                                         2,259.00        2,259.00
+
+For the pharmacist to look at
+Suppliers sharing a name (merge them under Inventory > Suppliers) - 15
+    BIOPHARM: codes 19, 266
+    CLEANWORLD: codes 30, 276
+    DATLABS: codes 37, 277
+    GENERAL: codes 49, 285
+    GREENWOOD WHOLESALERS: codes 53, 247, 286
+    HEALTHCARE RESOURCES: codes 58, 291
+    JG PHARMACEUTICALS: codes 67, 200
+    MEDIBEST: codes 77, 212
+    MIZBURG TRADING: codes 84, 217
+    MULLER AND PHILLIPS: codes 89, 218
+    PLAZA DISTRIBUTION: codes 102, 226
+    RETAILWARE: codes 113, 229
+    SAVANNA PHARMACEUTICALS: codes 118, 231
+    THE MISTERY ENTERPRISES: codes 129, 130
+    VINPHARM MEDICAL: codes 136, 137
+
+Products with stock but no selling price (price them before selling) - 18
+    0 SysVar: 31 units on hand, no selling price
+    263 CATAFLAM TABLETS 50MG: 20 units on hand, no selling price
+    363 HONEY- PURE: 9 units on hand, no selling price
+    485 FOLIC ACID 5MG: 149855 units on hand, no selling price
+    547 FLOMIST NASAL SPRAY: 1 units on hand, no selling price
+    579 VITAMIN E TISSUE OIL: 4 units on hand, no selling price
+    604 WARFARIN 5MG TABS 100S: 100 units on hand, no selling price
+    690 REPLACE: 2 units on hand, no selling price
+    1173 PANTOPRAZOLE 40MG: 40 units on hand, no selling price
+    1245 CETIRIZINE ZYNCET 10MG: 200 units on hand, no selling price
+    1705 VARIFLEX COUGH MIXTURE s: 1 units on hand, no selling price
+    2120 OLIVE OIL s: 10 units on hand, no selling price
+    2121 OLIVE OIL s: 3 units on hand, no selling price
+    2125 OLIVE OIL s: 1 units on hand, no selling price
+    2160 HEMOGLOBIN MONITOR: 1 units on hand, no selling price
+    2275 VITAMIN C s: 19 units on hand, no selling price
+    2370 OLIVE OIL 100ML s: 10 units on hand, no selling price
+    2498 FOLIC ACID 5MG s: 6 units on hand, no selling price
+
+Negative stock in the files, set to nothing (count these) - 14
+    134 DOXYCYCLINE 100MG: -14 units, set to 0
+    174 CETIRIZINE 10MG: -14 units, set to 0
+    938 NAPROXEN 250MG: -14 units, set to 0
+    1510 AMLODIPINE/VALSARTAN 10/160MG: -74 units, set to 0
+    1547 ASPIRIN -BAYER CARDIO 100MG: -30 units, set to 0
+    1550 METFORMIN GLUCIVIA (PCD) 1000MG: -20 units, set to 0
+    1770 TRAMADOL (PCD) 325MG/37.5MG: -4 units, set to 0
+    1797 CLOXACILLIN 500MG: -32 units, set to 0
+    1901 IBUPROFEN (PHARMANOVA) 200MG: -75 units, set to 0
+    1908 LEVONORGESTREL I-PILL (CIPLA) 1.5MG: -1 units, set to 0
+    1938 CONTROL L TABLETS 150/30/75MG: -1 units, set to 0
+    1953 HYDROCORTISONE (HYDROLIN) 15: -1 units, set to 0
+    2223 AMLODIPINE/VALSARTAN  (VALVASC) 10/60MG: -2 units, set to 0
+    2382 SALBUTAMOL INHALER(AZMANIL HFA) 200 METERED: -1 units, set to 0
+
+Expired batches still on the shelf (write them off) - 12
+    1385 SOOTHGEL 200ML: batch 0426 expired 30/04/2026, 1 packs
+    1477 THROAT RELIEF STRAWBERRY: batch E001 expired 30/03/2026, 12.625 packs
+    1558 ADCO ACYCLOVIR CREAM 10G: batch p61 expired 28/02/2026, 1 packs
+    1590 AB JELLY 1.8%: batch 24006 expired 30/06/2026, 2 packs
+    1736 CHORLE HAIR REMOVER 50G: batch 1002 expired 30/07/2026, 1 packs
+    1800 LACTULOSE SOL {RAPIDUCE} 100ML: batch jo77 expired 30/09/2026, 99 packs
+    1814 MMT NEUTRA ACID 250MG: batch 0016 expired 30/06/2026, 0.933 packs
+    1945 ENDOTRACHEAL TUBE CUFFED 8.0MM: batch HT2107793 expired 31/07/2026, 1 packs
+    2030 LULICONAZOLE TOPICAL CREAM (LUCOZOL): batch K402 expired 31/05/2026, 1 packs
+    2079 METHYLCOBALAMIN 1500MCG: batch 3089 expired 28/02/2026, 1.8 packs
+    2161 HEMOGLOBIN TEST STRIO: batch 2531 expired 21/07/2026, 1 packs
+    2262 PHENOBARBITAL INJ 200MG/ML: batch 42403 expired 31/08/2026, 20 packs
+
+Dispensary stock on no batch (labels will carry no batch or expiry) - 66
+    125 OMEPRAZOLE OMIZAC (TORRENT) 20MG: 0.54 packs on no batch
+    131 WATER FOR INJECTION: 10 packs on no batch
+    151 SALBUTAMOL SYRUP 2MG/5ML: 1 packs on no batch
+    157 ASTHALIN INHALER 200MD: 7 packs on no batch
+    169 DOMPERIDONE TABLETS 10MG: 0.09 packs on no batch
+    182 HYOSCINE INJECTION 20MG/1ML: 1 packs on no batch
+    190 SECURE: 111 packs on no batch
+    206 ENALAPRIL 5MG: 0.17 packs on no batch
+    224 ALLOPURINOL TABLETS 100MG: 0.1 packs on no batch
+    246 BROMAZEPAM 3MG: 1 packs on no batch
+    263 CATAFLAM TABLETS 50MG: 1 packs on no batch
+    402 NORFLOXACIN 400MG: 0.16 packs on no batch
+    455 PROPRANOLOL 40MG: 0.41 packs on no batch
+    523 FRUSEMIDE INJ 20MG/2ML: 1.2 packs on no batch
+    530 NYSTATIN PESSARIES 100000IU: 0.133 packs on no batch
+    590 TAGERA FORTE: 0.3 packs on no batch
+    592 TETAVAX SINGLE DOSE: 3 packs on no batch
+    642 FLUOXETINE DAWNEX (MICRO) 20MG: 1.26 packs on no batch
+    661 ARTHREXIN INDOMETHACIN (ASPEN) 100MG: 5.4 packs on no batch
+    685 DIAZEPAM TABLETS 5MG: 4.19 packs on no batch
+    694 GENTAMYCIN INJECTION 80MG/2ML: 9 packs on no batch
+    767 DEXAMETHASONE INJECTION 4MG/ML: 11 packs on no batch
+    1197 NORFLEX CO: 2 packs on no batch
+    1266 POTASSIUM CHLORIDE INJECTION 15%: 10 packs on no batch
+    1333 KETAMINE INJECTION 50MG/ML: 7 packs on no batch
+    1357 ONDANSETRON 8MG/4ML: 0.6 packs on no batch
+    1363 PREGABALIN 150MG: 0.4 packs on no batch
+    1402 MISOPROSTOL (MISOCLEAR) 200MCG: 0.02 packs on no batch
+    1418 HYDROCHLOROTHIAZIDE (CAPS) 25MG: 0.36 packs on no batch
+    1423 ENALAPRIL (VARICHEM) 5MG: 0.1 packs on no batch
+    1429 ALFUZOSIN 10MG: 2 packs on no batch
+    1461 DESLORATIDINE 5MG: 1.233 packs on no batch
+    1495 ESOMEPRAZOLE CP 40MG: 6.2 packs on no batch
+    1638 WAXFREE EAR DROPS SODIUM BICARBONATE 10ML: 4 packs on no batch
+    1748 ATORVASTATIN ASPAVOR (VIATRIS) 20MG: 19 packs on no batch
+    1791 AMLOTEL { AMLO\ TELMISARTAN } 5\40MG: 0.733 packs on no batch
+    1796 DIZEPAM DIZAM 5MG: 0.99 packs on no batch
+    1799 GLICLAZIDE 80MG {DIABEND}: 1.833 packs on no batch
+    1802 METFORMIN HCL {RANOPHAGE} 1000MG: 5 packs on no batch
+    1870 LEVONORGESTREL BACKUP 1.5MG: 29 packs on no batch
+    ...and 26 more
+
+Scheduled for dispensing in the files but sold over the counter - kept at the till; confirm or move to the dispensary (schedule 3 on the product) - 41
+    189 DEPO PROVERA (scheduled PP in the files)
+    191 CONTROL TABLETS (scheduled PP in the files)
+    205 MMT TABLETS (scheduled PP in the files)
+    216 SSD CREAM (scheduled PP in the files)
+    234 MEFENAMIC ACID CAPSULES 250MG (scheduled PP in the files)
+    479 DETTOL ANTISEPTIC 250ML (scheduled PP in the files)
+    480 DETTOL LIQUID 125ML (scheduled PP in the files)
+    1349 VIFEX SYRUP (scheduled PP in the files)
+    1517 SINOCARE MACHINE SAFE AQ (scheduled PP in the files)
+    1722 DICLOFENAC VIVIAN (LINCOLN) 50MG (scheduled PP in the files)
+    1909 DETTOL  SHOWER GEL 500ML (scheduled PP in the files)
+    1910 DETTOL BODY WASH 600ML (scheduled PP in the files)
+    1911 DETTOL SKINCARE 500ML (scheduled PP in the files)
+    1912 GAVISCON LIQUID ANISEED 300ML (scheduled PP in the files)
+    1982 BAYER ASPRIN CARDIO (scheduled PP10 in the files)
+    1988 B COMPLEX (30S) (scheduled PP10 in the files)
+    1997 MMT (NIL ACYD) (100S) (scheduled PP in the files)
+    2009 FOLEY CATHER 3WAY 22FR (scheduled PP in the files)
+    2022 CORILIEF 5 FLUE (24S) (scheduled PP10 in the files)
+    2044 PYROSEAL PARACETAMOL 100ML (scheduled PP10 in the files)
+    2048 BENYLIN WET COUGH MUCUS RELIEF 100ML (scheduled PP10 in the files)
+    2050 BENYLIN CHILDREN'S WET COUGH 100ML (scheduled PP10 in the files)
+    2051 ANUSOL SUPPOSITORIES 12'S (scheduled PP in the files)
+    2053 LISTERINE COOLMINT M/WASH 250ML (scheduled PP10 in the files)
+    2061 KIDBEST MULTIVITAMIN 200ML (scheduled PP10 in the files)
+    2063 BABYNEED GRIPEWATER ORIGINAL 100ML (scheduled PP10 in the files)
+    2064 BABYNEED TUMMY SOOTHER 100ML (scheduled PP10 in the files)
+    2079 METHYLCOBALAMIN 1500MCG (scheduled PP10 in the files)
+    2082 MEDI FLU DM (scheduled PP10 in the files)
+    2089 COFSYL ORIGINAL 100ML (scheduled PP10 in the files)
+    2095 FEEDING BOTTLES 240 ML (scheduled PP10 in the files)
+    2098 MATTE LIPGLOSS (scheduled PP10 in the files)
+    2099 EYEBROW GEL (scheduled PP10 in the files)
+    2105 CRAMPSAL 50G (scheduled PP10 in the files)
+    2140 CRAMPNIL 50GM (scheduled PP10 in the files)
+    2141 FEROLAX CAPS LIQUID 200ML (scheduled PP10 in the files)
+    2151 PARACETAMOL [ANTALGIC] 500MG (scheduled PP10 in the files)
+    2289 GYNOFORCE WOMEN (scheduled PID in the files)
+    2290 ANDROFORCE MEN (scheduled PID in the files)
+    2396 CHOATS C/SYRUP 50ML (scheduled PP10 in the files)
+    ...and 1 more
+
+Possibly the same person twice - same name and phone (merge under Dispensary > Merge Patient Files) - 32
+    699 and 221
+    5800 and 5801
+    501 and 411
+    1962 and 1599
+    1507 and 1506
+    1837 and 2173
+    308 and 1877
+    240 and 5827
+    1192 and 6571
+    1273 and 244
+    3552 and 3648
+    382 and 273
+    4237 and 4201
+    707 and 2099
+    1125 and 14
+    2795 and 2130
+    387 and 2302
+    453 and 1686
+    208 and 1214
+    1692 and 2587
+    2737 and 4051
+    3316 and 3568
+    4340 and 6361
+    2572 and 2251
+    1520 and 2419
+    1570 and 4029
+    2071 and 2206
+    2629 and 3060
+    6342 and 128
+    5674 and 6309
+    6243 and 6585
+    3062 and 1843
+
+Codes the files give to more than one prescriber (each kept, as 0-2, 0-3...) - 1
+    0 - 17 prescribers
+
+Prescriptions with no till receipt in the files - waiting under Collect until taken or reversed - 15
+    Script 3133 of 12/02/2026: 2.00
+    Script 3427 of 20/02/2026: 1.00
+    Script 4571 of 21/03/2026: 10.00
+    Script 11267 of 08/08/2026: 1.00
+    Script 14643 of 06/10/2026: 1.00
+    Script 14646 of 06/10/2026: 1.00
+    Script 14647 of 06/10/2026: 1.00
+    Script 14648 of 06/10/2026: 11.00
+    Script 14649 of 06/10/2026: 1.00
+    Script 14650 of 06/10/2026: 7.00
+    Script 14651 of 06/10/2026: 1.00
+    Script 14652 of 06/10/2026: 19.00
+    Script 14653 of 06/10/2026: 5.00
+    Script 14654 of 06/10/2026: 10.00
+    Script 14655 of 06/10/2026: 8.00
+
+Prescription lines with no quantity, left out - 2
+    Script 665: ENALAPRIL for 0
+    Script 665: NIFEDIPINE CALCIGARD (TORRENT) for 0
+
+Receipts with no items, left out - 53
+    Receipt 579 of 14/11/2025: 10.00, no tender
+    Receipt 588 of 14/11/2025: 12.00, no tender
+    Receipt 787 of 18/11/2025: 9.38, no tender
+    Receipt 990 of 21/11/2025: 1.30, no tender
+    Receipt 1039 of 22/11/2025: 4.00, no tender
+    Receipt 1191 of 25/11/2025: 6.33, no tender
+    Receipt 1290 of 27/11/2025: 18.00, no tender
+    Receipt 1291 of 27/11/2025: 10.00, no tender
+    Receipt 1353 of 28/11/2025: 2.01, no tender
+    Receipt 1514 of 30/11/2025: 0.83, no tender
+    Receipt 1521 of 30/11/2025: 1.80, no tender
+    Receipt 1524 of 30/11/2025: 9.31, no tender
+    Receipt 1547 of 01/12/2025: 2.20, no tender
+    Receipt 1756 of 04/12/2025: 7.98, no tender
+    Receipt 1861 of 06/12/2025: 2.33, no tender
+    Receipt 2142 of 10/12/2025: 3.33, no tender
+    Receipt 2214 of 11/12/2025: 1.33, no tender
+    Receipt 2618 of 16/12/2025: 32.94, no tender
+    Receipt 2822 of 19/12/2025: 3.15, no tender
+    Receipt 2868 of 20/12/2025: 6.33, no tender
+    Receipt 2889 of 20/12/2025: 0.00, no tender
+    Receipt 3613 of 31/12/2025: 4.00, no tender
+    Receipt 4383 of 10/01/2026: 0.00, no tender
+    Receipt 4421 of 11/01/2026: 24.00, no tender
+    Receipt 4447 of 11/01/2026: 6.65, no tender
+    Receipt 4490 of 12/01/2026: 9.06, no tender
+    Receipt 4493 of 12/01/2026: 0.00, no tender
+    Receipt 4643 of 14/01/2026: 33,576.00, no tender
+    Receipt 4646 of 14/01/2026: 0.00, no tender
+    Receipt 4670 of 14/01/2026: 10.67, no tender
+    Receipt 4796 of 16/01/2026: 0.00, no tender
+    Receipt 4957 of 19/01/2026: 2.80, no tender
+    Receipt 4958 of 19/01/2026: 4.00, no tender
+    Receipt 5100 of 21/01/2026: 0.67, no tender
+    Receipt 5248 of 23/01/2026: 5.00, no tender
+    Receipt 5257 of 23/01/2026: 12.00, no tender
+    Receipt 5258 of 23/01/2026: 16.50, no tender
+    Receipt 5356 of 24/01/2026: 0.00, no tender
+    Receipt 5378 of 24/01/2026: 3.00, no tender
+    Receipt 5407 of 25/01/2026: 3.00, no tender
+    ...and 13 more
+
+Receipts whose tenders do not add up to their items (the items are kept, paid in the first tender) - 2
+    Receipt 19081 of 27/06/2026: tendered 4.00 for items of 1.00
+    Receipt 23533 of 10/08/2026: tendered 8.00 for items of 3.00
+
+Refunds where the till paid out a different amount from the items returned - 3
+    Receipt 807: the till refunded 10.00, the items returned come to 11.00
+    Receipt 808: the till refunded 15.00, the items returned come to 11.00
+    Receipt 8097: the till refunded 0.02, the items returned come to 0.25
+
+Delivery lines whose total in the files is not their quantity times their cost (kept at quantity times cost; check the invoice) - 13
+    GRN 20: 173 AMLODIPINE - 300 at 10.00 is 6.00, the files say 30.00
+    GRN 72: 231 LOSARTAN VALOSAR (VARICHEM) - 150 at 2.00 is 3.00, the files say 10.00
+    GRN 104: 412 ELASTOPLAST - 100 at 0.13 is 0.26, the files say 0.13
+    GRN 134: 536 NORMAL  SALINE 0.9% - 3 at 2.00 is 0.01, the files say 2.00
+    GRN 164: 1582 IBUPROFEN DOLEX (CAPS) - 1000 at 13.50 is 27.00, the files say 13.50
+    GRN 190: 231 LOSARTAN VALOSAR (VARICHEM) - 150 at 2.50 is 3.75, the files say 12.50
+    GRN 198: 1159 ADCO DOL TABLETS - 20 at 5.33 is 2.67, the files say 2.66
+    GRN 230: 1553 LOPERAMIDE LOCKIT (MICRO) - 45 at 4.50 is 2.03, the files say 2.02
+    GRN 246: 1364 CENVITAN ADULTS - 10 at 5.00 is 0.84, the files say 0.83
+    GRN 293: 1421 GRAYS NYONGOCID - 100 at 0.606 is 0.61, the files say 6.06
+    GRN 357: 1421 GRAYS NYONGOCID - 200 at 0.606 is 1.22, the files say 12.12
+    GRN 375: 1421 GRAYS NYONGOCID - 100 at 6.00 is 6.00, the files say 60.00
+    GRN 498: 1894 IRON SUCROSE - 20 at 9.90 is 39.60, the files say 9.90
+
+Staff in the history added as inactive users (activate and set a password under Administration > Users before they can sign in) - 7
+    test
+    megan
+    shiae
+    fabrice
+    rejoice
+    sylvester
+    ginah
+
+
+
+Every total agrees with the files.

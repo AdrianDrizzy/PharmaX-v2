@@ -259,7 +259,7 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         if (_auth is null) return null;
 
         using var dialog = new frmSupervisorPrompt(_auth, reasonShown,
-                                                   "Pharmacist");
+            Domain.Security.PermissionCode.ScriptAuthorise);
 
         return dialog.ShowDialog(this) == DialogResult.OK
             ? dialog.AuthoriserId

@@ -33,8 +33,12 @@ public partial class frmTrialBalance : PhxFormBase, ITrialBalanceView
 
         dtpAsAt.Value = DateTime.Today;
 
+        // Another date's balances, so their first page.
         dtpAsAt.ValueChanged += (_, _) =>
+        {
+            GridPager.Of(grdBalance)?.Restart();
             RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);

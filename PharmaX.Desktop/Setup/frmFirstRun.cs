@@ -34,6 +34,10 @@ public sealed partial class frmFirstRun : Form
         InitializeComponent();
         PhxTheme.Apply(this);
 
+        // At 150 per cent the wizard is taller than a 1080-line screen, and
+        // its Set up and Quit buttons were under the taskbar.
+        Load += (_, _) => PhxTheme.HoldToScreen(this);
+
         // The card the logo sits on in the shell, so the preview shows it
         // the way the tills will.
         pnlLogo.BackColor = PhxTheme.Card;

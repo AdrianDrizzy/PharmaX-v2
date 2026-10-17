@@ -22,10 +22,15 @@ public sealed record PatientSummaryDto(
     }
 }
 
+/// <param name="Items">
+/// What the script is for, one medicine and its quantity a line, so a
+/// script can be told apart from the next - and chosen to use again -
+/// without opening it.
+/// </param>
 public sealed record ScriptDto(
     Guid Id, string ScriptNumber, Guid PatientId, string PrescriberName,
     DateOnly PrescribedOn, DateOnly? ValidUntil, int RepeatsAuthorised,
-    int RepeatsRemaining, string Status)
+    int RepeatsRemaining, string Status, string Items = "")
 {
     public static ScriptDto From(Script s)
     {
@@ -37,7 +42,23 @@ public sealed record ScriptDto(
 
             // Never below nothing on the screen: a script with no repeats,
             // once dispensed, has none left rather than minus one.
-            Math.Max(0, s.RepeatsRemaining), s.Status.ToString());
+            Math.Max(0, s.RepeatsRemaining), s.Status.ToString(),
+            ItemList(s.Items.OrderBy(i => i.LineNo)
+                            .Select(i => (i.Description, i.Quantity))));
+    }
+
+    /// <summary>
+    /// Medicines as a list for a screen: "IBUPROFEN 200MG  x40", one a
+    /// line.
+    /// </summary>
+    public static string ItemList(
+        IEnumerable<(string Description, decimal Quantity)> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        return string.Join(Environment.NewLine, items.Select(i =>
+            string.Create(System.Globalization.CultureInfo.CurrentCulture,
+                $"{i.Description}  x{i.Quantity:0.###}")));
     }
 }
 
