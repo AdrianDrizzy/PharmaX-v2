@@ -548,6 +548,34 @@ public static class PhxTheme
     }
 
     /// <summary>
+    /// Moves a window back inside the working area of its screen where any
+    /// of it is outside, wherever it was placed.
+    /// </summary>
+    /// <remarks>
+    /// A dialog is centred on its owner first and grown to fit its contents
+    /// afterwards, so it grows down and to the right from where it was
+    /// centred. "New script from an earlier one" ended 30 pixels below the
+    /// screen and its Save button sat under the taskbar (DEF-ROLE-001).
+    /// HoldToScreen brings back only windows placed at fixed points.
+    /// </remarks>
+    internal static void MoveOnScreen(Form form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        if (form.WindowState != FormWindowState.Normal) return;
+
+        var work = (form.Owner is { } owner
+            ? Screen.FromControl(owner)
+            : Screen.FromControl(form)).WorkingArea;
+
+        var left = Math.Clamp(form.Left, work.Left, Math.Max(work.Left, work.Right - form.Width));
+        var top = Math.Clamp(form.Top, work.Top, Math.Max(work.Top, work.Bottom - form.Height));
+
+        if (left != form.Left || top != form.Top)
+            form.Location = new Point(left, top);
+    }
+
+    /// <summary>
     /// The menu, status bar and drop-downs in the mode's colours. Only
     /// outside the light mode, which keeps the system's own look.
     /// </summary>

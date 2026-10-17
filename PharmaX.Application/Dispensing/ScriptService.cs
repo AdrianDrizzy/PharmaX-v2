@@ -8,9 +8,19 @@ using PharmaX.Domain.Security;
 
 namespace PharmaX.Application.Dispensing;
 
+/// <param name="PackUnits">
+/// The units in the pack the line is priced by, set for this script;
+/// null is the product's own.
+/// </param>
+/// <param name="PackPrice">
+/// That pack's price for this script; null is the shelf price. The
+/// patient pays PackPrice x Quantity / PackUnits for the line.
+/// </param>
 public sealed record ScriptItemEditDto(string ProductCode, decimal Quantity,
                                        string Directions,
-                                       bool AllowSubstitution = true);
+                                       bool AllowSubstitution = true,
+                                       decimal? PackUnits = null,
+                                       decimal? PackPrice = null);
 
 /// <param name="QuotationId">
 /// The dispensary quote the script was captured from, which is marked
@@ -23,14 +33,16 @@ public sealed record ScriptEditDto(
 
 public sealed record ScriptItemDto(int LineNo, Guid ProductId,
     string Description, decimal Quantity, string Directions,
-    bool AllowSubstitution, string? ProductCode = null)
+    bool AllowSubstitution, string? ProductCode = null,
+    decimal? PackUnits = null, decimal? PackPrice = null)
 {
     public static ScriptItemDto From(ScriptItem i, string? productCode = null)
     {
         ArgumentNullException.ThrowIfNull(i);
 
         return new ScriptItemDto(i.LineNo, i.ProductId, i.Description,
-            i.Quantity, i.Directions, i.AllowSubstitution, productCode);
+            i.Quantity, i.Directions, i.AllowSubstitution, productCode,
+            i.PackUnits, i.PackPrice?.Amount);
     }
 }
 
@@ -47,12 +59,16 @@ public sealed record ScriptDetailDto(ScriptDto Script,
 /// One item a patient has had before: what was last handed over against a
 /// script, or what it prescribed where it was never dispensed.
 /// </summary>
+/// <param name="PackUnits">The pack and price set on the script it came
+/// from, carried onto the new one; null where that script used the
+/// product's own.</param>
 public sealed record SuppliedItemDto(string ProductCode, string Description,
     decimal Quantity, string Directions, bool AllowSubstitution, DateOnly On,
-    string ScriptNumber)
+    string ScriptNumber, decimal? PackUnits = null, decimal? PackPrice = null)
 {
     public ScriptItemEditDto ToEdit() =>
-        new(ProductCode, Quantity, Directions, AllowSubstitution);
+        new(ProductCode, Quantity, Directions, AllowSubstitution,
+            PackUnits, PackPrice);
 }
 
 public interface IScriptService
@@ -347,9 +363,15 @@ public sealed class ScriptService : IScriptService
 
                 var item = script.Items.FirstOrDefault(i => i.Id == line.ScriptItemId);
 
+                // The pack and price set on the script go with the line
+                // only while it is the product prescribed: a substitute
+                // is packed and priced its own way.
+                var priced = item?.ProductId == line.ProductId ? item : null;
+
                 rows.Add(new SuppliedItemDto(code, line.Description,
                     line.Quantity, line.Directions,
-                    item?.AllowSubstitution ?? true, on, script.ScriptNumber));
+                    item?.AllowSubstitution ?? true, on, script.ScriptNumber,
+                    priced?.PackUnits, priced?.PackPrice?.Amount));
             }
 
             return rows;
@@ -361,7 +383,7 @@ public sealed class ScriptService : IScriptService
 
             rows.Add(new SuppliedItemDto(code, item.Description, item.Quantity,
                 item.Directions, item.AllowSubstitution, script.PrescribedOn,
-                script.ScriptNumber));
+                script.ScriptNumber, item.PackUnits, item.PackPrice?.Amount));
         }
 
         return rows;
@@ -447,13 +469,42 @@ public sealed class ScriptService : IScriptService
                     $"{product.Description}: directions are mandatory, "
                     + "because they are printed on the label (DSP-004)."));
 
+            if (item.PackUnits is decimal units && units <= 0m)
+                return (items, new Error("DSP-055",
+                    $"{product.Description}: the pack must hold more than "
+                    + "nothing, or be left blank for the product's own."));
+
+            if (item.PackPrice is decimal price && price < 0m)
+                return (items, new Error("DSP-056",
+                    $"{product.Description}: the price cannot be less than "
+                    + "nothing."));
+
             var directions = _reference is null
                 ? item.Directions.Trim()
                 : await Reference.DosageShorthand.ExpandDirectionsAsync(
                     _reference, item.Directions, ct);
 
+            // A pack or price the same as the product's is no change, and
+            // is not kept: the script follows the product if it is repriced.
+            var packUnits = item.PackUnits == product.UnitsInPack ? null : item.PackUnits;
+            var packPrice = item.PackPrice is decimal amount
+                            && amount != product.RetailPrice.Amount
+                ? Domain.Primitives.Money.Of(amount, product.RetailPrice.Currency)
+                : (Domain.Primitives.Money?)null;
+
+            // Both kept once either differs, so the line is priced by the
+            // pack it was set against.
+            if (packUnits is not null || packPrice is not null)
+            {
+                packUnits ??= item.PackUnits ?? product.UnitsInPack;
+                packPrice ??= Domain.Primitives.Money.Of(
+                    item.PackPrice ?? product.RetailPrice.Amount,
+                    product.RetailPrice.Currency);
+            }
+
             items.Add(ScriptItem.Create(product.Id, product.Description,
-                item.Quantity, directions, item.AllowSubstitution));
+                item.Quantity, directions, item.AllowSubstitution,
+                packUnits, packPrice));
         }
 
         return (items, null);

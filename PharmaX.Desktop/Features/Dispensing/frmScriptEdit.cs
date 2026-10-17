@@ -38,8 +38,40 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 
         grdItems.CellEndEdit += async (_, e) =>
         {
-            if (grdItems.Columns[e.ColumnIndex].Name == "ProductCode")
-                await DescribeAsync(grdItems.Rows[e.RowIndex]);
+            var row = grdItems.Rows[e.RowIndex];
+
+            switch (grdItems.Columns[e.ColumnIndex].Name)
+            {
+                case "ProductCode":
+                    await DescribeAsync(row);
+                    break;
+                case "Quantity" or "PackUnits" or "PackPrice":
+                    ShowCharge(row);
+                    break;
+            }
+        };
+
+        // A number where a number goes, said at once rather than at Save.
+        grdItems.CellValidating += (_, e) =>
+        {
+            var column = grdItems.Columns[e.ColumnIndex].Name;
+            if (column is not ("Quantity" or "PackUnits" or "PackPrice")) return;
+
+            var text = e.FormattedValue?.ToString()?.Trim() ?? "";
+            var problem = text.Length == 0
+                ? null
+                : !decimal.TryParse(text, System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.CurrentCulture, out var value)
+                    ? "Type a number."
+                    : column != "PackPrice" && value <= 0m
+                        ? (column == "Quantity" ? "The quantity" : "The pack")
+                          + " must be more than nothing."
+                        : value < 0m
+                            ? "A price cannot be less than nothing."
+                            : null;
+
+            grdItems.Rows[e.RowIndex].ErrorText = problem ?? "";
+            e.Cancel = problem is not null;
         };
         btnRemoveItem.Click += (_, _) =>
         {
@@ -148,7 +180,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             ?? AddRow("", 1m, "", true);
 
         row.Cells["ProductCode"].Value = product.Code;
-        Describe(row, product);
+        Describe(row, product, resetPrice: true);
 
         txtFindProduct.Clear();
 
@@ -157,22 +189,33 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         grdItems.BeginEdit(true);
     }
 
-    /// One line of the script, its cells set by name.
+    /// <summary>
+    /// One line of the script, its cells set by name. A pack and price
+    /// left null are filled with the product's own once it is known.
+    /// </summary>
     private DataGridViewRow AddRow(string code, decimal quantity,
-                                   string directions, bool allowSubstitution)
+                                   string directions, bool allowSubstitution,
+                                   decimal? packUnits = null,
+                                   decimal? packPrice = null)
     {
         var row = grdItems.Rows[grdItems.Rows.Add()];
 
         row.Cells["ProductCode"].Value = code;
         row.Cells["Quantity"].Value = quantity;
+        row.Cells["PackUnits"].Value = packUnits;
+        row.Cells["PackPrice"].Value = packPrice;
         row.Cells["Directions"].Value = directions;
         row.Cells["AllowSubstitution"].Value = allowSubstitution;
 
         return row;
     }
 
+    /// <param name="resetPrice">
+    /// A different product on the line: its own pack and price replace
+    /// whatever the line had, which was set for the product before.
+    /// </param>
     private static void Describe(DataGridViewRow row, ProductListItemDto? product,
-                                 int matches = 0)
+                                 int matches = 0, bool resetPrice = false)
     {
         row.Cells["Product"].Value = product?.Description
             ?? (string.IsNullOrWhiteSpace(row.Cells["ProductCode"].Value?.ToString())
@@ -181,13 +224,50 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
                     ? $"{matches} products fit - type more of the name"
                     : "No product with this code or name");
 
+        // The price has its own column now, so the details are the pack
+        // as shelved and the stock.
         row.Cells["Details"].Value = product is null
             ? ""
-            : Suggest.ProductDetails(product, withCode: false);
+            : Suggest.Details(product.PackSize,
+                  $"{Format.Quantity(product.QuantityOnHand)} on hand",
+                  product.Schedule >= 3
+                      ? $"schedule {product.Schedule}"
+                      : "over the counter");
 
         row.Cells["Product"].Style.ForeColor = product is null
             ? PhxTheme.ProblemText
             : PhxTheme.Ink;
+
+        if (resetPrice || row.Tag is ProductListItemDto earlier
+                          && product is not null && earlier.Id != product.Id)
+        {
+            row.Cells["PackUnits"].Value = null;
+            row.Cells["PackPrice"].Value = null;
+        }
+
+        row.Tag = product;
+
+        if (product is not null)
+        {
+            row.Cells["PackUnits"].Value ??= product.UnitsPerPack is decimal units
+                                             && units > 0m ? units : 1m;
+            row.Cells["PackPrice"].Value ??= product.RetailPrice;
+        }
+
+        ShowCharge(row);
+    }
+
+    /// <summary>What the line comes to: price x quantity / pack.</summary>
+    private static void ShowCharge(DataGridViewRow row)
+    {
+        var quantity = ToNumber(row.Cells["Quantity"].Value);
+        var pack = ToNumber(row.Cells["PackUnits"].Value);
+        var price = ToNumber(row.Cells["PackPrice"].Value);
+
+        row.Cells["Charge"].Value = quantity is decimal q && pack is decimal p
+                                    && p > 0m && price is decimal each
+            ? Math.Round(each * q / p, 2, MidpointRounding.AwayFromZero)
+            : null;
     }
 
     /// <summary>
@@ -279,7 +359,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 
         foreach (var item in draft.Items)
             AddRow(item.ProductCode, item.Quantity, item.Directions,
-                   item.AllowSubstitution);
+                   item.AllowSubstitution, item.PackUnits, item.PackPrice);
     }
 
     public IReadOnlyList<SuppliedItemDto> PickFromHistory(
@@ -306,7 +386,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             grdItems.Rows.Remove(blank);
 
         var added = items.Select(item => AddRow(item.ProductCode, item.Quantity,
-            item.Directions, item.AllowSubstitution)).ToList();
+            item.Directions, item.AllowSubstitution, item.PackUnits,
+            item.PackPrice)).ToList();
 
         foreach (var row in added) await DescribeAsync(row);
     }
@@ -344,7 +425,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
 
         foreach (var item in script.Items)
             AddRow(item.ProductCode ?? "", item.Quantity, item.Directions,
-                   item.AllowSubstitution);
+                   item.AllowSubstitution, item.PackUnits, item.PackPrice);
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -392,6 +473,8 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
             // Left to the service to refuse: a blank quantity or blank
             // directions is a message the operator needs to see, not a
             // row the screen silently drops.
+            // A pack and price the same as the product's are left to the
+            // service to recognise as no change.
             items.Add(new ScriptItemEditDto(
                 ProductCode: code,
                 Quantity: ToDecimal(row.Cells["Quantity"].Value),
@@ -399,21 +482,26 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
                             ?? "",
                 AllowSubstitution:
                     row.Cells["AllowSubstitution"].Value is not bool allow
-                    || allow));
+                    || allow,
+                PackUnits: ToNumber(row.Cells["PackUnits"].Value),
+                PackPrice: ToNumber(row.Cells["PackPrice"].Value)));
         }
 
         return items;
     }
 
-    private static decimal ToDecimal(object? value) =>
+    private static decimal ToDecimal(object? value) => ToNumber(value) ?? 0m;
+
+    /// A cell's number, or null where it is blank or not a number.
+    private static decimal? ToNumber(object? value) =>
         value switch
         {
             decimal d => d,
-            null => 0m,
+            null => null,
             _ => decimal.TryParse(value.ToString(),
                     System.Globalization.NumberStyles.Number,
                     System.Globalization.CultureInfo.CurrentCulture,
-                    out var parsed) ? parsed : 0m
+                    out var parsed) ? parsed : null
         };
 
     public event EventHandler? SaveRequested;

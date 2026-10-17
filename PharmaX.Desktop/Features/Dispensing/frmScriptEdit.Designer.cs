@@ -11,7 +11,7 @@ partial class frmScriptEdit
     private DateTimePicker dtpValidUntil = null!;
     private NumericUpDown numRepeats = null!;
     private TextBox txtFindProduct = null!;
-    private DataGridView grdItems = null!;
+    private PharmaX.Desktop.Controls.CellTabGrid grdItems = null!;
     private Button btnAddItem = null!;
     private Button btnRemoveItem = null!;
     private Button btnFromHistory = null!;
@@ -38,7 +38,7 @@ partial class frmScriptEdit
         numRepeats = new NumericUpDown();
         txtFindProduct = new TextBox();
         txtFindProduct.Name = "txtFindProduct";
-        grdItems = new DataGridView();
+        grdItems = new PharmaX.Desktop.Controls.CellTabGrid();
         btnAddItem = new Button();
         btnAddItem.Name = "btnAddItem";
         btnRemoveItem = new Button();
@@ -75,12 +75,14 @@ partial class frmScriptEdit
         dtpPrescribedOn.Size = new Size(120, 23);
         dtpPrescribedOn.MaxDate = DateTime.Today;
         dtpPrescribedOn.Value = DateTime.Today;
+        dtpPrescribedOn.TabIndex = 3;
 
         Label(20, 20 + 4 * 34 + 4, "&Repeats");
         numRepeats.Location = new Point(150, 20 + 4 * 34);
         numRepeats.Maximum = 11;
         numRepeats.Name = "numRepeats";
         numRepeats.Size = new Size(60, 23);
+        numRepeats.TabIndex = 4;
 
         // The default validity is six months from the prescription date
         // (specification Section 9.2), so the field stays off unless the
@@ -90,6 +92,7 @@ partial class frmScriptEdit
         chkHasValidUntil.Name = "chkHasValidUntil";
         chkHasValidUntil.Text = "Prescriber set a &validity date";
         chkHasValidUntil.UseVisualStyleBackColor = true;
+        chkHasValidUntil.TabIndex = 5;
 
         dtpValidUntil.Enabled = false;
         dtpValidUntil.Format = DateTimePickerFormat.Short;
@@ -97,6 +100,7 @@ partial class frmScriptEdit
         dtpValidUntil.Name = "dtpValidUntil";
         dtpValidUntil.Size = new Size(120, 23);
         dtpValidUntil.Value = DateTime.Today.AddMonths(6);
+        dtpValidUntil.TabIndex = 6;
 
         // Typed into like the dispensary's scan bar: a code, or a few
         // words of the name, with the matches and their details offered
@@ -106,10 +110,13 @@ partial class frmScriptEdit
         txtFindProduct.PlaceholderText =
             "Type a code, or a few words of the name - \"losartan 50\"";
         txtFindProduct.Size = new Size(820, 23);
-        txtFindProduct.TabIndex = 6;
+        txtFindProduct.TabIndex = 7;
 
         Label(20, 20 + 6 * 34 + 6, "&Items");
 
+        // Tab goes along a line through the cells that take typing - code,
+        // quantity, pack, price, directions, generic - and on to the next.
+        grdItems.TabsThroughCells = true;
         grdItems.AllowUserToAddRows = false;
         grdItems.AllowUserToResizeRows = false;
         grdItems.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -118,12 +125,13 @@ partial class frmScriptEdit
         grdItems.RowHeadersVisible = false;
         grdItems.RowTemplate.Height = 24;
         grdItems.Size = new Size(820, 150);
-        grdItems.TabIndex = 7;
+        grdItems.TabIndex = 8;
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "ProductCode", HeaderText = "Code or name",
-            FillWeight = 85, SortMode = DataGridViewColumnSortMode.NotSortable
+            Name = "ProductCode", HeaderText = "Code",
+            ToolTipText = "A product code, or a few words of its name",
+            FillWeight = 72, SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
         // What the code is, and its details, so the item can be checked
@@ -136,40 +144,83 @@ partial class frmScriptEdit
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Product", HeaderText = "Product", FillWeight = 140,
+            Name = "Product", HeaderText = "Product", FillWeight = 118,
             ReadOnly = true, DefaultCellStyle = described,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Details", HeaderText = "Pack, price, stock",
-            FillWeight = 140, ReadOnly = true, DefaultCellStyle = described,
+            Name = "Details", HeaderText = "Pack size, stock",
+            FillWeight = 92, ReadOnly = true, DefaultCellStyle = described,
             SortMode = DataGridViewColumnSortMode.NotSortable
+        });
+
+        var number = new DataGridViewCellStyle
+        {
+            Format = "0.###",
+            Alignment = DataGridViewContentAlignment.MiddleRight
+        };
+
+        grdItems.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Quantity", HeaderText = "Qty", FillWeight = 40,
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            DefaultCellStyle = number
+        });
+
+        // The pack this line is priced by and that pack's price: the
+        // product's own until changed here, for this script only. The
+        // catalogue is not touched.
+        grdItems.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "PackUnits", HeaderText = "Pack", FillWeight = 45,
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            DefaultCellStyle = number,
+            ToolTipText = "How many the price is for - the product's own pack "
+                          + "unless changed for this script"
         });
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Quantity", HeaderText = "Qty", FillWeight = 45,
+            Name = "PackPrice", HeaderText = "Price", FillWeight = 52,
             SortMode = DataGridViewColumnSortMode.NotSortable,
             DefaultCellStyle = new DataGridViewCellStyle
             {
-                Format = "0.###",
+                Format = "N2",
                 Alignment = DataGridViewContentAlignment.MiddleRight
+            },
+            ToolTipText = "The price of that pack on this script - the shelf "
+                          + "price unless changed"
+        });
+
+        // What the line comes to: price x quantity / pack.
+        grdItems.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Charge", HeaderText = "Charge", FillWeight = 52,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Format = "N2",
+                Alignment = DataGridViewContentAlignment.MiddleRight,
+                BackColor = SystemColors.Control,
+                ForeColor = SystemColors.ControlText
             }
         });
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Directions", HeaderText = "Directions (printed on label)",
-            FillWeight = 160,
+            Name = "Directions", HeaderText = "Directions (on label)",
+            FillWeight = 118,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
         grdItems.Columns.Add(new DataGridViewCheckBoxColumn
         {
-            Name = "AllowSubstitution", HeaderText = "Generic ok",
-            FillWeight = 65,
+            Name = "AllowSubstitution", HeaderText = "Generic",
+            ToolTipText = "A generic may be given instead",
+            FillWeight = 60,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
@@ -177,11 +228,13 @@ partial class frmScriptEdit
         btnAddItem.Size = new Size(90, 26);
         btnAddItem.Text = "A&dd";
         btnAddItem.UseVisualStyleBackColor = true;
+        btnAddItem.TabIndex = 9;
 
         btnRemoveItem.Location = new Point(246, 20 + 6 * 34 + 158);
         btnRemoveItem.Size = new Size(90, 26);
         btnRemoveItem.Text = "Re&move";
         btnRemoveItem.UseVisualStyleBackColor = true;
+        btnRemoveItem.TabIndex = 10;
 
         // What the patient has had before - imported history included -
         // picked onto this script and changed here like any other line.
@@ -189,16 +242,19 @@ partial class frmScriptEdit
         btnFromHistory.Size = new Size(150, 26);
         btnFromHistory.Text = "From &history...";
         btnFromHistory.UseVisualStyleBackColor = true;
+        btnFromHistory.TabIndex = 11;
 
         btnSave.Location = new Point(804, 20 + 6 * 34 + 196);
         btnSave.Size = new Size(80, 30);
         btnSave.Text = "&Save";
         btnSave.UseVisualStyleBackColor = true;
+        btnSave.TabIndex = 12;
 
         btnCancel.Location = new Point(890, 20 + 6 * 34 + 196);
         btnCancel.Size = new Size(80, 30);
         btnCancel.Text = "Cancel";
         btnCancel.UseVisualStyleBackColor = true;
+        btnCancel.TabIndex = 13;
 
         AcceptButton = btnSave;
         AutoScaleDimensions = new SizeF(7F, 15F);

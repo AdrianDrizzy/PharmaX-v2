@@ -18,7 +18,7 @@ partial class frmGoodsReceipt
     private TextBox txtInvoiceNumber = null!;
     private MoneyTextBox txtInvoiceTotal = null!;
     private DateTimePicker dtpReceivedOn = null!;
-    private DataGridView grdCapture = null!;
+    private PharmaX.Desktop.Controls.CellTabGrid grdCapture = null!;
     private PhxGrid grdPreview = null!;
     private Button btnChooseSupplier = null!;
     private Button btnChooseOrder = null!;
@@ -51,7 +51,7 @@ partial class frmGoodsReceipt
         txtInvoiceNumber = new TextBox();
         txtInvoiceTotal = new MoneyTextBox();
         dtpReceivedOn = new DateTimePicker();
-        grdCapture = new DataGridView();
+        grdCapture = new PharmaX.Desktop.Controls.CellTabGrid();
         grdPreview = new PhxGrid();
         btnChooseSupplier = new Button();
         btnChooseSupplier.Name = "btnChooseSupplier";
@@ -133,6 +133,8 @@ partial class frmGoodsReceipt
             "Delivery note - expiry as MM/yyyy, batch required for "
             + "batch-tracked items";
 
+        // Tab along a delivery line through the cells that take typing.
+        grdCapture.TabsThroughCells = true;
         grdCapture.AllowUserToAddRows = false;
         grdCapture.AllowUserToResizeRows = false;
         grdCapture.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;

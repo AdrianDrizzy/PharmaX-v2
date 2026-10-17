@@ -629,10 +629,20 @@ public sealed class DispensingService : IDispensingService
 
         // Priced for the units actually handed over, pro rata to the
         // pack, with the society's dispensing fee once per item (Section
-        // 7.8, DEF-0021).
-        var shelf = product.PriceForUnits(
-            product.ResolvePrice(dispensing.PatientId).Amount,
-            directions.Quantity);
+        // 7.8, DEF-0021). A pack and price set on the script for this
+        // line stand in for the product's - but only for the product
+        // prescribed: a generic substitute keeps its own.
+        var scriptItem = scriptItemId is Guid itemId
+            ? (await _scripts.GetAsync(dispensing.ScriptId, ct))?.Items
+                .FirstOrDefault(i => i.Id == itemId && i.ProductId == product.Id)
+            : null;
+
+        var shelf = scriptItem is { PackUnits: decimal packUnits, PackPrice: Money packPrice }
+            ? Money.Of(packPrice.Amount * directions.Quantity / packUnits,
+                       product.RetailPrice.Currency)
+            : product.PriceForUnits(
+                product.ResolvePrice(dispensing.PatientId).Amount,
+                directions.Quantity);
 
         var contribution = tariff is null
             ? (Money?)null

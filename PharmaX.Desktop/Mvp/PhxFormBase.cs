@@ -326,7 +326,12 @@ public class PhxFormBase : Form, IView
     /// </remarks>
     private void KeepOnScreen()
     {
-        if (!PhxTheme.HoldToScreen(this)) return;
+        var resized = PhxTheme.HoldToScreen(this);
+
+        // Wherever it was centred, all of it inside the screen.
+        PhxTheme.MoveOnScreen(this);
+
+        if (!resized) return;
 
         PerformLayout();
 

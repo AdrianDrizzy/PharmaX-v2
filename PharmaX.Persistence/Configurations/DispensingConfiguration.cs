@@ -49,6 +49,13 @@ public sealed class ScriptItemConfiguration
         b.Property(x => x.Directions).HasMaxLength(500).IsRequired();
         b.Property(x => x.Quantity).HasPrecision(18, 3);
 
+        // Set on the script for this line only; null is the product's own.
+        b.Property(x => x.PackUnits).HasPrecision(18, 3);
+        b.Property(x => x.PackPrice)
+         .HasConversion(new NullableMoneyConverter())
+         .HasColumnName("PackPrice")
+         .HasPrecision(18, 2);
+
         b.HasIndex(x => new { x.ScriptId, x.LineNo }).IsUnique();
     }
 }

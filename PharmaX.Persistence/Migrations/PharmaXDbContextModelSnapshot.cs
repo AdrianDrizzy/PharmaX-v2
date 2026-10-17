@@ -590,6 +590,15 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<int>("LineNo")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("PackPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("PackPrice");
+
+                    b.Property<decimal?>("PackUnits")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ProductId")
                         .HasColumnType("TEXT");
 

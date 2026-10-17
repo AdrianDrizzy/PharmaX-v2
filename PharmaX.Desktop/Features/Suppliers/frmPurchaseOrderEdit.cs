@@ -121,6 +121,10 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
         _lines.ReadOnly = false;
         _lines.AllowUserToAddRows = false;
         _lines.SelectionMode = DataGridViewSelectionMode.CellSelect;
+
+        // Tab along a line: code, quantity, unit cost - over the product
+        // name and the total - then the next line.
+        _lines.TabsThroughCells = true;
         _lines.AddColumn("Code", "Code or name", 110);
         _lines.AddColumn("Product", "Product", 200);
         _lines.AddColumn("Qty", "Qty", 60, "0.###", true);
