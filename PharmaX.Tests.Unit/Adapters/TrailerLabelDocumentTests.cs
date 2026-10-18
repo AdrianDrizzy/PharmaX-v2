@@ -11,8 +11,9 @@ namespace PharmaX.Tests.Unit.Adapters;
 /// </summary>
 public class TrailerLabelDocumentTests
 {
-    // The label stock, in hundredths of an inch, inside its margins.
-    private static readonly Rectangle Label = new(8, 8, 260, 181);
+    // The 102 by 36 mm label stock, in hundredths of an inch, inside its
+    // margins.
+    private static readonly Rectangle Label = new(4, 4, 392, 136);
 
     private const string Pharmacy = "Bethrapha Pharmacy, 28 Woodstock Road";
 
@@ -31,10 +32,28 @@ public class TrailerLabelDocumentTests
             "SPIRONOLACTONE ALDAC 25MG TAB (5)",
             "INDAPAMIDE 1.5MG TAB (5)",
             "NIFEDIPINE CALCIGARD 20MG TAB (14)",
-            "DR: madondoro D",
-            new string('-', 40),
-            "Bethrapha Pharmacy, 28 Woodstock Road  08/09/2026",
+            "DR: madondoro D".PadRight(38) + "08/09/2026",
+            "Bethrapha Pharmacy, 28 Woodstock Road",
             "Keep out of reach of children.");
+    }
+
+    /// <remarks>
+    /// As wide as the item labels: a long name is shortened, never the
+    /// quantity the bag is checked against or which issue of the script
+    /// it is.
+    /// </remarks>
+    [Fact]
+    public void Every_line_fits_the_label()
+    {
+        var trailer = Trailer(("CO-AMOXICLAV 875MG/125MG FILM COATED TABLETS EXTENDED", 14m))
+            with { PatientName = "MRS PRIYANKA NAIDOO-RAMSAMY OF BORROWDALE" };
+
+        var lines = TrailerLabelDocument.Lines(trailer,
+            "Bethrapha Pharmacy, 28 Woodstock Road, Bulawayo", "+263 29 288 1234");
+
+        lines.Should().OnlyContain(line => line.Length <= LabelDocument.Columns);
+        lines[0].Should().StartWith("RX#: 13049 MRS").And.EndWith("(001)");
+        lines[1].Should().EndWith("… (14)");
     }
 
     [Fact]
@@ -58,7 +77,7 @@ public class TrailerLabelDocumentTests
         var lines = TrailerLabelDocument.Lines(trailer, Pharmacy);
 
         lines[0].Should().EndWith("(002)");
-        lines.Should().Contain("DR: Adams");
+        lines.Should().Contain("DR: Adams".PadRight(38) + "08/09/2026");
     }
 
     [Fact]
@@ -90,7 +109,7 @@ public class TrailerLabelDocumentTests
     /// Renders labels until the document says it is done; returns how many.
     private static int Render(TrailerLabelDocument document)
     {
-        using var bitmap = new Bitmap(276, 197);
+        using var bitmap = new Bitmap(400, 144);
         using var g = Graphics.FromImage(bitmap);
 
         var labels = 1;

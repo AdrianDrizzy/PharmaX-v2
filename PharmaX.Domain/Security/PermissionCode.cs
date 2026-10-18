@@ -98,6 +98,19 @@ public static class PermissionCode
     /// stocktake is not.
     /// </remarks>
     public const string StockPrepack = "inv.stock.prepack";
+
+    /// <summary>
+    /// Deleting what Stock alerts lists as expired or out of stock: an
+    /// expired batch is written off in full, an out-of-stock product is
+    /// discontinued.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission, apart from inv.stocktake.post and
+    /// inv.product.maintain, so the pharmacist and the assistant can clear
+    /// the dead stock the dispensary finds without being handed stock
+    /// counts or the catalogue (18 October 2026).
+    /// </remarks>
+    public const string StockRemove = "inv.stock.remove";
     public const string SupplierMaintain = "inv.supplier.maintain";
 
     /// <summary>
@@ -137,7 +150,8 @@ public static class PermissionCode
         ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,
-        UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack
+        UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack,
+        StockRemove
     };
 }
 

@@ -44,6 +44,33 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             CloseRequested?.Invoke(this, EventArgs.Empty);
         btnSuspended.Click += (_, _) =>
             SuspendedRequested?.Invoke(this, EventArgs.Empty);
+
+        // Click rather than CheckedChanged: only the operator's own tick
+        // is saved, not the presenter setting the box as the screen opens.
+        chkLabels.Click += (_, _) =>
+        {
+            ApplyLabelChoice();
+            ShowStage(_stage);
+            PrintLabelsChanged?.Invoke(this, EventArgs.Empty);
+        };
+        chkTrailer.Click += (_, _) =>
+            PrintTrailerChanged?.Invoke(this, EventArgs.Empty);
+
+        // An item is changed by double-clicking it and taken off with
+        // Delete, as a list is everywhere else.
+        grdItems.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+                ChangeItemRequested?.Invoke(this, EventArgs.Empty);
+        };
+
+        grdItems.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Delete || !btnRemove.Enabled) return;
+
+            e.Handled = true;
+            RemoveItemRequested?.Invoke(this, EventArgs.Empty);
+        };
     }
 
     /// <summary>
@@ -80,10 +107,19 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         _presenter.Attach(this);
     }
 
-    protected override async void OnLoad(EventArgs e)
+    protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
         SeatSplitter();
+    }
+
+    /// <summary>
+    /// Once the screen is up, so the patient and script pickers it opens
+    /// with sit over a window that has been drawn.
+    /// </summary>
+    protected override async void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
     }
 
@@ -163,6 +199,60 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         lblCoPaymentValue.Text = Format.Money(coPayment);
     }
 
+    private DispenseStage _stage = DispenseStage.NoScript;
+
+    public void ShowStage(DispenseStage stage)
+    {
+        _stage = stage;
+
+        lblNext.Text = stage switch
+        {
+            DispenseStage.NoScript =>
+                $"Press {KeyOf(btnFindScript)}Find script to choose the "
+                + "patient and the script.",
+            DispenseStage.NoItems =>
+                "Scan or type the first item in the Product box above.",
+            _ when chkLabels.Checked =>
+                "Check each item - double-click one to change it, Delete "
+                + $"to take it off - then press {KeyOf(btnIssue)}Issue to "
+                + "print the labels.",
+            _ => "Check each item - double-click one to change it, Delete "
+                 + $"to take it off - then press {KeyOf(btnIssue)}Issue. "
+                 + "No labels will print."
+        };
+
+        btnIssue.Enabled = stage == DispenseStage.Ready;
+        btnChange.Enabled = stage == DispenseStage.Ready;
+        btnRemove.Enabled = stage == DispenseStage.Ready;
+
+        if (stage != DispenseStage.NoScript) scanBar.TakeFocus();
+    }
+
+    /// The function key on a button, as the hint names it: "F6 ".
+    private string KeyOf(Button button) =>
+        FunctionKeyMap.Where(pair => pair.Value == button)
+                      .Select(pair => FunctionKeys.Name(pair.Key) + " ")
+                      .FirstOrDefault() ?? "";
+
+    public bool PrintLabels
+    {
+        get => chkLabels.Checked;
+        set
+        {
+            chkLabels.Checked = value;
+            ApplyLabelChoice();
+        }
+    }
+
+    public bool PrintTrailer
+    {
+        get => chkTrailer.Checked;
+        set => chkTrailer.Checked = value;
+    }
+
+    /// The trailer is a label, so it follows the labels tick.
+    private void ApplyLabelChoice() => chkTrailer.Enabled = chkLabels.Checked;
+
     // ---- Prompts ---------------------------------------------------------
 
     public Guid? PromptPatientSearch()
@@ -220,31 +310,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             ? lineNo
             : null;
 
-    public DirectionsDto? PromptDirections(ItemProposalDto proposal)
-    {
-        ArgumentNullException.ThrowIfNull(proposal);
-
-        // Offered from the script, so the usual answer is Enter twice.
-        var quantity = frmNumberPrompt.Ask(this, "Quantity",
-            proposal.FromScript
-                ? $"{proposal.Description}: quantity on the script"
-                : $"{proposal.Description}: quantity to dispense "
-                  + "(not on this script)",
-            proposal.Quantity, decimals: 3);
-
-        if (quantity is null) return null;
-
-        // Mandatory: a label without directions cannot be dispensed
-        // (DSP-004), so a blank answer cancels the item.
-        var directions = frmTextPrompt.Ask(this, "Directions",
-            "Directions as they will print on the label",
-            proposal.Directions,
-            hint: "e.g. T1 TDS, or Take ONE tablet three times a day");
-
-        return string.IsNullOrWhiteSpace(directions)
-            ? null
-            : new DirectionsDto(quantity.Value, directions.Trim());
-    }
+    public DirectionsDto? PromptDirections(ItemProposalDto proposal) =>
+        frmItemPrompt.Ask(this, proposal);
 
     public void ShowLabelScreen()
     {
@@ -289,6 +356,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         ItemChange.Ask(this, items, lineNo, issued: false);
     public event EventHandler? CloseRequested;
     public event EventHandler? SuspendedRequested;
+    public event EventHandler? PrintLabelsChanged;
+    public event EventHandler? PrintTrailerChanged;
 
     public (Guid PatientId, Guid ScriptId)? PromptSuspended(
         IReadOnlyList<SuspendedDispensingDto> kept) =>

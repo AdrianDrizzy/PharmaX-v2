@@ -188,6 +188,16 @@ public sealed class ProductRepository : IProductRepository
             .OrderBy(p => p.Description)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Product>> NothingOnHandAsync(
+        CancellationToken ct = default) =>
+        await _db.Products
+            .AsNoTracking()
+            .Where(p => p.IsActive)
+            .Where(p => p.ReorderLevel <= 0m)
+            .Where(p => p.QuantityOnHand <= 0m)
+            .OrderBy(p => p.Description)
+            .ToListAsync(ct);
+
     public async Task AddAsync(Product product, CancellationToken ct = default)
         => await _db.Products.AddAsync(product, ct);
 

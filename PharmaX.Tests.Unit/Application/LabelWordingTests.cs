@@ -5,44 +5,34 @@ using PharmaX.Application.Reference;
 namespace PharmaX.Tests.Unit.Application;
 
 /// <summary>
-/// What a label says in words: directions a patient can follow, and the
+/// What a label says in words: the directions as they were typed, and the
 /// warnings that go with the medicine.
 /// </summary>
 public class LabelWordingTests
 {
+    /// <remarks>
+    /// As the pharmacy's own labels print them: the figures as typed, the
+    /// whole line in capitals.
+    /// </remarks>
     [Theory]
-    [InlineData("Take 2 tablets three times a day after meals", "Take TWO tablets THREE times a day after meals")]
-    [InlineData("take 1 tablet twice a day", "Take ONE tablet TWICE a day")]
-    [InlineData("One capsule three times a day", "Take ONE capsule THREE times a day")]
-    [InlineData("1 tablet 3 times a day after food", "Take ONE tablet THREE times a day after food")]
-    [InlineData("Take 1-2 tablets every 6 hours when required", "Take ONE to TWO tablets every SIX hours when required")]
-    [InlineData("Take ½ tablet once a day", "Take HALF a tablet ONCE a day")]
-    [InlineData("10 ml three times a day", "Take 10 ml THREE times a day")]
-    [InlineData("2 drops in each eye four times a day", "Use TWO drops in each eye FOUR times a day")]
-    [InlineData("Apply twice a day", "Apply TWICE a day")]
-    public void Directions_are_in_plain_words_with_the_dose_and_how_often_in_capitals(
-        string typed, string printed) =>
+    [InlineData("Take 2 tablets after meals three times daily for pain",
+                "TAKE 2 TABLETS AFTER MEALS THREE TIMES DAILY FOR PAIN")]
+    [InlineData("  take 1 tablet\r\n twice a day ", "TAKE 1 TABLET TWICE A DAY")]
+    [InlineData(null, "")]
+    public void Directions_print_as_typed_in_capitals(string? typed, string printed) =>
         LabelWording.Directions(typed).Should().Be(printed);
 
     [Fact]
-    public void Directions_already_in_plain_words_are_left_as_they_are()
-    {
-        const string plain = "Take TWO tablets THREE times a day after meals";
-
-        LabelWording.Directions(plain).Should().Be(plain);
-    }
-
-    [Fact]
-    public void Rsi_shorthand_reads_in_plain_words_on_the_label()
+    public void Shorthand_prints_written_out_on_the_label()
     {
         var codes = DosageShorthand.Standard.ToDictionary(c => c.Code, c => c.Meaning,
             StringComparer.OrdinalIgnoreCase);
 
         LabelWording.Directions(DosageShorthand.Expand("1 T TDS AF", codes))
-            .Should().Be("Take ONE tablet THREE times a day after food");
+            .Should().Be("1 TABLET THREE TIMES A DAY AFTER FOOD");
 
         LabelWording.Directions(DosageShorthand.Expand("T2 BD PC", codes))
-            .Should().Be("Take TWO tablets TWICE a day after meals");
+            .Should().Be("TAKE 2 TABLETS TWICE A DAY AFTER MEALS");
     }
 
     [Theory]

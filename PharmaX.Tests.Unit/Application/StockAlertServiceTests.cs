@@ -99,6 +99,38 @@ public class StockAlertServiceTests
         (await builder.Build().CurrentAsync()).Value.Should().BeEmpty();
     }
 
+    /// <remarks>
+    /// Kept out of the alerts for the reason above, but offered on their
+    /// own so the Stock alerts screen can list them under "Out of stock"
+    /// and delete the dead ones.
+    /// </remarks>
+    [Fact]
+    public async Task A_product_with_nothing_on_hand_and_no_reorder_level_is_offered_apart()
+    {
+        var builder = new AlertBuilder();
+
+        var empty = builder.AddProduct("SHAMP", "Shampoo");
+        empty.SetQuantityOnHand(0m);
+
+        var stocked = builder.AddProduct("SOAP", "Soap");
+        stocked.SetQuantityOnHand(4m);
+
+        var levelled = builder.AddProduct("TOOTH", "Toothpaste");
+        levelled.SetReorderLevel(10m);
+        levelled.SetQuantityOnHand(0m);
+
+        var service = builder.Build();
+
+        var offered = (await service.NothingOnHandAsync()).Value.Single();
+
+        offered.ProductCode.Should().Be("SHAMP");
+        offered.Kind.Should().Be(AlertKind.NothingOnHand);
+        offered.Severity.Should().Be(AlertSeverity.Notice);
+
+        (await service.CurrentAsync()).Value.Should()
+            .NotContain(a => a.ProductCode == "SHAMP");
+    }
+
     [Fact]
     public async Task A_product_at_its_reorder_level_is_a_warning()
     {

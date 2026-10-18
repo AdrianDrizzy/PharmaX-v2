@@ -212,7 +212,7 @@ public sealed class SaleService : ISaleService
         if (sale is not { Status: SaleStatus.Finalised })
             return Result<SaleDto>.Fail("POS-024",
                 $"There is no receipt {number}. Check the number printed "
-                + "under Inv RefNo.");
+                + "after Trans No.");
 
         // The copy names the cashier who sold it, as the original did.
         var cashier = await _users.GetAsync(sale.OperatorId, ct);

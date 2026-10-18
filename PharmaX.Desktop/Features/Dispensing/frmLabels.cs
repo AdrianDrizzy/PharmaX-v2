@@ -58,10 +58,12 @@ public partial class frmLabels : PhxFormBase
                      IClaimFormService claimForms,
                      IClaimFormPrinter claimFormPrinter,
                      Application.Abstractions.PharmacyProfile pharmacy,
-                     IScriptService scripts)
+                     IScriptService scripts,
+                     Application.Abstractions.IWorkstationSettings settings)
         : this()
     {
         _scripts = scripts;
+        _settings = settings;
         _pharmacy = Adapters.Printing.LabelDocument.DispensedBy(
             pharmacy.TradingName, pharmacy.Address);
 
@@ -85,6 +87,7 @@ public partial class frmLabels : PhxFormBase
     }
 
     private readonly IScriptService? _scripts;
+    private readonly Application.Abstractions.IWorkstationSettings? _settings;
 
     /// <summary>
     /// Corrects one item of what was issued: the quantity handed over, the
@@ -219,21 +222,20 @@ public partial class frmLabels : PhxFormBase
             using var document = new Adapters.Printing.LabelDocument(label,
                                                                      _imprint);
 
-            foreach (var row in document.Rows())
-                text.AppendLine(row.Style switch
-                {
-                    Adapters.Printing.LabelStyle.Rule => new string('-', 40),
-                    Adapters.Printing.LabelStyle.Gap => "",
-                    _ => row.Text
-                });
+            foreach (var line in document.Lines())
+                text.AppendLine(line);
 
             text.AppendLine();
         }
 
-        // Then the trailer, exactly as it will print.
-        var trailer = await _labels.BuildTrailerAsync(id);
+        // Then the trailer, exactly as it will print - where this
+        // computer prints one.
+        var trailer = _settings is not null
+                      && await TrailerLabels.WantedAsync(_settings)
+            ? await _labels.BuildTrailerAsync(id)
+            : null;
 
-        if (trailer.IsSuccess)
+        if (trailer is { IsSuccess: true })
         {
             text.AppendLine("Trailer label:");
 

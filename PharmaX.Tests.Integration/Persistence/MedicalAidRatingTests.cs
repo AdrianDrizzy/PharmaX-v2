@@ -299,7 +299,8 @@ public class MedicalAidRatingTests : IClassFixture<PharmaXFixture>
             printer,
             PharmaXFixture.Resolve<IPermissionService>(scope),
             PharmaXFixture.Resolve<IAuditWriter>(scope),
-            PharmaXFixture.Resolve<IUnitOfWork>(scope));
+            PharmaXFixture.Resolve<IUnitOfWork>(scope),
+            PharmaXFixture.Resolve<IWorkstationSettings>(scope));
 
         var rebuilt = await reprints.BuildTrailerAsync(line.DispensingId);
 
@@ -313,6 +314,23 @@ public class MedicalAidRatingTests : IClassFixture<PharmaXFixture>
         printer.Labels.Should().ContainSingle();
         printer.Trailers.Should().ContainSingle()
             .Which.Should().BeEquivalentTo(trailer);
+
+        // Switched off on this computer, a reprint is the item labels alone.
+        var settings = PharmaXFixture.Resolve<IWorkstationSettings>(scope);
+        await TrailerLabels.SetWantedAsync(settings, wanted: false);
+
+        try
+        {
+            var without = await reprints.ReprintAsync(line.DispensingId);
+
+            without.IsSuccess.Should().BeTrue(without.Error.Message);
+            without.Value.Printed.Should().Be(1, "the item label only");
+            printer.Trailers.Should().ContainSingle("no second trailer printed");
+        }
+        finally
+        {
+            await TrailerLabels.SetWantedAsync(settings, wanted: true);
+        }
     }
 
     private sealed class RecordingLabelPrinter : ILabelPrinter

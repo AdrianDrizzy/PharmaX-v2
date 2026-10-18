@@ -150,6 +150,55 @@ public class AdminFindingsTests : IClassFixture<PharmaXFixture>
         written.Value.QuantityOnHand.Should().Be(5m);
     }
 
+    /// <summary>
+    /// Stock alerts' Delete: an expired batch is written off whole and an
+    /// out-of-stock product discontinued, while a batch still in date and a
+    /// product still on the shelf are left alone (18 October 2026).
+    /// </summary>
+    [Fact]
+    public async Task Deleting_from_stock_alerts_clears_only_what_is_expired_or_empty()
+    {
+        await SignInAsync();
+        var dropsId = await ProductAsync("CLR-EXP", "Cleared drops", 0m,
+            batches: new[] { ("CLR-OLD", -1, 3m), ("CLR-NEW", 12, 5m) });
+        var emptyId = await ProductAsync("CLR-OOS", "Sold out syrup", 0m,
+                                         reorderLevel: 2m);
+        var stockedId = await ProductAsync("CLR-STK", "Stocked syrup", 4m,
+                                           reorderLevel: 6m);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var adjustments = PharmaXFixture.Resolve<IStockAdjustmentService>(scope);
+            var batches = (await adjustments.FindAsync("CLR-EXP")).Value.Batches;
+
+            var result = await adjustments.ClearAsync(
+                batches.Select(b => b.BatchId).ToList(),
+                new[] { emptyId, stockedId });
+
+            result.IsSuccess.Should().BeTrue(result.Error.Message);
+            result.Value.Should().StartWith(
+                "1 expired batch(es) written off and 1 out-of-stock product(s) deleted");
+        }
+
+        using var check = _fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        var left = await db.Batches.AsNoTracking()
+            .Where(b => b.ProductId == dropsId)
+            .ToDictionaryAsync(b => b.BatchNumber, b => b.QuantityOnHand);
+
+        left["CLR-OLD"].Should().Be(0m);
+        left["CLR-NEW"].Should().Be(5m, "it is still in date");
+
+        var products = await db.Products.AsNoTracking()
+            .Where(p => p.Id == dropsId || p.Id == emptyId || p.Id == stockedId)
+            .ToDictionaryAsync(p => p.Id);
+
+        products[dropsId].QuantityOnHand.Should().Be(5m);
+        products[emptyId].IsActive.Should().BeFalse();
+        products[stockedId].IsActive.Should().BeTrue("it still has stock");
+    }
+
     // ---- Purchasing (ADM-DEF-06, ADM-DEF-07) --------------------------
 
     [Fact]

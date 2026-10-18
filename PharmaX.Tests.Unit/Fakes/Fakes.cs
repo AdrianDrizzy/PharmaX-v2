@@ -261,6 +261,19 @@ public sealed class InMemoryProductRepository : IProductRepository
         return Task.FromResult(low);
     }
 
+    public Task<IReadOnlyList<Product>> NothingOnHandAsync(
+        CancellationToken ct = default)
+    {
+        IReadOnlyList<Product> empty = _products
+            .Where(p => p.IsActive)
+            .Where(p => p.ReorderLevel <= 0m)
+            .Where(p => p.QuantityOnHand <= 0m)
+            .OrderBy(p => p.Description, StringComparer.Ordinal)
+            .ToList();
+
+        return Task.FromResult(empty);
+    }
+
     /// The same scope rule as the real repository: over the counter is
     /// Schedule 0 to 2.
     private static bool InScope(Product p, ProductScope scope) =>

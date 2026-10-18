@@ -241,7 +241,7 @@ public partial class frmPOS : PhxFormBase, IPosView
     public string? PromptReceiptNumber(string? last) =>
         frmTextPrompt.Ask(this, "Reprint receipt",
             last is null
-                ? "Receipt number to print again (Inv RefNo on the receipt)"
+                ? "Receipt number to print again (Trans No on the receipt)"
                 : "Receipt number to print again - Enter for the last one",
             last, hint: "e.g. S-001-000001");
 

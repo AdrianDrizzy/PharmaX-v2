@@ -283,23 +283,22 @@ public class PrintingTests
     [Fact]
     public void A_label_carries_the_product_quantity_batches_and_expiry()
     {
+        // Short warnings, so the eight lines have room for the batches.
         using var label = new LabelDocument(new LabelDto("Priya Naidoo",
             "Amoxicillin 500mg capsules 21s", 21m,
             "One capsule three times a day", "AMOX50-A x4, AMOX50-B x17",
             new DateOnly(2027, 1, 31), "Test Pharmacist", "SC-001-000003",
-            new DateOnly(2026, 9, 23), Array.Empty<string>()));
+            new DateOnly(2026, 9, 23), new[] { "Keep in the fridge." }));
 
         var lines = label.Lines();
 
         lines.Should().Contain("Priya Naidoo");
-        lines.Should().Contain("Amoxicillin 500mg capsules 21s");
-        lines.Should().Contain(l => l.StartsWith("Qty: 21", StringComparison.Ordinal));
-        lines.Should().Contain("Take ONE capsule THREE times a day");
-        lines.Should().Contain(l => l.Contains("AMOX50-A x4, AMOX50-B x17",
-                                               StringComparison.Ordinal)
-                                    && l.Contains("01/2027", StringComparison.Ordinal));
-        lines.Should().Contain(l => l.StartsWith("RxNo: SC-001-000003",
-                                                 StringComparison.Ordinal));
+        lines.Should().Contain("AMOXICILLIN 500MG CAPSULES 21S (21)");
+        string.Join(" ", lines).Should()
+            .Contain("ONE CAPSULE THREE TIMES A DAY KEEP IN THE FRIDGE.");
+        lines.Should().Contain("EXPIRY: 31/01/2027");
+        lines.Should().Contain(l => l.EndsWith("BATCH NO: AMOX50-A x4, AMOX50-B x17",
+                                               StringComparison.Ordinal));
     }
 
     [Fact]

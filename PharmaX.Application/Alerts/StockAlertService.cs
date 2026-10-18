@@ -35,7 +35,18 @@ public enum AlertKind
     OutOfStock = 3,
 
     /// At or under the level somebody set as "time to reorder".
-    LowStock = 4
+    LowStock = 4,
+
+    /// <summary>
+    /// Nothing on hand, on a product with no reorder level.
+    /// </summary>
+    /// <remarks>
+    /// Not an alert in the list of everything - on a price list loaded
+    /// without stock that is most of the catalogue - but shown under "Out
+    /// of stock", so dead lines can be deleted (IStockAlertService.
+    /// NothingOnHandAsync).
+    /// </remarks>
+    NothingOnHand = 5
 }
 
 /// <summary>
@@ -45,10 +56,12 @@ public enum AlertKind
 /// Stable between refreshes, so a screen redrawing every few seconds
 /// does not lose the row the user had selected.
 /// </param>
+/// <param name="BatchId">The batch an expiry alert is about.</param>
 public sealed record StockAlertDto(string Key, AlertKind Kind,
     AlertSeverity Severity, Guid ProductId, string ProductCode,
     string ProductName, string? BatchNumber, DateOnly? Expiry,
-    int? DaysLeft, decimal Quantity, decimal ReorderLevel, string Summary);
+    int? DaysLeft, decimal Quantity, decimal ReorderLevel, string Summary,
+    Guid? BatchId = null);
 
 /// <summary>
 /// The pharmacy's standing list of stock problems.
@@ -70,6 +83,14 @@ public interface IStockAlertService
 {
     /// Everything wrong right now, worst first.
     Task<Result<IReadOnlyList<StockAlertDto>>> CurrentAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// The active products with nothing on hand and no reorder level, by
+    /// name. Kept out of CurrentAsync, which the shell polls, and asked
+    /// for by the Stock alerts screen alone.
+    /// </summary>
+    Task<Result<IReadOnlyList<StockAlertDto>>> NothingOnHandAsync(
         CancellationToken ct = default);
 }
 
@@ -137,6 +158,40 @@ public sealed class StockAlertService : IStockAlertService
         return Result<IReadOnlyList<StockAlertDto>>.Ok(ordered);
     }
 
+    public async Task<Result<IReadOnlyList<StockAlertDto>>> NothingOnHandAsync(
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ProductRead);
+
+        if (!_options.Alerts.Enabled)
+            return Result<IReadOnlyList<StockAlertDto>>.Ok(
+                Array.Empty<StockAlertDto>());
+
+        // The same scope as the alerts: a cashier is not shown the
+        // dispensary's lines.
+        var everything = _permissions.ProductScope() == ProductScope.All;
+
+        IReadOnlyList<StockAlertDto> empty =
+            (await _products.NothingOnHandAsync(ct))
+            .Where(product => everything || !product.RequiresPharmacist)
+            .Select(product => new StockAlertDto(
+                Key: $"product:{product.Id}",
+                Kind: AlertKind.NothingOnHand,
+                Severity: AlertSeverity.Notice,
+                ProductId: product.Id,
+                ProductCode: product.Code,
+                ProductName: product.Description,
+                BatchNumber: null,
+                Expiry: null,
+                DaysLeft: null,
+                Quantity: product.QuantityOnHand,
+                ReorderLevel: 0m,
+                Summary: "Nothing on hand, and no reorder level set."))
+            .ToList();
+
+        return Result<IReadOnlyList<StockAlertDto>>.Ok(empty);
+    }
+
     /// <summary>
     /// Batches that have expired or are about to.
     /// </summary>
@@ -187,7 +242,8 @@ public sealed class StockAlertService : IStockAlertService
                 DaysLeft: days,
                 Quantity: batch.QuantityOnHand,
                 ReorderLevel: 0m,
-                Summary: DescribeExpiry(batch.QuantityOnHand, days)));
+                Summary: DescribeExpiry(batch.QuantityOnHand, days),
+                BatchId: batch.Id));
         }
 
         return alerts;

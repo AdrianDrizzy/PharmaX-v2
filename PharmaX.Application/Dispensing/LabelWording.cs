@@ -1,13 +1,11 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace PharmaX.Application.Dispensing;
 
 /// <summary>
-/// What a dispensing label says in words: the directions with the dose
-/// and how often written out ("Take TWO tablets THREE times a day after
-/// meals"), the warnings that go with the medicine, and the line every
-/// label carries.
+/// What a dispensing label says in words: the directions as they were
+/// typed, in capitals ("TAKE 2 TABLETS AFTER MEALS THREE TIMES DAILY"),
+/// and the warnings that go with the medicine.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,7 +24,7 @@ namespace PharmaX.Application.Dispensing;
 /// </remarks>
 public static class LabelWording
 {
-    /// Printed on every label.
+    /// Printed on every trailer label.
     public const string KeepOutOfReach = "Keep out of reach of children.";
 
     /// For a medicine none of the rules below speaks to.
@@ -37,153 +35,12 @@ public static class LabelWording
 
     // ---- Directions ------------------------------------------------------
 
-    private static readonly string[] NumberWords =
-    {
-        "", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT",
-        "NINE", "TEN", "ELEVEN", "TWELVE"
-    };
-
-    private const string Number =
-        @"\d+(?:\.\d+)?|½|1/2|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve";
-
-    // Singular and plural of each unit a dose is counted in.
-    private static readonly Dictionary<string, (string One, string Many)> Units =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["tablet"] = ("tablet", "tablets"), ["tab"] = ("tablet", "tablets"),
-            ["capsule"] = ("capsule", "capsules"), ["cap"] = ("capsule", "capsules"),
-            ["drop"] = ("drop", "drops"), ["puff"] = ("puff", "puffs"),
-            ["spray"] = ("spray", "sprays"), ["sachet"] = ("sachet", "sachets"),
-            ["suppository"] = ("suppository", "suppositories"),
-            ["pessary"] = ("pessary", "pessaries"), ["lozenge"] = ("lozenge", "lozenges"),
-            ["patch"] = ("patch", "patches"), ["teaspoon"] = ("teaspoon", "teaspoons"),
-            ["teaspoonful"] = ("teaspoonful", "teaspoonfuls"),
-            ["spoonful"] = ("spoonful", "spoonfuls"), ["measure"] = ("measure", "measures"),
-            ["ampoule"] = ("ampoule", "ampoules"), ["application"] = ("application", "applications"),
-            ["dose"] = ("dose", "doses"), ["inhalation"] = ("inhalation", "inhalations")
-        };
-
-    // Swallowed, so the directions start "Take"; anything else is "Use".
-    private static readonly HashSet<string> Swallowed = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "tablet", "tablets", "capsule", "capsules", "sachet", "sachets", "lozenge",
-        "lozenges", "teaspoon", "teaspoons", "teaspoonful", "teaspoonfuls",
-        "spoonful", "spoonfuls", "measure", "measures", "dose", "doses", "ml", "mls"
-    };
-
-    private static readonly Regex Dose = new(
-        $@"\b(?<n>{Number})(?:\s*(?:-|to)\s*(?<m>{Number}))?\s+(?<unit>tablets?|tabs?|capsules?|caps?|drops?|puffs?|sprays?|sachets?|suppositor(?:y|ies)|pessar(?:y|ies)|lozenges?|patch(?:es)?|teaspoonfuls?|teaspoons?|spoonfuls?|measures?|ampoules?|applications?|doses?|inhalations?)\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    private static readonly Regex Times = new(
-        $@"\b(?<n>{Number})\s+times\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    private static readonly Regex OnceTwice = new(
-        @"\b(once|twice|thrice)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    private static readonly Regex EveryHours = new(
-        $@"\bevery\s+(?<n>{Number})\s+hours?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    private static readonly Regex Leading = new(
-        $@"^(?<n>{Number})(?:\s*(?:-|to)\s*(?:{Number}))?\s+(?<unit>\S+)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
     /// <summary>
-    /// The directions in plain words, the dose and how often in capitals:
-    /// "take 2 tablets three times a day after meals" prints as "Take TWO
-    /// tablets THREE times a day after meals". A volume stays in figures
-    /// ("10 ml"), as a measuring spoon is marked.
+    /// The directions as the label prints them: as they were typed, on one
+    /// line, in capitals - the way the pharmacy's own labels read.
     /// </summary>
-    public static string Directions(string? directions)
-    {
-        if (string.IsNullOrWhiteSpace(directions)) return "";
-
-        // "½" is no letter or digit, so it is matched as "1/2".
-        var text = Regex.Replace(directions.Trim(), @"\s+", " ").Replace("½", "1/2");
-
-        // Directions that open on the dose get the verb a patient needs.
-        var leading = Leading.Match(text);
-
-        if (leading.Success)
-        {
-            var unit = leading.Groups["unit"].Value.TrimEnd('.', ',');
-            var verb = Swallowed.Contains(unit)
-                       || Units.TryGetValue(unit.TrimEnd('s'), out var u) && Swallowed.Contains(u.One)
-                ? "Take"
-                : "Use";
-            text = $"{verb} {text}";
-        }
-
-        text = Dose.Replace(text, m =>
-        {
-            var n = Words(m.Groups["n"].Value, out var count);
-            var many = count > 1m;
-            var range = "";
-
-            if (m.Groups["m"].Success)
-            {
-                range = " to " + Words(m.Groups["m"].Value, out _);
-                many = true;
-            }
-
-            var unit = UnitOf(m.Groups["unit"].Value);
-            return $"{n}{range} {(many ? unit.Many : unit.One)}";
-        });
-
-        text = Times.Replace(text, m => $"{Words(m.Groups["n"].Value, out _)} times");
-        text = OnceTwice.Replace(text, m => m.Value.ToUpperInvariant());
-        text = EveryHours.Replace(text, m =>
-        {
-            var n = Words(m.Groups["n"].Value, out var count);
-            return $"every {n} {(count == 1m ? "hour" : "hours")}";
-        });
-
-        return char.ToUpperInvariant(text[0]) + text[1..];
-    }
-
-    private static (string One, string Many) UnitOf(string word)
-    {
-        var key = word.ToLowerInvariant();
-        if (Units.TryGetValue(key, out var unit)) return unit;
-
-        // A plural: drop the ending to find the unit it counts.
-        foreach (var (singular, forms) in Units)
-            if (string.Equals(forms.Many, key, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(singular + "s", key, StringComparison.OrdinalIgnoreCase))
-                return forms;
-
-        return (word, word);
-    }
-
-    /// <summary>A count in capital words, with its value for the plural.</summary>
-    private static string Words(string number, out decimal value)
-    {
-        var text = number.Trim().ToLowerInvariant();
-
-        if (text is "½" or "1/2" or "0.5")
-        {
-            value = 0.5m;
-            return "HALF a";
-        }
-
-        var index = Array.FindIndex(NumberWords,
-            w => w.Length > 0 && string.Equals(w, text, StringComparison.OrdinalIgnoreCase));
-
-        if (index > 0)
-        {
-            value = index;
-            return NumberWords[index];
-        }
-
-        if (!decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out value))
-            return number;
-
-        if (value == 1.5m) return "ONE AND A HALF";
-
-        return value == Math.Floor(value) && value >= 1m && value < NumberWords.Length
-            ? NumberWords[(int)value]
-            : number;
-    }
+    public static string Directions(string? directions) =>
+        Regex.Replace((directions ?? "").Trim(), @"\s+", " ").ToUpperInvariant();
 
     // ---- Warnings --------------------------------------------------------
 

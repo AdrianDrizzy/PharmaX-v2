@@ -23,7 +23,13 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=..\dist
+; build.ps1 -TestBuild: named apart, so it is never mistaken for the
+; pharmacy's installer (its first administrator sign-in is an easy one).
+#ifdef TestBuild
+OutputBaseFilename=PharmaX-Setup-{#AppVersion}-test
+#else
 OutputBaseFilename=PharmaX-Setup-{#AppVersion}
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -91,6 +97,20 @@ Source: "..\PharmaX.Desktop\appsettings.json"; DestDir: "{app}"; \
 
 Source: "readme-after-install.txt"; DestDir: "{app}"; Flags: ignoreversion
 
+; The pharmacy's database, already holding everything taken over from
+; the previous system: build.ps1 imports the export into it and stops if
+; any total disagrees. Where appsettings.json looks for a single PC's
+; database, and per machine, so whoever signs in to Windows on shift sees
+; the same records. Only where there is none yet - an upgrade or a
+; reinstall must never put the change-over back over a pharmacy's trading
+; - and never removed, like everything else in ProgramData.
+Source: "..\dist\seed\pharmax.db"; DestDir: "{commonappdata}\{#AppName}\data"; \
+    Permissions: users-modify; Flags: onlyifdoesntexist uninsneveruninstall
+
+; What that import found for the pharmacist to look at.
+Source: "..\dist\seed\import-report.txt"; DestDir: "{commonappdata}\{#AppName}\data"; \
+    Flags: onlyifdoesntexist uninsneveruninstall
+
 ; MariaDB, downloaded and checked against its published hash by
 ; build.ps1. Only unpacked on the main computer, and only for as long as
 ; setup runs.
@@ -106,6 +126,7 @@ Name: "{commonappdata}\{#AppName}"; Permissions: users-modify
 Name: "{commonappdata}\{#AppName}\logs"; Permissions: users-modify
 Name: "{commonappdata}\{#AppName}\branding"; Permissions: users-modify
 Name: "{commonappdata}\{#AppName}\attachments"; Permissions: users-modify
+Name: "{commonappdata}\{#AppName}\data"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

@@ -129,6 +129,14 @@ public interface IProductRepository
     Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Active products with nothing on hand and no reorder level: the
+    /// lines the rule above leaves out, which Stock alerts offers under
+    /// "Out of stock" alone so that they can be deleted. Read-only.
+    /// </summary>
+    Task<IReadOnlyList<Product>> NothingOnHandAsync(
+        CancellationToken ct = default);
+
     Task AddAsync(Product product, CancellationToken ct = default);
 }
 

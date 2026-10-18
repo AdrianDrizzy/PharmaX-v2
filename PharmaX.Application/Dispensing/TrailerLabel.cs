@@ -1,3 +1,4 @@
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing.Dtos;
 
 namespace PharmaX.Application.Dispensing;
@@ -25,6 +26,37 @@ public sealed record TrailerItemDto(string Description, decimal Quantity);
 
 public static class TrailerLabels
 {
+    private const string Off = "off";
+
+    /// <summary>
+    /// Whether this computer prints a trailer label after a script's own
+    /// labels, at the issue and when they are reprinted.
+    /// </summary>
+    /// <remarks>
+    /// Optional, as the pharmacy asked: on unless the "Print trailer
+    /// label" box on the dispensing screen has been cleared, which is
+    /// how every installation behaved before the choice existed.
+    /// </remarks>
+    public static async Task<bool> WantedAsync(IWorkstationSettings settings,
+                                               CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return !string.Equals(
+            await settings.GetAsync(WorkstationSettingKey.TrailerLabel, ct),
+            Off, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static Task SetWantedAsync(IWorkstationSettings settings,
+                                      bool wanted,
+                                      CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return settings.SetAsync(WorkstationSettingKey.TrailerLabel,
+                                 wanted ? "on" : Off, ct);
+    }
+
     /// <summary>
     /// The trailer for an issued dispensing.
     /// </summary>

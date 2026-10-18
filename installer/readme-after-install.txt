@@ -7,7 +7,11 @@ WHAT IT WILL ASK
 
     One computer on its own
         PharmaX keeps its own file on this machine. Nothing else to set
-        up. Choose this if the pharmacy has a single PC.
+        up. Choose this if the pharmacy has a single PC. The installer
+        has already put the database in place, holding the stock,
+        patients, prescriptions and sales taken over from the previous
+        system. Sign in as admin and look through import-report.txt
+        beside it for what the pharmacist needs to check.
 
     The pharmacy's main computer
         This machine holds the database the tills share. Choose this on
@@ -54,6 +58,10 @@ IF THE TILLS CANNOT SEE THE MAIN COMPUTER
 WHERE THINGS ARE KEPT
 
   C:\ProgramData\PharmaX\workstation.json   this machine's settings
+  C:\ProgramData\PharmaX\data\pharmax.db    the database, on a single PC
+  C:\ProgramData\PharmaX\data\import-report.txt
+                                            what was taken over, and
+                                            what to check
   C:\ProgramData\PharmaX\logs               logs, one file per day
   C:\ProgramData\PharmaX\attachments        scanned prescriptions
   C:\ProgramData\PharmaX\branding           the pharmacy's logo

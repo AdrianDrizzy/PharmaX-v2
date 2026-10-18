@@ -42,6 +42,10 @@ public static class StandardRoleGrants
             PermissionCode.PriceChange,
             PermissionCode.StockTakeCapture,
             PermissionCode.StockTakePost,
+
+            // Clearing expired and out-of-stock lines from Stock alerts,
+            // as the pharmacist and the assistant do (18 October 2026).
+            PermissionCode.StockRemove,
             PermissionCode.SupplierMaintain,
             PermissionCode.ReferenceMaintain,
             PermissionCode.PurchaseOrderRaise,
@@ -85,6 +89,10 @@ public static class StandardRoleGrants
             PermissionCode.DispensingAmend,
             PermissionCode.StockPrepack,
 
+            // And clears expired and out-of-stock lines from Stock alerts
+            // (18 October 2026).
+            PermissionCode.StockRemove,
+
             // The dispensary orders and books in its own stock (16
             // October 2026).
             PermissionCode.PurchaseOrderRaise,
@@ -115,6 +123,7 @@ public static class StandardRoleGrants
             PermissionCode.ScriptDispense,
             PermissionCode.DispensingAmend,
             PermissionCode.StockPrepack,
+            PermissionCode.StockRemove,
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.StockTakeCapture,

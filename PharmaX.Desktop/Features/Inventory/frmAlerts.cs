@@ -50,6 +50,18 @@ public partial class frmAlerts : PhxFormBase, IAlertView
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
 
+        btnDelete.Click += (_, _) =>
+            DeleteRequested?.Invoke(this, EventArgs.Empty);
+
+        grdAlerts.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Delete || !btnDelete.Visible
+                || !btnDelete.Enabled) return;
+
+            e.Handled = true;
+            DeleteRequested?.Invoke(this, EventArgs.Empty);
+        };
+
         btnClose.Click += (_, _) => CloseView(false);
 
         grdAlerts.DoubleClick += (_, _) =>
@@ -77,6 +89,10 @@ public partial class frmAlerts : PhxFormBase, IAlertView
 
     private async Task PollAsync()
     {
+        // Not while several lines are chosen to delete: the redraw would
+        // drop the choice from under the operator.
+        if (grdAlerts.SelectedRows.Count > 1) return;
+
         if (_presenter is not null) await _presenter.RefreshQuietlyAsync();
     }
 
@@ -87,6 +103,28 @@ public partial class frmAlerts : PhxFormBase, IAlertView
         grdAlerts.CurrentRow?.DataBoundItem is AlertRow row
             ? row.ProductId
             : null;
+
+    public IReadOnlyList<string> SelectedKeys
+    {
+        get
+        {
+            var rows = grdAlerts.SelectedRows.Cast<DataGridViewRow>().ToList();
+
+            if (rows.Count == 0 && grdAlerts.CurrentRow is { } current)
+                rows.Add(current);
+
+            return rows.Select(row => row.DataBoundItem)
+                       .OfType<AlertRow>()
+                       .Select(alert => alert.Key)
+                       .ToList();
+        }
+    }
+
+    public bool WholePageChosen =>
+        grdAlerts.Rows.Count > 0
+        && grdAlerts.SelectedRows.Count == grdAlerts.Rows.Count;
+
+    public void AllowDelete(bool allowed) => btnDelete.Visible = allowed;
 
     public void ShowAlerts(IReadOnlyList<StockAlertDto> alerts)
     {
@@ -115,6 +153,7 @@ public partial class frmAlerts : PhxFormBase, IAlertView
         }
 
         btnProduct.Enabled = alerts.Count > 0;
+        btnDelete.Enabled = alerts.Any(AlertPresenter.IsDeletable);
     }
 
     public void ShowSummary(string summary) => lblSummary.Text = summary;
@@ -166,4 +205,5 @@ public partial class frmAlerts : PhxFormBase, IAlertView
     public event EventHandler? RefreshRequested;
     public event EventHandler? FilterChanged;
     public event EventHandler? OpenProductRequested;
+    public event EventHandler? DeleteRequested;
 }

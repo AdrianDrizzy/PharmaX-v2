@@ -66,12 +66,15 @@ public sealed class LabelReprintService : ILabelReprintService
     private readonly IPermissionService _permissions;
     private readonly IAuditWriter _audit;
     private readonly IUnitOfWork _uow;
+    private readonly IWorkstationSettings _settings;
 
     public LabelReprintService(IDispensingRepository dispensings,
         IScriptRepository scripts, IPatientRepository patients,
         IUserRepository users, ILabelPrinter printer,
-        IPermissionService permissions, IAuditWriter audit, IUnitOfWork uow)
+        IPermissionService permissions, IAuditWriter audit, IUnitOfWork uow,
+        IWorkstationSettings settings)
     {
+        _settings = settings;
         _dispensings = dispensings;
         _scripts = scripts;
         _patients = patients;
@@ -232,10 +235,13 @@ public sealed class LabelReprintService : ILabelReprintService
             printed++;
         }
 
-        // The trailer goes last, as it did when the script was issued.
-        var trailer = await BuildTrailerAsync(dispensingId, ct);
+        // The trailer goes last, as it did when the script was issued -
+        // where this computer prints trailers at all.
+        var trailer = await TrailerLabels.WantedAsync(_settings, ct)
+            ? await BuildTrailerAsync(dispensingId, ct)
+            : null;
 
-        if (trailer.IsSuccess)
+        if (trailer is { IsSuccess: true })
         {
             last = await _printer.PrintTrailerAsync(trailer.Value, ct)
                 .ConfigureAwait(false);

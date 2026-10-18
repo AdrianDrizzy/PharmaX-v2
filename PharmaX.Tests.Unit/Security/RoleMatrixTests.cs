@@ -205,6 +205,19 @@ public class RoleMatrixTests
                 Role.Standard.Manager, Role.Standard.StockController,
                 Role.Standard.Administrator);
 
+    /// <summary>
+    /// Deleting expired and out-of-stock lines from Stock alerts is for
+    /// the pharmacist, the assistant, the manager and the administrator
+    /// (18 October 2026).
+    /// </summary>
+    [Fact]
+    public void The_pharmacist_assistant_manager_and_administrator_clear_dead_stock() =>
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.StockRemove))
+            .Should().BeEquivalentTo(
+                Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant,
+                Role.Standard.Manager, Role.Standard.Administrator);
+
     [Fact]
     public void A_cashier_holds_no_report_permission_at_all()
     {

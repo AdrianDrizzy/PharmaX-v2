@@ -1,3 +1,4 @@
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Claims;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
@@ -27,6 +28,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
     private readonly ILabelPrinter _labels;
     private readonly IClaimFormService _claimForms;
     private readonly IClaimFormPrinter _claimFormPrinter;
+    private readonly IWorkstationSettings _settings;
 
     private Guid _dispensingId;
 
@@ -35,8 +37,10 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
                              Application.Patients.IPatientService patients,
                              ILabelPrinter labels,
                              IClaimFormService claimForms,
-                             IClaimFormPrinter claimFormPrinter)
+                             IClaimFormPrinter claimFormPrinter,
+                             IWorkstationSettings settings)
     {
+        _settings = settings;
         _dispensing = dispensing;
         _scripts = scripts;
         _patients = patients;
@@ -56,6 +60,11 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         View.LabelReprintRequested += (_, _) => View.ShowLabelScreen();
         View.CloseRequested += (_, _) => Enqueue(CloseAsync);
         View.SuspendedRequested += (_, _) => Enqueue(ResumeAsync);
+        View.PrintLabelsChanged += (_, _) => Enqueue(() => GuardAsync(() =>
+            _settings.SetAsync(WorkstationSettingKey.PrintLabels,
+                View.PrintLabels ? "on" : "off")));
+        View.PrintTrailerChanged += (_, _) => Enqueue(() => GuardAsync(() =>
+            TrailerLabels.SetWantedAsync(_settings, View.PrintTrailer)));
     }
 
     /// <summary>
@@ -100,11 +109,34 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
             await BeginOnAsync(patientId, scriptId);
     });
 
-    /// A script captured from a quote on the way in is begun at once.
-    public override Task InitialiseAsync() =>
-        View.StartWith is var (patientId, scriptId)
-            ? GuardAsync(() => BeginOnAsync(patientId, scriptId))
-            : Task.CompletedTask;
+    /// <summary>
+    /// Opens straight onto the work. A script captured from a quote on the
+    /// way in is begun at once; otherwise the patient and the script are
+    /// asked for, which every dispensing starts with and which used to
+    /// wait for a button. Cancelled, the screen waits on Find script.
+    /// </summary>
+    public override async Task InitialiseAsync()
+    {
+        await GuardAsync(async () =>
+        {
+            View.PrintLabels = !string.Equals(
+                await _settings.GetAsync(WorkstationSettingKey.PrintLabels),
+                "off", StringComparison.OrdinalIgnoreCase);
+            View.PrintTrailer = await TrailerLabels.WantedAsync(_settings);
+            View.ShowStage(Stage);
+        });
+
+        if (View.StartWith is var (patientId, scriptId))
+            await GuardAsync(() => BeginOnAsync(patientId, scriptId));
+        else
+            await BeginAsync();
+    }
+
+    /// Where the dispensing on the screen has got to.
+    private DispenseStage Stage =>
+        _dispensingId == Guid.Empty ? DispenseStage.NoScript
+        : _items.Count == 0 ? DispenseStage.NoItems
+        : DispenseStage.Ready;
 
     private Task BeginAsync() => GuardAsync(async () =>
     {
@@ -137,6 +169,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
         if (result.IsFailure)
         {
+            View.ShowStage(Stage);
             View.ShowError(result.Error.Message);
             return;
         }
@@ -282,6 +315,7 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         View.ShowItems(state.Items);
         View.ShowCoPayment(state.TariffTotal, state.ContributionTotal,
                            state.CoPaymentTotal);
+        View.ShowStage(Stage);
     }
 
     private Task IssueAsync() => GuardAsync(async () =>
@@ -328,12 +362,16 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
         var printed = new List<PrintResult>();
 
-        foreach (var label in result.Value.Labels)
-            printed.Add(await _labels.PrintAsync(label));
+        // Cleared on purpose: the script is still issued, and Dispensary
+        // > Labels prints them later. A trailer is a label too.
+        if (View.PrintLabels)
+        {
+            foreach (var label in result.Value.Labels)
+                printed.Add(await _labels.PrintAsync(label));
 
-        // The whole script on one more label, after the item labels.
-        if (result.Value.Trailer is { } trailer)
-            printed.Add(await _labels.PrintTrailerAsync(trailer));
+            if (result.Value.Trailer is { } trailer && View.PrintTrailer)
+                printed.Add(await _labels.PrintTrailerAsync(trailer));
+        }
 
         // Issued, so there is nothing to set aside on the way out.
         var issued = _dispensingId;
@@ -351,10 +389,15 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
                             + "member to sign?"))
             claimForm = "\n\n" + await PrintClaimFormAsync(issued);
 
+        var labels = View.PrintLabels
+            ? DescribeLabels(printed)
+            : "No labels printed. Reprint them from Dispensary > Labels "
+              + "if they are needed.";
+
         View.ShowInfo($"Issued. Script {result.Value.ScriptNumber}. "
                       + $"Co-payment {result.Value.CoPayment:N2} "
                       + "has been added to the collection queue.\n\n"
-                      + DescribeLabels(printed) + claimForm);
+                      + labels + claimForm);
 
         View.CloseView(true);
     });

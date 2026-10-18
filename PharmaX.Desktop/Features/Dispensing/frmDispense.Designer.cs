@@ -22,6 +22,9 @@ partial class frmDispense
     private Label lblTariffValue = null!;
     private Label lblContributionValue = null!;
     private Label lblCoPaymentValue = null!;
+    private Label lblNext = null!;
+    private CheckBox chkLabels = null!;
+    private CheckBox chkTrailer = null!;
     private Button btnFindScript = null!;
     private Button btnQuote = null!;
     private Button btnIssue = null!;
@@ -53,6 +56,9 @@ partial class frmDispense
         lblConditions = new Label();
         lblScript = new Label();
         lblWarningsCaption = new Label();
+        lblNext = new Label();
+        chkLabels = new CheckBox();
+        chkTrailer = new CheckBox();
         btnFindScript = new Button();
         btnFindScript.Name = "btnFindScript";
         btnQuote = new Button();
@@ -166,10 +172,49 @@ partial class frmDispense
         AddTotal(tblTotals, "Patient pays", 2, out lblCoPaymentValue,
                  emphasise: true);
 
+        // What to do next, in words, beside the totals: the screen's own
+        // instructions, so nobody has to be shown it twice.
+        lblNext.Dock = DockStyle.Fill;
+        lblNext.Font = PhxTheme.Emphasis;
+        lblNext.ForeColor = PhxTheme.Title;
+        lblNext.Name = "lblNext";
+        lblNext.TextAlign = ContentAlignment.MiddleLeft;
+
+        // Both ticks sit on their own row above the buttons, in the type
+        // of a button, so the choice is seen before Issue is pressed.
+        // Each is remembered on this computer.
+        var print = new FlowLayoutPanel
+        {
+            BackColor = PhxTheme.Band,
+            Dock = DockStyle.Bottom,
+            Height = 32,
+            Name = "pnlPrint",
+            WrapContents = false
+        };
+
+        chkLabels.AutoSize = true;
+        chkLabels.Checked = true;
+        chkLabels.Font = PhxTheme.Emphasis;
+        chkLabels.Margin = new Padding(0, 4, 28, 0);
+        chkLabels.Name = "chkLabels";
+        chkLabels.Text = "Print &labels";
+
+        chkTrailer.AutoSize = true;
+        chkTrailer.Checked = true;
+        chkTrailer.Font = PhxTheme.Emphasis;
+        chkTrailer.Margin = new Padding(0, 4, 0, 0);
+        chkTrailer.Name = "chkTrailer";
+        chkTrailer.Text = "Print &trailer label after the item labels";
+
+        print.Controls.Add(chkLabels);
+        print.Controls.Add(chkTrailer);
+
         pnlTotals.BackColor = PhxTheme.Band;
+        pnlTotals.Controls.Add(lblNext);
         pnlTotals.Controls.Add(tblTotals);
+        pnlTotals.Controls.Add(print);
         pnlTotals.Dock = DockStyle.Bottom;
-        pnlTotals.Height = 96;
+        pnlTotals.Height = 128;
         pnlTotals.Name = "pnlTotals";
         pnlTotals.Padding = new Padding(PhxTheme.Gutter, 8,
                                         PhxTheme.Gutter, 8);
@@ -183,6 +228,7 @@ partial class frmDispense
         btnIssue.Size = new Size(140, 32);
         btnIssue.Text = "&Issue";
         btnIssue.UseVisualStyleBackColor = true;
+        PhxTheme.MakePrimary(btnIssue);
 
         btnReprint.Location = new Point(304, 8);
         btnReprint.Size = new Size(140, 32);

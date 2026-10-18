@@ -7,8 +7,10 @@ namespace PharmaX.Adapters.Printing;
 
 /// <summary>
 /// Receipt printing uses GDI+ drawing rather than a report engine,
-/// because a 58 or 80 millimetre roll is a fixed-width canvas and the
-/// arithmetic is simpler done directly.
+/// because a till roll is a fixed-width canvas and the arithmetic is
+/// simpler done directly. The pharmacy's roll is 76 millimetres and 40
+/// columns wide; the type is sized to fit 40 columns to whatever the
+/// printer can reach (FixedPitch).
 /// </summary>
 /// <remarks>
 /// Lives in PharmaX.Adapters rather than PharmaX.Desktop so that
@@ -17,41 +19,74 @@ namespace PharmaX.Adapters.Printing;
 /// presentation layer, which is the one direction the dependency rule
 /// forbids (Section 4.1).
 ///
-/// Laid out as the pharmacy's tax invoice slip: the pharmacy's name,
-/// address and numbers; the customer's own registrations, which a
-/// customer reclaiming the VAT writes in at the counter; the invoice and
-/// who rang it up; a code-and-description line over a
-/// quantity-price-discount-total line for each item; then the totals,
-/// the tenders and the change, in the trading currency. No logo: a
-/// picture costs roll, time and toner on every sale, and the name says
-/// who the pharmacy is.
+/// The pharmacy's name, address and numbers at the head, then laid out
+/// as the pharmacy's previous till slips:
+/// <code>
+/// ----------------------------------------
+///               Tax Invoice
+///                Cash Sale
+/// ----------------------------------------
+/// Trans No: 31159
+/// Till Operator : test
+/// Till Number : 1
+/// ----------------------------------------
+/// Code    QTY    Unit Price     Amount Inc
+/// ----------------------------------------
+/// 1616     10 @        0.25
+/// MYPRODOL                         2.50 NV
+/// ----------------------------------------
+/// Sub Total                        2.50
+/// VAT-USD :                        0.00
+/// TOTAL-USD:                       2.50
+/// ----------------------------------------
+/// Cash USD                         2.50
+/// ----------------------------------------
+/// ----------------------------------------
+///
+///                Thank you
+/// </code>
+/// "Tax Invoice" where those slips said "Fiscal Tax Invoice": PharmaX is
+/// not connected to a fiscal device, and the word would say it was. No
+/// logo: a picture costs roll, time and toner on every sale, and the name
+/// says who the pharmacy is.
 /// </remarks>
 public sealed class ReceiptDocument : PrintDocument
 {
-    private const int CharactersPerLine = 42;
+    internal const int CharactersPerLine = 40;
 
-    /// Where every amount ends: the totals line up under the Total
-    /// column of the items, which is the right edge of the roll.
-    private const int AmountEnd = CharactersPerLine;
+    /// Where every amount ends: three columns short of the edge, so "NV"
+    /// fits after an item's amount and the totals line up under it.
+    private const int AmountEnd = CharactersPerLine - 3;
 
-    /// The code column, which the description starts after and the
-    /// item's figures sit under.
-    private const int CodeWidth = 10;
+    /// The code column; an item's quantity starts after it.
+    private const int CodeWidth = 8;
+
+    /// The heads of the item columns.
+    private const string Heads = "Code    QTY    Unit Price     Amount Inc";
+
+    /// How many and at what each, beside the code: each figure ends under
+    /// its head.
+    private const string Figures = "{0,3} @{1,12}";
 
     private readonly SaleDto _sale;
     private readonly ReceiptHeaderDto _header;
-    private readonly Font _body = new("Consolas", 8f);
-    private readonly Font _bold = new("Consolas", 8f, FontStyle.Bold);
     private readonly Font _title = new("Consolas", 11f, FontStyle.Bold);
+    private int _next;
 
     public ReceiptDocument(SaleDto sale, ReceiptHeaderDto header)
     {
         _sale = sale;
         _header = header;
 
-        // 80 mm roll, continuous length.
-        DefaultPageSettings.PaperSize = new PaperSize("Roll", 315, 1200);
-        DefaultPageSettings.Margins = new Margins(10, 10, 10, 10);
+        // 76 mm roll, continuous length.
+        DefaultPageSettings.PaperSize = new PaperSize("Roll", 299, 1200);
+        DefaultPageSettings.Margins = new Margins(5, 5, 10, 10);
+    }
+
+    protected override void OnBeginPrint(PrintEventArgs e)
+    {
+        base.OnBeginPrint(e);
+        _next = 0;
     }
 
     protected override void OnPrintPage(PrintPageEventArgs e)
@@ -59,8 +94,7 @@ public sealed class ReceiptDocument : PrintDocument
         base.OnPrintPage(e);
         ArgumentNullException.ThrowIfNull(e);
 
-        RenderPage(e.Graphics!, e.MarginBounds);
-        e.HasMorePages = false;
+        e.HasMorePages = RenderPage(e.Graphics!, FixedPitch.Area(e));
     }
 
     /// <summary>
@@ -81,12 +115,22 @@ public sealed class ReceiptDocument : PrintDocument
 
         void Rule() => Line(new string('-', CharactersPerLine));
 
-        void Field(string label, string value) =>
-            Line($"{label,-10}: {value}");
+        // The value wraps under itself rather than running off the roll:
+        // on forty columns a longer patient's name pushed their file
+        // number off the edge.
+        void Field(string lead, string value)
+        {
+            var room = CharactersPerLine - lead.Length;
+            var pieces = Wrap(value, room, room);
 
-        void Amount(string label, decimal value,
-                    ReceiptStyle style = ReceiptStyle.Body) =>
-            Line(AmountLine(label, value, culture), style);
+            Line(lead + pieces[0]);
+
+            foreach (var more in pieces.Skip(1))
+                Line(new string(' ', lead.Length) + more);
+        }
+
+        void Amount(string label, decimal value) =>
+            Line(AmountLine(label, value, culture));
 
         // Who sold it: the name and the address, the VAT number a tax
         // invoice cannot be one without (specification Section 6.10), and
@@ -113,24 +157,19 @@ public sealed class ReceiptDocument : PrintDocument
             Centre($"WhatsApp: {_header.WhatsApp.Trim()}");
 
         Rule();
-
-        // The customer's own registrations. Printed as empty fields
-        // rather than left off: a customer reclaiming the VAT on a
-        // purchase writes them onto the invoice at the counter, and an
-        // invoice with nowhere to write them is no use to them.
-        Line("Customer TIN    :");
-        Line("Customer VAT No :");
-
+        Centre("Tax Invoice");
+        Centre(Kind());
         Rule();
 
-        // The heading says what the paper is and how it was paid, which
-        // is the first thing anybody looks for on it.
-        Centre(Heading(), ReceiptStyle.Bold);
+        if (_header.IsCopy) Centre(CopyMark, ReceiptStyle.Bold);
 
-        Field("Cashier", _header.OperatorName);
-        Field("Date&Time", string.Format(culture, "{0:dd/MM/yyyy HH:mm}  "
-            + "Till No: {1}", _header.PrintedAtLocal, Till()));
-        Field("Inv RefNo", _sale.DocumentNumber);
+        Field("Trans No: ", _sale.DocumentNumber);
+        Field("Till Operator : ", _header.OperatorName);
+        Field("Till Number : ", Till());
+
+        // When, which a tax invoice has to say.
+        Line(string.Format(culture, "Date : {0:dd/MM/yyyy HH:mm}",
+            _header.PrintedAtLocal));
 
         // Whose it is. The account a sale went on, and the patient and
         // script a collection paid for, were on no receipt at all
@@ -138,111 +177,103 @@ public sealed class ReceiptDocument : PrintDocument
         var who = _sale.Particulars;
 
         if (who?.AccountNumber is string account)
-            Field("Account", $"{account} {who.AccountName}".Trim());
+            Field("Account : ", $"{account} {who.AccountName}".Trim());
 
         if (who?.PatientName is string patient)
-            Field("Patient", who.FileNumber is null
+            Field("Patient : ", who.FileNumber is null
                 ? patient
                 : $"{patient} ({who.FileNumber})");
 
         if (who?.ScriptNumber is string script)
             Line($"REF: Script No-{script}");
 
-        // How it was paid, and how much was put down. A receipt that
-        // does not say whether it was cash or card cannot settle the
-        // commonest query at the counter.
-        Field("Pay Method", string.Format(culture, "{0}  Tendered: {1:N2}",
-            PayMethod(), Tendered()));
-
-        if (currency.Length > 0)
-            Line(string.Format(culture, "Tendered: {0} = {1:N2}", currency,
-                Tendered()));
-
-        Centre("CUSTOMER COPY");
-        Centre(_header.IsCopy ? CopyMark : "ORIGINAL",
-               _header.IsCopy ? ReceiptStyle.Bold : ReceiptStyle.Body);
-
         Rule();
-        Centre("Description");
-        Line(string.Format(culture, "{0,-10}{1,5}{2,10}{3,9}{4,8}",
-            "Code", "Qty", "UnitPrice", "DiscPerc", "Total"));
+        Line(Heads);
         Rule();
 
         var sold = _sale.Lines.Where(x => !x.IsVoided).ToList();
+        var printed = Printed(sold, who?.ScriptNumber);
 
-        foreach (var l in sold)
+        foreach (var l in printed)
         {
-            // The code and then the whole description, over as many
-            // lines as it takes. It was cut short once, which took
-            // "60s x 30" off every collected script - the only place the
-            // receipt says how much of the medicine was paid for.
-            var described = l.VatRatePercent == 0m
-                ? l.Description + " NV"
-                : l.Description;
-
-            var wrapped = Wrap(described, CharactersPerLine - CodeWidth,
-                               CharactersPerLine - CodeWidth);
-
             var code = (l.ProductCode ?? "").Trim();
-            var indent = new string(' ', CodeWidth);
+            var figures = new string(' ', CodeWidth)
+                          + string.Format(culture, Figures,
+                              l.Quantity.ToString("0.###", culture),
+                              l.UnitPrice.ToString("N2", culture));
 
-            // A code longer than its column takes a line of its own: it
-            // used to push the description along instead, off the edge of
-            // the roll and out of the receipt.
-            if (code.Length < CodeWidth)
+            // The code in the space before the quantity, with a space still
+            // between them. A code longer than that takes a line of its
+            // own, rather than pushing the figures out from under their
+            // heads.
+            var before = figures.Length - figures.TrimStart().Length - 1;
+
+            if (code.Length <= before)
             {
-                Line(code.PadRight(CodeWidth) + wrapped[0]);
-
-                foreach (var more in wrapped.Skip(1)) Line(indent + more);
+                Line(code + figures[code.Length..]);
             }
             else
             {
                 Line(code);
-
-                foreach (var piece in wrapped) Line(indent + piece);
+                Line(figures);
             }
 
-            Line(Figures(l, culture));
+            // The name with what the line came to, after any discount, so
+            // the amounts add up to what was paid; the whole name, over as
+            // many lines as it takes.
+            var amount = l.LineTotal.ToString("N2", culture);
+            var room = AmountEnd - amount.Length - 1;
+            var name = Wrap(l.Description, room, CharactersPerLine);
+
+            Line(name[0].PadRight(room + 1) + amount
+                 + (l.VatRatePercent == 0m ? " NV" : ""));
+
+            foreach (var more in name.Skip(1)) Line(more);
         }
 
         Rule();
-        Amount("SubTotal", _sale.Totals.Subtotal);
 
-        if (_sale.Totals.Discount > 0m)
-            Amount("Discount", _sale.Totals.Discount);
+        // The sum of the amounts above. The sale's own subtotal is before
+        // its discounts, which the amounts are not, so a discounted slip
+        // did not add up.
+        Amount("Sub Total", printed.Sum(l => l.LineTotal));
 
         foreach (var (label, vat) in VatLines(sold, currency, culture))
             Amount(label, vat);
 
+        Amount(Labelled("TOTAL", currency) + ":", _sale.Totals.Total);
         Rule();
-        Amount("Total(Incl VAT)", _sale.Totals.Total, ReceiptStyle.Bold);
+
+        // What was handed over for each tender. A payment is recorded at
+        // what stayed in the drawer, and the change came out of the cash,
+        // so the cash line adds it back: 20.00 handed over, not 14.90.
+        var change = _sale.Totals.Change;
 
         foreach (var payment in _sale.Payments ?? Array.Empty<PaymentDto>())
-            Amount(TenderLabel(payment.TenderType)
-                   + (currency.Length > 0 ? " " + currency : ""),
-                   payment.Amount);
-
-        // What was put down against what was owed, in words rather than
-        // as another right-aligned figure: it is the line the customer
-        // checks before they walk away from the counter.
-        if (Tendered() > 0m)
         {
-            Line("");
-            Line(string.Format(culture,
-                "Change for Tendered {0:N2} = {1:N2}", Tendered(),
-                _sale.Totals.Change));
+            var handed = payment.Amount;
+
+            if (payment.TenderType == "Cash")
+            {
+                handed += change;
+                change = 0m;
+            }
+
+            Amount(TenderLabel(payment.TenderType)
+                   + (currency.Length > 0 ? " " + currency : ""), handed);
         }
 
-        Line("");
-        Line(string.Format(culture, "Total Items: {0:N2}",
-            sold.Sum(l => l.Quantity)));
+        if (_sale.Totals.Change > 0m)
+            Amount("Change" + (currency.Length > 0 ? " " + currency : ""),
+                   _sale.Totals.Change);
+
+        Rule();
 
         // The patient's portion is what was paid here; the scheme's is
         // claimed. Both, so the patient can see the script was not
         // charged to them in full.
         if (who?.SchemeShare is decimal share)
         {
-            Rule();
             Amount($"Claimed from {who.SchemeName ?? "medical aid"}", share);
             Amount("Your portion", _sale.Totals.Total);
         }
@@ -258,13 +289,15 @@ public sealed class ReceiptDocument : PrintDocument
 
         if (_header.IsCopy) Centre(CopyMark, ReceiptStyle.Bold);
 
+        Line("");
         Centre("Thank you");
 
         return rows;
     }
 
     /// <summary>
-    /// Draws the whole slip onto a surface.
+    /// Draws as much of the slip as fits on one page, from where the last
+    /// page stopped, and says whether there is more.
     /// </summary>
     /// <remarks>
     /// Separate from OnPrintPage so that a test can render the receipt
@@ -272,8 +305,12 @@ public sealed class ReceiptDocument : PrintDocument
     /// produces that a customer keeps and an auditor reads, and
     /// "it compiled" is not evidence that the fiscal particulars actually
     /// landed on the paper.
+    ///
+    /// The slip used to be drawn as one page whatever its length, so on a
+    /// long sale everything past the foot of the page - the total and the
+    /// tenders first - was never printed.
     /// </remarks>
-    internal void RenderPage(Graphics g, Rectangle margins)
+    internal bool RenderPage(Graphics g, Rectangle margins)
     {
         ArgumentNullException.ThrowIfNull(g);
 
@@ -284,108 +321,115 @@ public sealed class ReceiptDocument : PrintDocument
             Alignment = StringAlignment.Center
         };
 
-        foreach (var row in Rows())
+        // Forty columns to the width the printer reaches, up to the 8
+        // points the slip was laid out in.
+        var size = FixedPitch.Size(g, CharactersPerLine, margins.Width, 8f);
+        using var body = new Font(FixedPitch.Family, size);
+        using var bold = new Font(FixedPitch.Family, size, FontStyle.Bold);
+        using var exact = FixedPitch.Format();
+
+        var rows = Rows();
+
+        while (_next < rows.Count)
         {
+            var row = rows[_next];
             var font = row.Style switch
             {
                 ReceiptStyle.Title => _title,
-                ReceiptStyle.Bold => _bold,
-                _ => _body
+                ReceiptStyle.Bold => bold,
+                _ => body
             };
 
             // Centred rows wrap within the roll: a long trading name in
             // the large type would otherwise run off both edges.
-            if (row.Centred)
-            {
-                var height = Math.Max(
-                    g.MeasureString(row.Text, font, margins.Width).Height,
-                    font.GetHeight(g));
+            var height = row.Centred
+                ? Math.Max(g.MeasureString(row.Text, font, margins.Width).Height,
+                           font.GetHeight(g))
+                : font.GetHeight(g);
 
+            // A row that will not fit goes to the next page - unless
+            // nothing is on this one yet, or it would never be printed.
+            if (y > margins.Top && y + height > margins.Bottom) return true;
+
+            if (row.Centred)
                 g.DrawString(row.Text, font, Brushes.Black,
                     new RectangleF(margins.Left, y, margins.Width, height),
                     centred);
+            else
+                g.DrawString(row.Text, font, Brushes.Black, margins.Left, y,
+                             exact);
 
-                y += height;
-                continue;
-            }
-
-            g.DrawString(row.Text, font, Brushes.Black, margins.Left, y);
-            y += font.GetHeight(g);
+            y += height;
+            _next++;
         }
+
+        return false;
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
-        {
-            _body.Dispose();
-            _bold.Dispose();
-            _title.Dispose();
-        }
+        if (disposing) _title.Dispose();
 
         base.Dispose(disposing);
     }
 
     /// <summary>
-    /// What the paper is, and how it was paid, in brackets after it.
+    /// The items as the slip prints them: everything sold over the
+    /// counter as it was rung up, and a collected script as one line,
+    /// "Script Charge: 13972", for the co-payment on all of it.
     /// </summary>
-    private string Heading() => $"TAX INVOICE ({PayMethod()})";
-
-    /// <summary>
-    /// How the sale was paid, as the heading and the Pay Method line
-    /// name it. A sale settled two ways names both.
-    /// </summary>
-    private string PayMethod()
+    /// <remarks>
+    /// What the patient was given is on the labels and the script. A
+    /// receipt is handed across the counter, kept in a purse and sent to
+    /// an employer, and is no place to list somebody's medicines - the
+    /// pharmacy's previous system printed the script number alone.
+    /// </remarks>
+    private static IReadOnlyList<SaleLineDto> Printed(
+        IReadOnlyList<SaleLineDto> sold, string? scriptNumber)
     {
-        var tenders = (_sale.Payments ?? Array.Empty<PaymentDto>())
-            .Select(p => TenderLabel(p.TenderType).ToUpperInvariant())
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var script = sold.Where(l => l.IsScript).ToList();
+        if (script.Count == 0) return sold;
 
-        return tenders.Count == 0 ? "CASH" : string.Join("/", tenders);
+        var charge = script[0] with
+        {
+            ProductId = Guid.Empty,
+            ProductCode = null,
+            Description = string.IsNullOrWhiteSpace(scriptNumber)
+                ? "Script Charge"
+                : $"Script Charge: {scriptNumber.Trim()}",
+            Quantity = 1m,
+            UnitPrice = script.Sum(l => l.Quantity * l.UnitPrice),
+            Discount = script.Sum(l => l.Discount),
+            LineTotal = script.Sum(l => l.LineTotal),
+
+            // Marked NV only when nothing on the script carried VAT.
+            VatRatePercent = script.Max(l => l.VatRatePercent)
+        };
+
+        return sold.Where(l => !l.IsScript || ReferenceEquals(l, script[0]))
+                   .Select(l => l.IsScript ? charge : l)
+                   .ToList();
     }
 
     /// <summary>
-    /// What was put down. The tendered figure where the till recorded
-    /// one, and otherwise what was paid: a card is not "tendered" at the
-    /// till, and a slip reading nothing tendered against a paid total
-    /// reads as though the customer walked out without paying.
+    /// The kind of sale, by how it was paid: "Cash Sale", "Card Sale",
+    /// "Cash/Card Sale" for a sale settled two ways.
     /// </summary>
-    private decimal Tendered() =>
-        _sale.Totals.Tendered > 0m
-            ? _sale.Totals.Tendered
-            : (_sale.Payments ?? Array.Empty<PaymentDto>())
-                .Sum(p => p.Amount);
+    private string Kind()
+    {
+        var tenders = (_sale.Payments ?? Array.Empty<PaymentDto>())
+            .Select(p => TenderLabel(p.TenderType))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return (tenders.Count == 0 ? "Cash" : string.Join("/", tenders))
+               + " Sale";
+    }
 
     private string Till() =>
         string.IsNullOrWhiteSpace(_header.TillNumber)
             ? _header.BranchAndTill
             : _header.TillNumber.Trim();
-
-    /// <summary>
-    /// The figures of an item, under its code and description: how many,
-    /// at what each, less what discount, for what.
-    /// </summary>
-    private static string Figures(SaleLineDto line, CultureInfo culture) =>
-        string.Format(culture, "{0,-10}{1,5}{2,10}{3,9}{4,8}", "",
-            line.Quantity.ToString("0.###", culture),
-            line.UnitPrice.ToString("N2", culture),
-            DiscountPercent(line).ToString("N2", culture),
-            line.LineTotal.ToString("N2", culture));
-
-    /// <summary>
-    /// The discount as the column states it: what was taken off, against
-    /// what the line would have come to without it.
-    /// </summary>
-    private static decimal DiscountPercent(SaleLineDto line)
-    {
-        var gross = line.Quantity * line.UnitPrice;
-
-        return gross == 0m
-            ? 0m
-            : Math.Round(line.Discount / gross * 100m, 2,
-                         MidpointRounding.AwayFromZero);
-    }
 
     /// <summary>
     /// The VAT, one line per rate the sale was charged at.
@@ -400,7 +444,7 @@ public sealed class ReceiptDocument : PrintDocument
         IReadOnlyList<SaleLineDto> lines, string currency,
         CultureInfo culture)
     {
-        var label = Labelled("Vat", currency);
+        var label = Labelled("VAT", currency);
 
         var rates = lines.Select(l => l.VatRatePercent)
             .Where(rate => rate > 0m)

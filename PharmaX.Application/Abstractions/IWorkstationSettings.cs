@@ -33,6 +33,16 @@ public static class WorkstationSettingKey
     /// form - which a receipt roll cannot print.
     public const string DocumentPrinter = "printer.document";
 
+    /// "off" where this computer prints no labels when a script is
+    /// issued; anything else, or nothing, prints them. Reprint still
+    /// prints (DispensePresenter).
+    public const string PrintLabels = "label.print";
+
+    /// "off" where this computer prints no trailer label after a
+    /// script's own labels; anything else, or nothing, prints one
+    /// (TrailerLabels.WantedAsync).
+    public const string TrailerLabel = "label.trailer";
+
     /// <summary>
     /// The trading currency, as an ISO 4217 code.
     /// </summary>
