@@ -54,6 +54,21 @@ public class LabelWordingTests
     }
 
     [Fact]
+    public void The_share_sentence_is_left_off()
+    {
+        LabelWording.Directions(
+                "Take at once. Do not share this medicine with anyone.")
+            .Should().Be("TAKE AT ONCE.");
+
+        LabelWording.WithoutShareNotice(
+                "Use only as directed. Do not share this medicine.")
+            .Should().Be("Use only as directed.");
+
+        string.Join(" ", LabelWording.Warnings("COTTON WOOL 125G"))
+            .Should().NotContain("share");
+    }
+
+    [Fact]
     public void A_cream_is_not_told_to_be_taken_with_food()
     {
         var warnings = LabelWording.Warnings("DICLOFENAC EMULGEL 1%");

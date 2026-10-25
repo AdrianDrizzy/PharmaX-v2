@@ -213,6 +213,18 @@ public sealed class InMemorySaleRepository : ISaleRepository
             string.Equals(s.DocumentNumber, documentNumber,
                           StringComparison.Ordinal)));
 
+    public Task<IReadOnlyList<Sale>> FinalisedBetweenAsync(DateTime fromUtc,
+        DateTime toUtc, CancellationToken ct = default)
+    {
+        IReadOnlyList<Sale> found = _sales.Values
+            .Where(s => s.Status == SaleStatus.Finalised
+                        && s.OccurredAtUtc >= fromUtc && s.OccurredAtUtc < toUtc)
+            .OrderByDescending(s => s.OccurredAtUtc)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
     public Task<IReadOnlyList<Sale>> HeldAsync(CancellationToken ct = default)
     {
         IReadOnlyList<Sale> held = _sales.Values
@@ -287,10 +299,11 @@ public sealed class InMemoryProductRepository : IProductRepository
 
     public Task<IReadOnlyList<Product>> SearchAsync(string term,
         int take = 200, ProductScope scope = ProductScope.All, int skip = 0,
-        CancellationToken ct = default)
+        bool includeInactive = true, CancellationToken ct = default)
     {
         IReadOnlyList<Product> found = _products
             .Where(p => InScope(p, scope))
+            .Where(p => includeInactive || p.IsActive)
             .Where(p => string.IsNullOrWhiteSpace(term)
                 || p.Description.Contains(term,
                     StringComparison.OrdinalIgnoreCase)
@@ -303,9 +316,10 @@ public sealed class InMemoryProductRepository : IProductRepository
     }
 
     public Task<int> CountAsync(string term,
-        ProductScope scope = ProductScope.All,
+        ProductScope scope = ProductScope.All, bool includeInactive = true,
         CancellationToken ct = default) =>
-        Task.FromResult(_products.Count(p => InScope(p, scope)));
+        Task.FromResult(_products.Count(p => InScope(p, scope)
+                                             && (includeInactive || p.IsActive)));
 
     public Task AddAsync(Product product, CancellationToken ct = default)
     {
@@ -574,6 +588,19 @@ public sealed class InMemoryDispensingRepository : IDispensingRepository
     {
         IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing> found = _items.Values
             .Where(d => d.PatientId == patientId)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    public Task<IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing>>
+        IssuedBetweenAsync(DateTime fromUtc, DateTime toUtc,
+            CancellationToken ct = default)
+    {
+        IReadOnlyList<PharmaX.Domain.Dispensing.Dispensing> found = _items.Values
+            .Where(d => d.Status == PharmaX.Domain.Dispensing.DispensingStatus.Issued
+                        && d.IssuedAtUtc >= fromUtc && d.IssuedAtUtc < toUtc)
+            .OrderByDescending(d => d.IssuedAtUtc)
             .ToList();
 
         return Task.FromResult(found);

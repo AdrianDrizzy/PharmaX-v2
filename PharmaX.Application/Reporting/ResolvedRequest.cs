@@ -26,7 +26,8 @@ public sealed class ResolvedRequest
 
     public ResolvedRequest(ReportPreset preset, DateOnly from, DateOnly to,
         string branchCode, IReadOnlyDictionary<string, string?> slicers,
-        ReportProvenance provenance, Func<Guid, string>? operatorName = null)
+        ReportProvenance provenance, Func<Guid, string>? operatorName = null,
+        DateTime? fromClock = null, DateTime? toClock = null)
     {
         Preset = preset;
         From = from;
@@ -35,6 +36,8 @@ public sealed class ResolvedRequest
         _slicers = slicers;
         Provenance = provenance;
         _operatorName = operatorName ?? (id => id.ToString());
+        FromClock = fromClock;
+        ToClock = toClock;
     }
 
     public ReportPreset Preset { get; }
@@ -43,11 +46,24 @@ public sealed class ResolvedRequest
     public string BranchCode { get; }
     public ReportProvenance Provenance { get; }
 
-    /// Half-open in UTC, so the last second of the final day is not
-    /// silently dropped by a BETWEEN on a timestamp column.
-    public DateTime FromUtc => From.ToDateTime(TimeOnly.MinValue).ToUniversalTime();
+    /// Set for a sales summary, which is asked for by the minute.
+    public DateTime? FromClock { get; }
+    public DateTime? ToClock { get; }
+
+    /// Half-open in UTC. A date range runs to the end of the last day.
+    /// A clock range includes the end minute: 13:00 means through 13:00.
+    public DateTime FromUtc =>
+        FromClock is DateTime start
+            ? AsUtc(start)
+            : From.ToDateTime(TimeOnly.MinValue).ToUniversalTime();
+
     public DateTime ToExclusiveUtc =>
-        To.AddDays(1).ToDateTime(TimeOnly.MinValue).ToUniversalTime();
+        ToClock is DateTime end
+            ? AsUtc(end.AddMinutes(1))
+            : To.AddDays(1).ToDateTime(TimeOnly.MinValue).ToUniversalTime();
+
+    private static DateTime AsUtc(DateTime local) =>
+        DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();
 
     public string? String(string key) =>
         _slicers.TryGetValue(key, out var value)

@@ -186,6 +186,23 @@ public class PhxFormBase : Form, IView
         _functionKeys = FunctionKeys.Assign(this, escape: ClosesOnEscape);
     }
 
+    /// <summary>The key that opens Ask PharmaX from any screen.</summary>
+    public const Keys AssistantKey = Keys.Control | Keys.Shift | Keys.A;
+
+    private Action<IWin32Window>? _openAssistant;
+
+    /// <summary>
+    /// Whether <see cref="AssistantKey"/> opens Ask PharmaX here. Off where
+    /// nobody has signed in yet, and in Ask PharmaX itself.
+    /// </summary>
+    protected virtual bool OffersAssistant => true;
+
+    /// <summary>
+    /// How to open Ask PharmaX over this screen. Handed to every screen by
+    /// ViewFactory, which is the one place that can build it.
+    /// </summary>
+    public void UseAssistant(Action<IWin32Window> open) => _openAssistant = open;
+
     public void UseConnectivity(IConnectivityMonitor monitor,
                                 bool sharedDatabase = false)
     {
@@ -349,7 +366,16 @@ public class PhxFormBase : Form, IView
     /// </remarks>
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        if (keyData == Keys.Escape && Modal && ClosesOnEscape
+        // Ahead of the screen's own keys, so it works the same everywhere.
+        if (keyData == AssistantKey && OffersAssistant && _openAssistant is not null)
+        {
+            _openAssistant(this);
+            return true;
+        }
+
+        // A dialog, or a screen open beside the shell (owned by it); never
+        // the shell itself.
+        if (keyData == Keys.Escape && (Modal || Owner is not null) && ClosesOnEscape
             && CancelButton is null)
         {
             CloseView(false);

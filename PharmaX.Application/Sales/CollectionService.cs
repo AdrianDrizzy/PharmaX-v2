@@ -116,6 +116,13 @@ public sealed class CollectionService : ICollectionService
     {
         _permissions.Demand(PermissionCode.SaleCreate);
 
+        // The co-payment goes in the drawer it is counted out of at the
+        // cash-up, so it is taken on a till, by somebody who takes money.
+        if (!_permissions.Has(PermissionCode.SaleTakePayment))
+            return Result<SaleDto>.Fail("POS-028",
+                "The cashier takes this payment on the till with the "
+                + "drawer. The script stays in the queue until then.");
+
         if (_user.TillSessionId is null)
             return Result<SaleDto>.Fail("POS-013",
                 "Open a till session before taking payment.");

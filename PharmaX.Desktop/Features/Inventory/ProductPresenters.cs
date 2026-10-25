@@ -36,6 +36,7 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
             var batch = View.SelectedBatchId;
             Enqueue(() => OpenEditorAsync(id, batch));
         };
+        View.DeactivateRequested += (_, _) => Enqueue(DeactivateAsync);
         View.CellEdited += (_, _) =>
         {
             if (View.PendingEdit is not { } edit) return;
@@ -54,6 +55,27 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
 
     public override Task InitialiseAsync() => LoadAsync();
 
+    /// Leaves the product on past sales and takes it off this list.
+    private Task DeactivateAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedId is not Guid id)
+        {
+            View.ShowInfo("Choose a product first.");
+            return;
+        }
+
+        if (!View.Confirm(
+                "Deactivate this product? It stays on past sales and "
+                + "dispensings, and leaves this list."))
+            return;
+
+        var result = await _products.DeactivateAsync(id);
+
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+
+        await LoadAsync();
+    });
+
     /// <summary>
     /// Every product the search matches, in the view on screen, for an
     /// export: the grid holds only the page.
@@ -69,7 +91,8 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
                 return;
             }
 
-            var products = await _products.SearchAsync(View.SearchText, take: int.MaxValue);
+            var products = await _products.SearchAsync(View.SearchText, take: int.MaxValue,
+                includeInactive: View.IncludeInactive);
             if (products.IsFailure) View.ShowError(products.Error.Message);
             else export(products.Value.Items.ToList<object>());
         }));
@@ -118,7 +141,8 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
     private Task LoadProductsAsync() => GuardAsync(async () =>
     {
         var result = await _products.SearchAsync(View.SearchText,
-            take: PageSize, skip: _page * PageSize);
+            take: PageSize, skip: _page * PageSize,
+            includeInactive: View.IncludeInactive);
 
         if (result.IsFailure)
         {

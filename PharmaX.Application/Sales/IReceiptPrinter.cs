@@ -69,8 +69,13 @@ public sealed record PrintResult(PrintOutcome Outcome, string? PrinterName,
 /// Monospaced, at most 42 characters, so the same document suits the till
 /// roll and an A4 printer.
 /// </param>
+/// <param name="Columns">
+/// How wide the lines are laid out. Thirty-two prints as the receipt does,
+/// in its larger type under its centred header (the cash-up slip).
+/// </param>
 public sealed record PrintableDocument(string Title,
-                                       IReadOnlyList<string> Lines);
+                                       IReadOnlyList<string> Lines,
+                                       int Columns = SlipLayout.Width);
 
 /// <summary>
 /// Prints a PrintableDocument on this workstation's receipt printer, under
@@ -111,12 +116,17 @@ public interface IDocumentPrinter
 /// <param name="WhatsApp">
 /// The number it takes messages on, where that is a different one.
 /// </param>
+/// <param name="Template">
+/// Which parts of the slip to print, as the administrator set them. Null
+/// where the caller did not say: the printer then reads the pharmacy's.
+/// </param>
 public sealed record ReceiptHeaderDto(string TradingName,
     string RegisteredName, string Address, string VatNumber,
     string LicenceNumber, string BranchAndTill, string OperatorName,
     DateTime PrintedAtLocal, string? LogoPath = null, bool IsCopy = false,
     string? TillNumber = null, string? CurrencyCode = null,
-    string? Telephone = null, string? WhatsApp = null);
+    string? Telephone = null, string? WhatsApp = null,
+    ReceiptTemplate? Template = null);
 
 /// <summary>
 /// Prints a till receipt. Returns an outcome rather than throwing,

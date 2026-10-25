@@ -63,10 +63,30 @@ public class GridToWorkbookTests
                  .Should().BeTrue(
                      "the balance has to arrive as a number, or nobody "
                      + "can total the column they were sent");
+
+            cells.Single(c => c.DataType == XLDataType.Number
+                              && c.GetDouble() == 1250.75d)
+                 .Style.NumberFormat.Format.Should().Be("#,##0.00",
+                     "the grid's N2 in Excel's terms: Excel offered to "
+                     + "repair a workbook carrying N2 as a number format");
         }
         finally
         {
             if (File.Exists(path)) File.Delete(path);
         }
     }
+
+    [Theory]
+    [InlineData("N2", "#,##0.00")]
+    [InlineData("N3", "#,##0.000")]
+    [InlineData("N0", "#,##0")]
+    [InlineData("F1", "0.0")]
+    [InlineData("P1", "0.0%")]
+    [InlineData("dd/MM/yyyy HH:mm", "dd/MM/yyyy HH:mm")]
+    [InlineData("#,##0.00", "#,##0.00")]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void A_net_format_is_written_as_the_Excel_format_it_means(
+        string? format, string? excel) =>
+        ExcelExporter.ExcelFormat(format).Should().Be(excel);
 }

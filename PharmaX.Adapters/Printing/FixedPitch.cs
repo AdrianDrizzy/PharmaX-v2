@@ -9,30 +9,32 @@ namespace PharmaX.Adapters.Printing;
 /// </summary>
 /// <remarks>
 /// The sizes used to be fixed in points, chosen for an 80 mm roll and a
-/// 70 by 50 mm label. The pharmacy's till roll is 76 mm (40 columns) and
-/// its labels are 102 by 36 mm (40 columns by 8 lines) on an Epson
-/// LX-350, so the right-hand figures of a receipt ran off the roll and a
-/// label ran off the bottom of the stock. Measured against the page
-/// instead, a line is a line whatever the paper turns out to be.
+/// 70 by 50 mm label. Measured against the page, a line is a line
+/// whatever the paper turns out to be.
 /// </remarks>
 internal static class FixedPitch
 {
     public const string Family = "Consolas";
 
     /// <summary>
-    /// The page inside its margins, and no wider than the printer can
-    /// reach: a driver whose printable width is narrower than the paper
-    /// it reports loses whatever is drawn past it.
+    /// The page inside its margins, and no wider or taller than the
+    /// printer can reach: a driver whose printable area is smaller than
+    /// the paper it reports loses whatever is drawn past it. On the label
+    /// printer that was the last line of the address, drawn below the
+    /// part of the sticker the driver prints.
     /// </summary>
     public static Rectangle Area(PrintPageEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
 
         var margins = e.MarginBounds;
-        var reach = (int)e.PageSettings.PrintableArea.Width - margins.Left;
+        var printable = e.PageSettings.PrintableArea;
+        var reach = (int)printable.Width - margins.Left;
+        var depth = (int)printable.Height - margins.Top;
 
         return new Rectangle(margins.Left, margins.Top,
-            Math.Max(1, Math.Min(reach, margins.Width)), margins.Height);
+            Math.Max(1, Math.Min(reach, margins.Width)),
+            Math.Max(1, Math.Min(depth, margins.Height)));
     }
 
     /// <summary>

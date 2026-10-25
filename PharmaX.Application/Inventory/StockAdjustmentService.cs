@@ -447,14 +447,14 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
                 product.Description, product.QuantityOnHand, summary));
 
         // Each new pack labelled as a pre-pack: what it is, how many are
-        // in it, and the batch it was counted out of.
+        // in it, the batch it was counted out of, and what it sells for.
         var batch = edit.BatchId is Guid id ? await _batches.GetAsync(id, ct) : null;
 
         return Result<StockAdjustmentResultDto>.Ok(new StockAdjustmentResultDto(
             product.Description, product.QuantityOnHand, summary,
             new LabelDto("", into.Description, into.UnitsInPack, "",
                 batch?.BatchNumber, batch?.ExpiryDate, _user.Username, "Pre-pack",
-                _clock.Today, Array.Empty<string>()),
+                _clock.Today, Array.Empty<string>(), Price: into.RetailPrice.Amount),
             (int)Math.Floor(intoQuantity ?? Moved(product, into, edit.Quantity))));
     }
 

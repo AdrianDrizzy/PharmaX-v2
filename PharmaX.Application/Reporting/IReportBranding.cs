@@ -16,6 +16,13 @@ public interface IReportBranding
     string? LogoPath { get; }
 
     string TradingName { get; }
+
+    /// One line per line of the address; empty where none is set.
+    string Address { get; }
+
+    string VatNumber { get; }
+
+    string Telephone { get; }
 }
 
 /// <summary>
@@ -27,4 +34,10 @@ public sealed class NoReportBranding : IReportBranding
     public string? LogoPath => null;
 
     public string TradingName => "";
+
+    public string Address => "";
+
+    public string VatNumber => "";
+
+    public string Telephone => "";
 }

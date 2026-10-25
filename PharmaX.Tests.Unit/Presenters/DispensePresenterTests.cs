@@ -53,6 +53,69 @@ public class DispensePresenterTests
             s.Contains("1 label(s) printed", StringComparison.Ordinal)));
     }
 
+    /// <summary>
+    /// A charge the operator may not change on their own is put to someone
+    /// who may, and tried again with their authority.
+    /// </summary>
+    [Fact]
+    public async Task A_charge_that_needs_authority_is_asked_for_and_tried_again()
+    {
+        var state = Begun();
+        var managerId = Guid.NewGuid();
+
+        _view.PromptItemChange(Arg.Any<IReadOnlyList<DispensingLineDto>>(),
+                Arg.Any<int?>())
+            .Returns(new ItemChange.Answer(1, 20m, 12m, "Rounded up"));
+        _view.PromptChargeAuthorisation(Arg.Any<string>()).Returns(managerId);
+
+        _dispensing.AmendItemAsync(_dispensingId, 1, 20m, 12m, "Rounded up",
+                null, Arg.Any<CancellationToken>())
+            .Returns(Result<ItemAmendedDto>.Fail(DispensingService.ChargeNeedsAuthority,
+                "Needs authorising."));
+        _dispensing.AmendItemAsync(_dispensingId, 1, 20m, 12m, "Rounded up",
+                managerId, Arg.Any<CancellationToken>())
+            .Returns(Result<ItemAmendedDto>.Ok(
+                new ItemAmendedDto(state, false, 10m, 12m, false)));
+
+        Presenter().Attach(_view);
+
+        _view.ScriptRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.ChangeItemRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        await _dispensing.Received(1).AmendItemAsync(_dispensingId, 1, 20m, 12m,
+            "Rounded up", managerId, Arg.Any<CancellationToken>());
+        _view.Received(1).PromptChargeAuthorisation("Needs authorising.");
+        _view.DidNotReceive().ShowError("The charge was not changed.");
+        _view.DidNotReceive().ShowError("Needs authorising.");
+    }
+
+    private DispensePresenter Presenter() =>
+        new(_dispensing, _scripts, _patients, _printer,
+            Substitute.For<IClaimFormService>(), Substitute.For<IClaimFormPrinter>(),
+            Substitute.For<IWorkstationSettings>());
+
+    /// The patient and the script found, and the dispensing begun with one item.
+    private DispensingStateDto Begun()
+    {
+        var line = new DispensingLineDto(1, Guid.NewGuid(), "Amoxicillin",
+            20m, "One three times a day", null, null, 10m, 0m, 10m, false);
+        var state = new DispensingStateDto(_dispensingId, new[] { line },
+            Array.Empty<ClinicalWarningDto>(), 10m, 0m, 10m);
+
+        _view.PromptPatientSearch().Returns(_patientId);
+        _view.PromptScriptSearch(_patientId).Returns(_scriptId);
+
+        _patients.GetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Result<PatientDto>.Fail("t", "skip"));
+        _scripts.GetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Result<ScriptDetailDto>.Fail("t", "skip"));
+
+        _dispensing.BeginAsync(_scriptId, Arg.Any<CancellationToken>())
+            .Returns(Result<DispensingStateDto>.Ok(state));
+
+        return state;
+    }
+
     private async Task IssueAsync(bool labels, bool trailer)
     {
         var line = new DispensingLineDto(1, Guid.NewGuid(), "Amoxicillin",

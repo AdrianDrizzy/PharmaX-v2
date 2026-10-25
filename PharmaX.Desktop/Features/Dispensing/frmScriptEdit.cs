@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Inventory.Dtos;
+using PharmaX.Application.Reference;
 using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
@@ -16,6 +17,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     private readonly ScriptEditPresenter? _presenter;
     private readonly IServiceScopeFactory? _scopes;
     private readonly SearchSuggestions? _suggestions;
+    private IReadOnlyDictionary<string, string> _dosage = DosageShorthand.Catalogue();
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ScriptCapture;
@@ -47,6 +49,9 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
                     break;
                 case "Quantity" or "PackUnits" or "PackPrice":
                     ShowCharge(row);
+                    break;
+                case "Directions":
+                    WriteDirections(row);
                     break;
             }
         };
@@ -368,7 +373,7 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
         ArgumentNullException.ThrowIfNull(supplied);
 
         return frmChoicePrompt.AskMany(this, "Items from history",
-            "Pick what goes on this script (Ctrl+click for more than one).",
+            "Pick what goes on this script: Ctrl+click for more than one, Ctrl+A for all.",
             supplied.Select(s => (
                 $"{s.On:dd MMM yyyy}   {s.Description}   x{s.Quantity:0.###}   "
                 + $"{s.Directions}   (script {s.ScriptNumber})", s)).ToList());
@@ -431,15 +436,51 @@ public partial class frmScriptEdit : PhxFormBase, IScriptEditView
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        await LoadDosageAsync();
         if (_presenter is not null) await _presenter.InitialiseAsync();
 
         // One blank line to start, so the common case of a one-item
         // script needs no button press.
         if (grdItems.Rows.Count == 0) AddRow("", 1m, "", true);
 
-        // Items brought from a quote or an earlier capture, described.
+        // Items brought from a quote or an earlier capture, described,
+        // and any dosage code written out in full.
         foreach (DataGridViewRow row in grdItems.Rows)
+        {
+            WriteDirections(row);
             await DescribeAsync(row);
+        }
+    }
+
+    /// <summary>
+    /// Writes a dosage code out in full in the cell, so "T1 TDS" becomes
+    /// "Take 1 tablet three times a day" before the script is saved.
+    /// </summary>
+    private void WriteDirections(DataGridViewRow row)
+    {
+        var typed = row.Cells["Directions"].Value?.ToString() ?? "";
+        var full = DosageShorthand.Expand(typed, _dosage);
+
+        if (!string.Equals(full, typed.Trim(), StringComparison.Ordinal))
+            row.Cells["Directions"].Value = full;
+    }
+
+    private async Task LoadDosageAsync()
+    {
+        if (_scopes is null) return;
+
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            _dosage = await scope.ServiceProvider
+                .GetRequiredService<IReferenceRepository>()
+                .CatalogueAsync();
+        }
+#pragma warning disable CA1031 // The standard codes still expand.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
     }
 
     public void ShowPatient(string description) =>

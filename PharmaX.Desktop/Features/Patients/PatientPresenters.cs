@@ -9,6 +9,12 @@ public interface IPatientListView : IView
     string SearchText { get; }
     Guid? SelectedId { get; }
 
+    /// Whether the chosen patient is active; null where none is chosen.
+    bool? SelectedIsActive { get; }
+
+    /// The "Show deactivated" box.
+    bool IncludeInactive { get; }
+
     void ShowPatients(IReadOnlyList<PatientListItemDto> patients);
 
     /// <param name="page">From nought.</param>
@@ -84,7 +90,8 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
     internal void ExportAll(Action<IReadOnlyList<object>> export) =>
         Enqueue(() => GuardAsync(async () =>
         {
-            var result = await _patients.SearchAsync(View.SearchText, take: int.MaxValue);
+            var result = await _patients.SearchAsync(View.SearchText, take: int.MaxValue,
+                includeInactive: View.IncludeInactive);
             if (result.IsFailure) View.ShowError(result.Error.Message);
             else export(result.Value.ToList<object>());
         }));
@@ -118,7 +125,7 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     private Task LoadAsync() => GuardAsync(async () =>
     {
-        var count = await _patients.CountAsync(View.SearchText);
+        var count = await _patients.CountAsync(View.SearchText, View.IncludeInactive);
 
         if (count.IsFailure)
         {
@@ -132,7 +139,8 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
         _page = Math.Min(_page, LastPage(_total));
 
         var result = await _patients.SearchAsync(View.SearchText,
-            take: PageSize, skip: _page * PageSize);
+            take: PageSize, skip: _page * PageSize,
+            includeInactive: View.IncludeInactive);
 
         if (result.IsFailure)
         {
@@ -158,6 +166,18 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
         if (View.SelectedId is not Guid id)
         {
             View.ShowInfo("Choose a patient first.");
+            return;
+        }
+
+        // A deactivated file, shown by the toggle, comes back the same way.
+        if (View.SelectedIsActive == false)
+        {
+            if (!View.Confirm("Reactivate this patient? They will appear in searches again."))
+                return;
+
+            var back = await _patients.ReactivateAsync(id);
+            if (back.IsFailure) View.ShowError(back.Error.Message);
+            await LoadAsync();
             return;
         }
 

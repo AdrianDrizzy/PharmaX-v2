@@ -12,6 +12,11 @@ public interface IReferenceListView : IView
 {
     ReferenceKind Kind { get; }
     string SearchText { get; }
+
+    /// Retired rows stay in the database. They leave the list unless this
+    /// is ticked, so they can be brought back.
+    bool IncludeInactive { get; }
+
     Guid? SelectedId { get; }
     bool SelectedIsActive { get; }
 

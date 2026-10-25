@@ -658,7 +658,7 @@ public sealed class DemoTradingSeeder
         await _cashUp.DeclareAsync(counted, ct: ct).ConfigureAwait(false);
 
         var closed = await _cashUp.CloseAsync(
-            "Twenty short; float recounted and the difference noted.", ct)
+            "Twenty short; float recounted and the difference noted.", ct: ct)
             .ConfigureAwait(false);
 
         return closed.IsSuccess ? 1 : 0;

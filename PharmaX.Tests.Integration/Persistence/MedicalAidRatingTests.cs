@@ -348,6 +348,10 @@ public class MedicalAidRatingTests : IClassFixture<PharmaXFixture>
                 Application.Sales.PrintResult.Ok("Test label printer"));
         }
 
+        public Task<Application.Sales.PrintResult> PrintCopiesAsync(LabelDto label,
+            int copies, CancellationToken ct = default) =>
+            PrintAsync(label, ct);
+
         public Task<Application.Sales.PrintResult> PrintTrailerAsync(
             TrailerLabelDto trailer, CancellationToken ct = default)
         {

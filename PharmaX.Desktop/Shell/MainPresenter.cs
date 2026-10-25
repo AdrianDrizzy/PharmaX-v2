@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Alerts;
 using PharmaX.Application.Home;
@@ -292,29 +292,28 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         switch (key)
         {
             case "pos":
-                _views.ShowDialog<frmPOS>((Form)View);
+                Open<frmPOS>(key);
                 break;
             case "collect":
-                _views.ShowDialog<frmCollect>((Form)View);
-                await ShowWaitingAsync();
+                Open<frmCollect>(key, closed: ShowWaitingAsync);
                 break;
             case "returns":
-                _views.ShowDialog<frmReturn>((Form)View);
+                Open<frmReturn>(key);
                 break;
             case "dispensing":
-                _views.ShowDialog<frmDispense>((Form)View);
+                Open<frmDispense>(key);
                 break;
             case "products":
-                _views.ShowDialog<frmProductList>((Form)View);
+                Open<frmProductList>(key);
                 break;
             case "suppliers":
-                _views.ShowDialog<frmSupplierList>((Form)View);
+                Open<frmSupplierList>(key);
                 break;
             case "goods-receipt":
-                _views.ShowDialog<frmGoodsReceipt>((Form)View);
+                Open<frmGoodsReceipt>(key);
                 break;
             case "purchase-orders":
-                _views.ShowDialog<frmPurchaseOrderList>((Form)View);
+                Open<frmPurchaseOrderList>(key);
                 break;
 
             // Four views of one count, through the same hub, each opened
@@ -347,39 +346,34 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // Breakages, expired stock and transfers recorded, not only
             // reported on (ADM-DEF-05).
             case "stock-adjust":
-                _views.ShowDialog<frmStockAdjustment>((Form)View);
+                Open<frmStockAdjustment>(key);
                 break;
             case "prepack":
-                _views.ShowDialog<frmPrepack>((Form)View);
+                Open<frmPrepack>(key);
                 break;
             case "supplier-return":
             case "move-stock":
-                using (var adjust = _views.Create<frmStockAdjustment>())
-                {
-                    adjust.Preselect(key == "move-stock"
-                        ? Application.Inventory.StockAdjustmentKind.MoveToItem
-                        : Application.Inventory.StockAdjustmentKind.ReturnToSupplier);
-                    adjust.ShowDialog((Form)View);
-                }
+                Open<frmStockAdjustment>(key, adjust => adjust.Preselect(key == "move-stock"
+                    ? Application.Inventory.StockAdjustmentKind.MoveToItem
+                    : Application.Inventory.StockAdjustmentKind.ReturnToSupplier));
                 break;
             case "trial-balance":
-                _views.ShowDialog<frmTrialBalance>((Form)View);
+                Open<frmTrialBalance>(key);
                 break;
             case "journal":
-                _views.ShowDialog<frmJournal>((Form)View);
+                Open<frmJournal>(key);
                 break;
             case "accounts-receivable":
-                _views.ShowDialog<Features.Patients.frmAccounts>((Form)View);
+                Open<Features.Patients.frmAccounts>(key);
                 break;
             case "claims":
-                _views.ShowDialog<frmClaims>((Form)View);
+                Open<frmClaims>(key);
                 break;
             case "chart-of-accounts":
-                _views.ShowDialog<frmChartOfAccounts>((Form)View);
+                Open<frmChartOfAccounts>(key);
                 break;
             case "alerts":
-                _views.ShowDialog<frmAlerts>((Form)View);
-                await ShowAlertsAsync();
+                Open<frmAlerts>(key, closed: ShowAlertsAsync);
                 break;
             case "expired-stock":
                 ShowReport("inv.stock.expiring");
@@ -420,22 +414,22 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 ShowReferenceList(ReferenceKind.Prescriber);
                 break;
             case "to-follow":
-                _views.ShowDialog<Features.Dispensing.frmToFollow>((Form)View);
+                Open<Features.Dispensing.frmToFollow>(key);
                 break;
             case "dosage-codes":
                 ShowReferenceList(ReferenceKind.DosageCode);
                 break;
             case "tariffs":
-                _views.ShowDialog<frmTariffList>((Form)View);
+                Open<frmTariffList>(key);
                 break;
             case "merge-patients":
-                _views.ShowDialog<frmPatientMerge>((Form)View);
+                Open<frmPatientMerge>(key);
                 break;
             case "labels":
-                _views.ShowDialog<frmLabels>((Form)View);
+                Open<frmLabels>(key);
                 break;
             case "quotation":
-                _views.ShowDialog<frmQuotation>((Form)View);
+                Open<frmQuotation>(key);
                 break;
             case "dispensary-quote":
                 ShowDispensaryQuote();
@@ -445,7 +439,7 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // of the same read-only list.
             // A day's takings, turned into a balanced journal.
             case "day-end":
-                _views.ShowDialog<frmDayEnd>((Form)View);
+                Open<frmDayEnd>(key);
                 break;
 
             case "control-variables":
@@ -466,16 +460,22 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // Stock coming back from a patient is credited on the same
             // screen as anything else returned over the counter.
             case "drug-returns":
-                _views.ShowDialog<frmReturn>((Form)View);
+                Open<frmReturn>(key);
                 break;
             case "till":
-                _views.ShowDialog<frmTillSession>((Form)View);
+                Open<frmTillSession>(key);
+                break;
+            case "cash-up":
+                Open<frmCashUp>(key);
+                break;
+            case "end-of-day":
+                Open<frmEndOfDay>(key);
                 break;
             case "users":
-                _views.ShowDialog<frmUserList>((Form)View);
+                Open<frmUserList>(key);
                 break;
             case "patients":
-                _views.ShowDialog<frmPatientList>((Form)View);
+                Open<frmPatientList>(key);
                 break;
             case "script-maintenance":
                 ShowScriptsForChosenPatient();
@@ -493,11 +493,13 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 await MassPriceChangeAsync();
                 return;
             case "system-setup":
-                _views.ShowDialog<Features.Admin.frmSystemSetup>((Form)View);
-
                 // Currency and logo both show on the shell, so it
-                // repaints rather than waiting for a restart.
-                View.RefreshBranding();
+                // repaints once setup closes rather than waiting for a restart.
+                Open<Features.Admin.frmSystemSetup>(key, closed: () =>
+                {
+                    View.RefreshBranding();
+                    return Task.CompletedTask;
+                });
                 return;
             case "change-password":
                 ChangeOwnPassword();
@@ -508,6 +510,15 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             case "about":
                 ShowAbout();
                 return;
+            case "receipts":
+                Open<frmReceipts>(key);
+                return;
+            case "receipt-template":
+                Open<Features.Admin.frmReceiptTemplate>(key);
+                return;
+            case "assistant":
+                _views.ShowDialog<Features.Assistant.frmAssistant>((Form)View);
+                return;
             case "exit":
                 if (Confirmed("Close the application?")) View.CloseView(true);
                 return;
@@ -516,13 +527,32 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                 break;
         }
 
+        await CatchUpAsync();
+    });
+
+    /// <summary>
+    /// Opens a screen beside the shell and any others already open (see
+    /// ViewFactory.Show), and catches the home screen up once it closes.
+    /// </summary>
+    /// <param name="key">One window per key: the same entry again brings
+    /// it to the front.</param>
+    private void Open<TForm>(string key, Action<TForm>? prepare = null,
+                             Func<Task>? closed = null)
+        where TForm : Form =>
+        _views.Show(key, (Form)View, prepare, () => Enqueue(() => GuardAsync(async () =>
+        {
+            if (closed is not null) await closed();
+            await CatchUpAsync();
+        })));
+
+    /// Whatever a screen changed - a patient added, a sale rung up, the
+    /// till session opened - shows on the home screen.
+    private async Task CatchUpAsync()
+    {
         var session = await _sessions.CurrentAsync();
         View.SetSession(session is null ? "No open session" : "Session open");
-
-        // Whatever the screen just closed changed - a patient added, a
-        // sale rung up - shows on the way back.
         await ShowCountsAsync();
-    });
+    }
 
     /// <summary>
     /// A script list only means anything in the context of one patient,
@@ -640,30 +670,21 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     /// Opens the report screen, on a named preset where the menu entry
     /// stands for one particular report.
     /// </summary>
-    private void ShowReport(string? preset)
-    {
-        using var reports = _views.Create<frmReports>();
-        reports.OpenOnPreset = preset;
-        reports.ShowDialog((Form)View);
-    }
+    /// <remarks>One window per report, so two reports can sit side by side.</remarks>
+    private void ShowReport(string? preset) =>
+        Open<frmReports>("report:" + preset, reports => reports.OpenOnPreset = preset);
 
-    private void ShowReferenceList(ReferenceKind kind)
-    {
-        using var list = _views.Create<frmReferenceList>();
-        list.Prepare(kind);
-        list.ShowDialog((Form)View);
-    }
+    private void ShowReferenceList(ReferenceKind kind) =>
+        Open<frmReferenceList>("list:" + kind, list => list.Prepare(kind));
 
-    private void ShowSystemInfo(SystemInfoMode mode)
-    {
-        using var window = _views.Create<frmSystemInfo>();
-        window.Mode = mode;
-        window.ShowDialog((Form)View);
-
-        // The pharmacy's details may have been changed at the console, and
-        // the home screen's heading is not a window title, so it is re-read.
-        ShowPharmacy();
-    }
+    // The pharmacy's details may have been changed at the console, and
+    // the home screen's heading is not a window title, so it is re-read.
+    private void ShowSystemInfo(SystemInfoMode mode) =>
+        Open<frmSystemInfo>("system:" + mode, window => window.Mode = mode, () =>
+        {
+            ShowPharmacy();
+            return Task.CompletedTask;
+        });
 
     /// <summary>
     /// Heads the home screen with the pharmacy - its trading name, and
@@ -682,12 +703,12 @@ public sealed class MainPresenter : PresenterBase<IMainView>
                          PharmacyHeading.Particulars(details));
     }
 
-    private void ShowStocktakes(StocktakeStep step)
-    {
-        using var list = _views.Create<frmStocktakeList>();
-        list.OpenAt = step;
-        list.ShowDialog((Form)View);
-    }
+    /// <remarks>
+    /// One stocktake window whichever step it was opened at: two windows
+    /// on the same count would be capturing over each other.
+    /// </remarks>
+    private void ShowStocktakes(StocktakeStep step) =>
+        Open<frmStocktakeList>("stocktakes", list => list.OpenAt = step);
 
     /// <summary>
     /// The dispensary quote off the menu. A script it became is offered

@@ -51,6 +51,12 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(true);
 
+        chkInactive.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(grdItems)?.Restart();
+            RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
+
         grdItems.DoubleClick += (_, _) =>
             EditRequested?.Invoke(this, EventArgs.Empty);
 
@@ -85,6 +91,8 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     }
 
     public string SearchText => txtSearch.Text.Trim();
+
+    public bool IncludeInactive => chkInactive.Checked;
 
     public Guid? SelectedId => grdItems.CurrentRow?.DataBoundItem
         is ReferenceItemDto dto ? dto.Id : null;
@@ -127,7 +135,7 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
         var hasRow = grdItems.CurrentRow?.DataBoundItem is ReferenceItemDto;
 
         btnToggle.Enabled = hasRow;
-        btnToggle.Text = SelectedIsActive || !hasRow ? "&Retire" : "&Bring back";
+        btnToggle.Text = SelectedIsActive || !hasRow ? "Deac&tivate" : "&Bring back";
     }
 
     public event EventHandler? SearchChanged;

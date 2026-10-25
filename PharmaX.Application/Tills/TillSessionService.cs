@@ -13,6 +13,10 @@ public interface ITillSessionService
     /// the morning is the normal state, not an error.
     Task<TillSessionDto?> CurrentAsync(CancellationToken ct = default);
 
+    /// Any till's session, open or closed: one cashed up on somebody's
+    /// behalf from the Cash Up screen. Attaches nothing to this till.
+    Task<TillSessionDto?> GetAsync(Guid id, CancellationToken ct = default);
+
     Task<Result<TillSessionDto>> OpenAsync(decimal openingFloat,
                                            CancellationToken ct = default);
 
@@ -60,6 +64,16 @@ public sealed class TillSessionService : ITillSessionService
         // Re-attach on every read, so that a workstation restarted with a
         // session still open picks it up rather than refusing to sell.
         _context.AttachTillSession(session.Id);
+
+        var openedBy = await _users.GetAsync(session.OpenedBy, ct);
+        return TillSessionDto.From(session, openedBy?.DisplayName ?? "Unknown");
+    }
+
+    public async Task<TillSessionDto?> GetAsync(Guid id,
+        CancellationToken ct = default)
+    {
+        var session = await _sessions.GetAsync(id, ct);
+        if (session is null || session.Status == TillSessionStatus.Closed) return null;
 
         var openedBy = await _users.GetAsync(session.OpenedBy, ct);
         return TillSessionDto.From(session, openedBy?.DisplayName ?? "Unknown");

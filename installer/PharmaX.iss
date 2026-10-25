@@ -11,7 +11,7 @@
 ; everything this installer owns - see the comment on {app} below.
 
 #define AppName      "PharmaX"
-#define AppVersion   "1.0.1"
+#define AppVersion   "1.0.18"
 #define AppPublisher "PharmaX"
 #define AppExe       "PharmaX.Desktop.exe"
 
@@ -153,6 +153,15 @@ Filename: "{sys}\schtasks.exe"; \
     Parameters: "/Create /F /SC DAILY /ST 21:30 /RU SYSTEM /RL HIGHEST /TN ""PharmaX nightly backup"" /TR ""\""{app}\{#AppExe}\"" --backup"""; \
     StatusMsg: "Scheduling the nightly backup..."; \
     Tasks: mainserver; Flags: runhidden waituntilterminated
+
+; An upgrade of a machine that is already set up. Scripts the
+; previous system left on Scripts to Collect are taken off that queue.
+; The dispensing stays. A new install has not been set up yet, so this
+; exits at once and the first start of PharmaX does the same job.
+Filename: "{app}\{#AppExe}"; \
+    Parameters: "--clear-waiting"; \
+    StatusMsg: "Taking old waiting scripts off the collect queue..."; \
+    Flags: waituntilterminated
 
 Filename: "{app}\{#AppExe}"; \
     Description: "Set up PharmaX on this computer now"; \

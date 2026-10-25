@@ -74,6 +74,14 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         btnEdit.Click += (_, _) => EditRequested?.Invoke(this, EventArgs.Empty);
         btnDeactivate.Click += (_, _) =>
             DeactivateRequested?.Invoke(this, EventArgs.Empty);
+        chkShowInactive.CheckedChanged += (_, _) =>
+            SearchChanged?.Invoke(this, EventArgs.Empty);
+
+        // The button says what it will do to the row chosen.
+        grdPatients.SelectionChanged += (_, _) =>
+            btnDeactivate.Text = SelectedRow is { IsActive: false }
+                ? "&Reactivate"
+                : "&Deactivate";
         btnDocuments.Click += (_, _) => ShowDocuments();
         btnExport.Click += (_, _) => _presenter?.ExportAll(Export);
         btnChoose.Click += (_, _) =>
@@ -161,6 +169,9 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         AcceptButton = btnChoose;
         btnDeactivate.Visible = false;
         btnExport.Visible = false;
+
+        // A deactivated patient is not picked for a new script or sale.
+        chkShowInactive.Visible = false;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -180,6 +191,10 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
 
     public Guid? SelectedId => grdPatients.CurrentRow?.DataBoundItem
         is PatientListItemDto dto ? dto.Id : null;
+
+    public bool? SelectedIsActive => SelectedRow?.IsActive;
+
+    public bool IncludeInactive => chkShowInactive.Checked && !IsPickerMode;
 
     public void ShowPatients(IReadOnlyList<PatientListItemDto> patients)
     {

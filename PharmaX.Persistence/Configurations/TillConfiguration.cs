@@ -105,6 +105,36 @@ public sealed class TillDeclarationConfiguration
     }
 }
 
+public sealed class TillPayoutConfiguration
+    : IEntityTypeConfiguration<TillPayout>
+{
+    public void Configure(EntityTypeBuilder<TillPayout> b)
+    {
+        ArgumentNullException.ThrowIfNull(b);
+
+        b.ToTable("TillPayout");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Note).HasMaxLength(TillPayout.NoteLength).IsRequired();
+        b.Property(x => x.VoidReason).HasMaxLength(TillPayout.NoteLength);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        b.ComplexProperty(x => x.Amount, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("Amount")
+                                     .HasPrecision(18, 2);
+            m.Property(p => p.Currency).HasColumnName("Currency")
+                                       .HasMaxLength(3);
+        });
+
+        b.Ignore(x => x.IsVoided);
+
+        // Read a session at a time, by the cash-up and the Z-read.
+        b.HasIndex(x => new { x.TillSessionId, x.PaidAtUtc });
+    }
+}
+
 public sealed class DenominationConfiguration
     : IEntityTypeConfiguration<Denomination>
 {

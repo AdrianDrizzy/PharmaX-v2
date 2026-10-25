@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
 using PharmaX.Application.Security;
@@ -377,5 +378,78 @@ public class DispensingWorkflowTests : IClassFixture<PharmaXFixture>
         var more = await dispensing.AddItemAsync(begun.Value.Id, "WFPRO",
             new DirectionsDto(21m, "One daily"));
         more.Value.Items.Last().Tariff.Should().Be(126m);
+    }
+
+    /// <summary>
+    /// A script begun and not issued is kept to finish later for 24 hours
+    /// from when it was begun or last picked up. After that it is set
+    /// aside - one already on file included - and beginning the script
+    /// again starts it afresh. One picked up again starts its 24 hours over.
+    /// </summary>
+    [Fact]
+    public async Task A_script_left_half_done_for_a_day_is_set_aside()
+    {
+        await _steps.OpenTillAsync();
+        await _steps.ProductAsync("WFOLD", "Stale capsules 21s", 21m,
+            schedule: 4, unitsPerPack: 21m, batches: new[] { ("WFOLD-A", 6, 10m) });
+
+        await _steps.SignInAsync("wf.pharm6", Role.Standard.Pharmacist);
+
+        var staleScript = await _steps.ScriptAsync(
+            await _steps.PatientAsync("Stale", "Pat"), ("WFOLD", 21m, "One daily"));
+        var freshScript = await _steps.ScriptAsync(
+            await _steps.PatientAsync("Fresh", "Pat"), ("WFOLD", 21m, "One daily"));
+
+        Guid stale, fresh;
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+            stale = (await dispensing.BeginAsync(staleScript)).Value.Id;
+            fresh = (await dispensing.BeginAsync(freshScript)).Value.Id;
+        }
+
+        // Begun 25 and 23 hours ago. Written past SaveChanges, which stamps
+        // the time of every change as now.
+        DateTime now;
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            now = PharmaXFixture.Resolve<IClock>(scope).UtcNow;
+
+            foreach (var (id, hours) in new[] { (stale, -25), (fresh, -23) })
+                await db.Dispensings.Where(d => d.Id == id)
+                    .ExecuteUpdateAsync(set => set
+                        .SetProperty(d => d.CreatedAtUtc, now.AddHours(hours))
+                        .SetProperty(d => d.UpdatedAtUtc, now.AddHours(hours)));
+        }
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+            var kept = await dispensing.SuspendedAsync();
+            kept.Should().Contain(k => k.ScriptId == freshScript);
+            kept.Should().NotContain(k => k.ScriptId == staleScript);
+
+            var again = await dispensing.BeginAsync(staleScript);
+            again.Value.Id.Should().NotBe(stale, "the script is begun afresh");
+
+            var resumed = await dispensing.BeginAsync(freshScript);
+            resumed.Value.Id.Should().Be(fresh, "it was kept to finish later");
+        }
+
+        using var check = _steps.Fixture.NewScope();
+        var stored = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        (await stored.Dispensings.AsNoTracking().SingleAsync(d => d.Id == fresh))
+            .UpdatedAtUtc.Should().BeAfter(now.AddHours(-1),
+                "picking it up again starts its 24 hours over");
+
+        (await stored.Dispensings.AsNoTracking().SingleAsync(d => d.Id == stale))
+            .Status.Should().Be(DispensingStatus.Abandoned);
+        (await stored.Dispensings.AsNoTracking().SingleAsync(d => d.Id == fresh))
+            .Status.Should().Be(DispensingStatus.InProgress);
     }
 }

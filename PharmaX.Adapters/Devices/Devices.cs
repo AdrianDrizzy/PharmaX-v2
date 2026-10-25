@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using PharmaX.Application.Abstractions;
@@ -173,7 +174,17 @@ internal static class RawPrinter
     /// <summary>
     /// The port a printer is on, or null when Windows will not say.
     /// </summary>
-    public static string? PortOf(string printerName)
+    public static string? PortOf(string printerName) =>
+        Info(printerName, info => info.PortName);
+
+    /// <summary>
+    /// The driver a printer is on, or null when Windows will not say.
+    /// </summary>
+    public static string? DriverOf(string printerName) =>
+        Info(printerName, info => info.DriverName);
+
+    private static string? Info(string printerName,
+                                Func<PrinterInfo2, IntPtr> field)
     {
         if (!OpenPrinter(printerName, out var printer, IntPtr.Zero))
             return null;
@@ -195,7 +206,7 @@ internal static class RawPrinter
 
                 var info = Marshal.PtrToStructure<PrinterInfo2>(buffer);
 
-                return Marshal.PtrToStringUni(info.PortName);
+                return Marshal.PtrToStringUni(field(info));
             }
             finally
             {
@@ -208,7 +219,12 @@ internal static class RawPrinter
         }
     }
 
-    public static void Send(string printerName, byte[] bytes)
+    /// <remarks>
+    /// Throws where the spooler will not take the job, so a receipt sent
+    /// this way is never reported printed when it was not.
+    /// </remarks>
+    public static void Send(string printerName, byte[] bytes,
+                            string docName = "PharmaX device command")
     {
         if (!OpenPrinter(printerName, out var printer, IntPtr.Zero))
             throw new InvalidOperationException(
@@ -220,20 +236,22 @@ internal static class RawPrinter
         {
             var info = new DocInfo
             {
-                DocName = "PharmaX device command",
+                DocName = docName,
                 DataType = "RAW"
             };
 
-            if (!StartDocPrinter(printer, 1, info)) return;
+            if (!StartDocPrinter(printer, 1, info)) throw new Win32Exception();
 
             try
             {
-                if (!StartPagePrinter(printer)) return;
+                if (!StartPagePrinter(printer)) throw new Win32Exception();
 
                 unmanaged = Marshal.AllocCoTaskMem(bytes.Length);
                 Marshal.Copy(bytes, 0, unmanaged, bytes.Length);
 
-                WritePrinter(printer, unmanaged, bytes.Length, out _);
+                if (!WritePrinter(printer, unmanaged, bytes.Length, out _))
+                    throw new Win32Exception();
+
                 EndPagePrinter(printer);
             }
             finally
@@ -257,7 +275,7 @@ internal static class RawPrinter
     }
 
     /// <summary>
-    /// The head of PRINTER_INFO_2, as far as the port name. The fields
+    /// The head of PRINTER_INFO_2, as far as the driver name. The fields
     /// after it are never read, so they are not declared.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -267,6 +285,7 @@ internal static class RawPrinter
         public IntPtr PrinterName;
         public IntPtr ShareName;
         public IntPtr PortName;
+        public IntPtr DriverName;
     }
 
     [DllImport("winspool.drv", EntryPoint = "OpenPrinterW",

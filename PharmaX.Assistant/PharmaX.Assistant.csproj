@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The reports assistant, PharmaX's side of it: what the model is shown
+       and allowed to say, and the conversation with the engine that runs
+       it. The engine itself - LLamaSharp and llama.cpp - is
+       PharmaX.Assistant.Engine, run in a second process and never loaded
+       here; see AssistantHost. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PharmaX.Assistant</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />
+  </ItemGroup>
+
+</Project>

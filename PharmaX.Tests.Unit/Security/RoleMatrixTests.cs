@@ -205,6 +205,21 @@ public class RoleMatrixTests
                 Role.Standard.Manager, Role.Standard.StockController,
                 Role.Standard.Administrator);
 
+    [Fact]
+    public void Everyone_who_sells_except_the_assistant_can_take_payment() =>
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.SaleTakePayment))
+            .Should().BeEquivalentTo(
+                Role.Standard.Cashier, Role.Standard.Pharmacist,
+                Role.Standard.Manager, Role.Standard.Administrator);
+
+    [Fact]
+    public void Only_a_cashier_or_the_administrator_can_cash_up_and_close() =>
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.SessionCashUp))
+            .Should().BeEquivalentTo(
+                Role.Standard.Cashier, Role.Standard.Administrator);
+
     /// <summary>
     /// Deleting expired and out-of-stock lines from Stock alerts is for
     /// the pharmacist, the assistant, the manager and the administrator
@@ -217,6 +232,69 @@ public class RoleMatrixTests
             .Should().BeEquivalentTo(
                 Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant,
                 Role.Standard.Manager, Role.Standard.Administrator);
+
+    /// <summary>
+    /// The pharmacist, the assistant and the administrator keep the
+    /// products: the catalogue, the selling price and the stock on hand
+    /// (23 October 2026). Stock is corrected with a reason; stocktakes,
+    /// write-offs and transfers stay with whoever posts stocktakes.
+    /// </summary>
+    [Theory]
+    [InlineData(Role.Standard.Pharmacist)]
+    [InlineData(Role.Standard.PharmacistAssistant)]
+    [InlineData(Role.Standard.Administrator)]
+    public void The_pharmacist_assistant_and_administrator_edit_products(string role)
+    {
+        var permissions = As(role);
+
+        permissions.Has(PermissionCode.ProductMaintain).Should().BeTrue();
+        permissions.Has(PermissionCode.PriceChange).Should().BeTrue();
+        permissions.Has(PermissionCode.StockCorrect).Should().BeTrue();
+        ScreenAccess.CanOpen("products", permissions).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Correcting_stock_from_the_product_is_not_posting_a_stocktake()
+    {
+        foreach (var role in new[] { Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant })
+        {
+            As(role).Has(PermissionCode.StockTakePost).Should().BeFalse(role);
+            ScreenAccess.CanOpen("stocktake-post", As(role)).Should().BeFalse(role);
+        }
+
+        Role.Standard.All.Where(r => As(r).Has(PermissionCode.StockCorrect))
+            .Should().BeEquivalentTo(Role.Standard.Pharmacist,
+                Role.Standard.PharmacistAssistant, Role.Standard.Administrator);
+    }
+
+    /// <summary>
+    /// Every role with a till records the money taken out of its drawer:
+    /// drawings, lunch, other expenses (23 October 2026).
+    /// </summary>
+    [Fact]
+    public void Everyone_with_a_till_records_money_out_of_the_drawer() =>
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.SessionPayOut))
+            .Should().BeEquivalentTo(Role.Standard.All
+                .Where(r => As(r).Has(PermissionCode.SaleCreate)));
+
+    /// <summary>
+    /// The pharmacist, the assistant, the manager and the administrator
+    /// change what a dispensed item is charged (24 October 2026). The
+    /// manager does not dispense, so authorises it for whoever is.
+    /// </summary>
+    [Fact]
+    public void Four_roles_adjust_the_charge_when_dispensing()
+    {
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.DispensingChargeAdjust))
+            .Should().BeEquivalentTo(Role.Standard.Administrator,
+                Role.Standard.Pharmacist, Role.Standard.PharmacistAssistant,
+                Role.Standard.Manager);
+
+        As(Role.Standard.Manager).Has(PermissionCode.ScriptDispense)
+            .Should().BeFalse("the manager still does not dispense");
+    }
 
     [Fact]
     public void A_cashier_holds_no_report_permission_at_all()

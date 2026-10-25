@@ -188,12 +188,40 @@ public sealed record ItemAmendedDto(DispensingStateDto State, bool WasIssued,
 /// The prescriber's own practice number, printed as "Prof#". What a
 /// medical aid asks for first when a claim is queried.
 /// </param>
+/// <param name="Price">
+/// What a pre-pack sells for, printed beside the date as the pharmacy's
+/// own pre-pack labels have it. None on a patient's label.
+/// </param>
+/// <param name="Omit">
+/// Lines a template label leaves off. Null prints the whole label, which
+/// is every dispensed label and every pre-pack.
+/// </param>
+/// <param name="SchemeName">
+/// The patient's medical aid, printed after their name.
+/// </param>
 public sealed record LabelDto(
     string PatientName, string ProductDescription, decimal Quantity,
     string Directions, string? BatchNumber, DateOnly? Expiry,
     string PharmacistName, string ScriptNumber, DateOnly DispensedOn,
     IReadOnlyList<string> Cautions, int ItemNumber = 1, int ItemCount = 1,
-    string? PrescriberName = null, string? PrescriberNumber = null);
+    string? PrescriberName = null, string? PrescriberNumber = null,
+    decimal? Price = null, LabelOmissions? Omit = null,
+    string? SchemeName = null);
+
+/// <summary>
+/// Lines a template label leaves off. The medicine and how many stay:
+/// a sticker that does not say what the pack is is not a label.
+/// A dispensed label does not use this.
+/// </summary>
+public sealed record LabelOmissions(
+    bool Directions = false,
+    bool Warning = false,
+    bool Expiry = false,
+    bool Batch = false,
+    bool Price = false,
+    bool PackedOn = false,
+    bool Pharmacy = false,
+    bool Address = false);
 
 /// <param name="ClaimNumber">
 /// The medical aid claim the issue raised, if the scheme pays any of it,

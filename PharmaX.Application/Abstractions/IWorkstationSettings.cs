@@ -107,4 +107,11 @@ public static class PharmacySettingKey
 
     /// The step every worked-out price is rounded up to, e.g. 0.05.
     public const string Rounding = "pricing.rounding";
+
+    /// Pre-pack stickers already printed, newest first, so any till can
+    /// print an old one again.
+    public const string PrepackLabels = "labels.prepacks";
+
+    /// Template labels an administrator has printed, newest first.
+    public const string TemplateLabels = "labels.templates";
 }

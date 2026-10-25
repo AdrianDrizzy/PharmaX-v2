@@ -13,8 +13,10 @@ namespace PharmaX.Application.Inventory;
 public interface IProductService
 {
     /// <param name="skip">Matches passed over first, for a later page.</param>
+    /// <param name="includeInactive">False hides deactivated products.</param>
     Task<Result<ProductPageDto>> SearchAsync(string term, int take = 200,
                                              int skip = 0,
+                                             bool includeInactive = true,
                                              CancellationToken ct = default);
 
     /// <summary>
@@ -38,8 +40,8 @@ public interface IProductService
     /// Commits one cell of the product list. Catalogue columns need
     /// inv.product.maintain, the selling price also needs
     /// inv.price.change, and the quantity on hand also needs
-    /// inv.stocktake.post. Schedule 3 and above needs
-    /// inv.product.dispensary.
+    /// inv.stock.correct (or inv.stocktake.post) and a reason. Schedule 3
+    /// and above needs inv.product.dispensary.
     /// </summary>
     Task<Result> ApplyCellEditAsync(ProductCellEditDto edit,
                                      CancellationToken ct = default);
@@ -79,7 +81,8 @@ public sealed partial class ProductService : IProductService
     }
 
     public async Task<Result<ProductPageDto>> SearchAsync(string term,
-        int take = 200, int skip = 0, CancellationToken ct = default)
+        int take = 200, int skip = 0, bool includeInactive = true,
+        CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
@@ -88,8 +91,8 @@ public sealed partial class ProductService : IProductService
         var scope = _permissions.ProductScope();
 
         var products = await _products.SearchAsync(term, take, scope,
-                                                   skip, ct);
-        var total = await _products.CountAsync(term, scope, ct);
+                                                   skip, includeInactive, ct);
+        var total = await _products.CountAsync(term, scope, includeInactive, ct);
 
         IReadOnlyList<ProductListItemDto> items =
             products.Select(ProductListItemDto.From).ToList();
@@ -106,8 +109,8 @@ public sealed partial class ProductService : IProductService
         var scope = _permissions.ProductScope();
 
         var products = await _products.SearchAsync(term, take, scope,
-                                                   skip, ct);
-        var total = await _products.CountAsync(term, scope, ct);
+                                                   skip, ct: ct);
+        var total = await _products.CountAsync(term, scope, ct: ct);
 
         var batches = await _batches.ForProductsAsync(
             products.Select(p => p.Id).ToList(), ct);
@@ -211,15 +214,20 @@ public sealed partial class ProductService : IProductService
                 $"Product code {edit.Code} is already in use.");
 
         // Opening stock, where the form was given some. It is a count onto
-        // a product that had none, so it needs the stocktake permission
-        // like any other count.
-        var stock = PlanStock(0m, Array.Empty<Batch>(), edit);
+        // a product that had none, so it needs the permission any other
+        // count from the product does, and says it was the opening stock
+        // unless the operator said otherwise.
+        var stock = PlanStock(0m, Array.Empty<Batch>(), edit with
+        {
+            StockReason = string.IsNullOrWhiteSpace(edit.StockReason)
+                ? "Opening stock"
+                : edit.StockReason
+        });
 
         if (stock.IsFailure)
             return Result<Guid>.Fail(stock.Error.Code, stock.Error.Message);
 
-        if (stock.Value.MovesStock)
-            _permissions.Demand(PermissionCode.StockTakePost);
+        if (stock.Value.MovesStock) DemandStockCorrection();
 
         var product = Product.Create(
             code: edit.Code,
@@ -335,8 +343,7 @@ public sealed partial class ProductService : IProductService
             return Result.Fail("INV-036",
                 "Stock is still on a batch, so batch tracking has to stay on.");
 
-        if (stock.Value.MovesStock)
-            _permissions.Demand(PermissionCode.StockTakePost);
+        if (stock.Value.MovesStock) DemandStockCorrection();
 
         // Only a price change needs the price permission on top.
         if (product.RetailPrice.Amount != edit.RetailPrice)
@@ -439,7 +446,11 @@ public sealed partial class ProductService : IProductService
     public async Task<Result> DeactivateAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ProductMaintain);
+        // The catalogue's own keepers, and the dispensary: administrator,
+        // pharmacist and assistant. A cashier is refused.
+        if (!_permissions.Has(PermissionCode.ProductMaintain)
+            && !_permissions.Has(PermissionCode.ProductDispensary))
+            _permissions.Demand(PermissionCode.ProductMaintain);
 
         var product = await _products.GetAsync(id, ct);
         if (product is null) return Result.Fail("INV-000", "Product not found.");

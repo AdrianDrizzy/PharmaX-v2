@@ -34,6 +34,7 @@ partial class frmTillSession
     private Button btnOpen = null!;
     private Button btnXRead = null!;
     private Button btnDeclare = null!;
+    private Button btnPayouts = null!;
     private Button btnCloseSession = null!;
     private Button btnClose = null!;
 
@@ -73,6 +74,8 @@ partial class frmTillSession
         btnXRead.Name = "btnXRead";
         btnDeclare = new Button();
         btnDeclare.Name = "btnDeclare";
+        btnPayouts = new Button();
+        btnPayouts.Name = "btnPayouts";
         btnCloseSession = new Button();
         btnCloseSession.Name = "btnCloseSession";
         btnClose = new Button();
@@ -88,6 +91,7 @@ partial class frmTillSession
         lblTitle.Size = new Size(500, 26);
         lblTitle.Text = "Till session";
 
+        lblSessionState.AutoEllipsis = true;
         lblSessionState.AutoSize = false;
         lblSessionState.ForeColor = PhxTheme.Muted;
         lblSessionState.Location = new Point(PhxTheme.Gutter + 2, 36);
@@ -260,6 +264,10 @@ partial class frmTillSession
         {
             (btnOpen, "&Open session", 130),
             (btnXRead, "&X-read  Ctrl+X", 130),
+
+            // Drawings, lunch, other expenses: out of the drawer before
+            // it is counted, so the count is expected without them.
+            (btnPayouts, "&Money out...", 120),
             (btnDeclare, "&Declare", 110),
             (btnCloseSession, "Cash up and close  Ctrl+&Z", 200)
         })

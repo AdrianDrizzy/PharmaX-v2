@@ -85,10 +85,14 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
 
         var maintains = Has(Domain.Security.PermissionCode.ProductMaintain);
 
-        // A count moves stock, so it stays with the stocktake permission
-        // the list's own On hand cells answer to.
+        // A count moves stock, so it stays with the permission the list's
+        // own On hand cells answer to: correcting stock, as the
+        // pharmacist and the assistant do, or posting stocktakes.
         _countsStock = maintains
-                       && Has(Domain.Security.PermissionCode.StockTakePost);
+                       && (Has(Domain.Security.PermissionCode.StockCorrect)
+                           || Has(Domain.Security.PermissionCode.StockTakePost));
+
+        cboStockReason.Enabled = _countsStock;
 
         btnSave.Visible = maintains;
         txtCode.ReadOnly = !maintains;
@@ -113,7 +117,7 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         quantity.ReadOnly = !_countsStock;
         quantity.ToolTipText = _countsStock
             ? ""
-            : "Changing the quantity on hand needs the stocktake permission.";
+            : "Changing the quantity on hand needs the stock permission.";
 
         ShowStock();
 
@@ -328,8 +332,8 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         {
             txtOnHand.ReadOnly = !_countsStock;
             lblOnHandNote.Text = _countsStock
-                ? ""
-                : "Counting stock needs the stocktake permission.";
+                ? "A changed count is posted as an adjustment: say why in Reason."
+                : "Counting stock needs the stock permission.";
             return;
         }
 
@@ -523,7 +527,8 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
             | StringSplitOptions.TrimEntries),
         IsActive: chkActive.Checked,
         QuantityOnHand: CollectOnHand(),
-        Batches: CollectBatches());
+        Batches: CollectBatches(),
+        StockReason: Blank(cboStockReason.Text));
 
     /// A scanner ends a code with a return; a person types commas.
     private static readonly char[] BarcodeSeparators =

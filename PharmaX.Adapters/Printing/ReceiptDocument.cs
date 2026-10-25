@@ -1,5 +1,6 @@
 using System.Drawing.Printing;
 using System.Globalization;
+using System.Text;
 using PharmaX.Application.Sales;
 using PharmaX.Application.Sales.Dtos;
 
@@ -8,9 +9,11 @@ namespace PharmaX.Adapters.Printing;
 /// <summary>
 /// Receipt printing uses GDI+ drawing rather than a report engine,
 /// because a till roll is a fixed-width canvas and the arithmetic is
-/// simpler done directly. The pharmacy's roll is 76 millimetres and 40
-/// columns wide; the type is sized to fit 40 columns to whatever the
-/// printer can reach (FixedPitch).
+/// simpler done directly. The pharmacy's roll is 75 millimetres; the slip
+/// is laid out 32 columns wide, the type sized so they fill the width the
+/// printer reaches, and the block centred on it. The page is as long as the slip,
+/// so the printer feeds the whole of it, including the foot, without a
+/// button press on the printer.
 /// </summary>
 /// <remarks>
 /// Lives in PharmaX.Adapters rather than PharmaX.Desktop so that
@@ -20,31 +23,35 @@ namespace PharmaX.Adapters.Printing;
 /// forbids (Section 4.1).
 ///
 /// The pharmacy's name, address and numbers at the head, then laid out
-/// as the pharmacy's previous till slips:
+/// as the pharmacy's previous till slips, an item's code, name and
+/// figures each on a line of their own:
 /// <code>
-/// ----------------------------------------
-///               Tax Invoice
-///                Cash Sale
-/// ----------------------------------------
+/// --------------------------------
+///           Tax Invoice
+///            Cash Sale
+/// --------------------------------
 /// Trans No: 31159
 /// Till Operator : test
 /// Till Number : 1
-/// ----------------------------------------
-/// Code    QTY    Unit Price     Amount Inc
-/// ----------------------------------------
-/// 1616     10 @        0.25
-/// MYPRODOL                         2.50 NV
-/// ----------------------------------------
-/// Sub Total                        2.50
-/// VAT-USD :                        0.00
-/// TOTAL-USD:                       2.50
-/// ----------------------------------------
-/// Cash USD                         2.50
-/// ----------------------------------------
-/// ----------------------------------------
+/// --------------------------------
+/// Code  QTY  Unit Price Amount Inc
+/// --------------------------------
+/// 1616
+/// MYPRODOL
+///      10 @        0.25    2.50 NV
+/// --------------------------------
+/// Sub Total                2.50
+/// VAT-USD :                0.00
+/// TOTAL-USD:               2.50
+/// --------------------------------
+/// Cash USD                 2.50
+/// --------------------------------
+/// --------------------------------
 ///
-///                Thank you
+///            Thank you
 /// </code>
+/// Thirty-two columns rather than forty so the type can be larger: at
+/// forty, larger type pushed the totals off the 75 mm roll.
 /// "Tax Invoice" where those slips said "Fiscal Tax Invoice": PharmaX is
 /// not connected to a fiscal device, and the word would say it was. No
 /// logo: a picture costs roll, time and toner on every sale, and the name
@@ -52,25 +59,32 @@ namespace PharmaX.Adapters.Printing;
 /// </remarks>
 public sealed class ReceiptDocument : PrintDocument
 {
-    internal const int CharactersPerLine = 40;
+    internal const int CharactersPerLine = 32;
+
+    /// 75 mm, in hundredths of an inch.
+    internal const int RollWidthHundredths = 295;
+
+    /// The same inset both sides, about 1 mm, so the type fills the roll.
+    internal const int MarginHundredths = 4;
 
     /// Where every amount ends: three columns short of the edge, so "NV"
     /// fits after an item's amount and the totals line up under it.
-    private const int AmountEnd = CharactersPerLine - 3;
+    internal const int AmountEnd = CharactersPerLine - 3;
 
-    /// The code column; an item's quantity starts after it.
-    private const int CodeWidth = 8;
-
-    /// The heads of the item columns.
-    private const string Heads = "Code    QTY    Unit Price     Amount Inc";
-
-    /// How many and at what each, beside the code: each figure ends under
-    /// its head.
-    private const string Figures = "{0,3} @{1,12}";
+    /// <summary>
+    /// The heads of the item columns, and how many and at what each under
+    /// them: the quantity under QTY, the price ending under Unit Price.
+    /// The amount follows, three columns short of the edge. Thirty-two
+    /// across on the roll as drawn; forty-two, as the pharmacy's previous
+    /// slips were, as text in the printer's own type (AsText).
+    /// </summary>
+    private static (string Heads, string Figures) ItemColumns(int columns) =>
+        columns == SlipLayout.Width
+            ? ("Code   QTY      Unit Price      Amount Inc", "{0,10} @{1,14}")
+            : ("Code  QTY  Unit Price Amount Inc", "{0,7} @{1,12}");
 
     private readonly SaleDto _sale;
     private readonly ReceiptHeaderDto _header;
-    private readonly Font _title = new("Consolas", 11f, FontStyle.Bold);
     private int _next;
 
     public ReceiptDocument(SaleDto sale, ReceiptHeaderDto header)
@@ -78,15 +92,69 @@ public sealed class ReceiptDocument : PrintDocument
         _sale = sale;
         _header = header;
 
-        // 76 mm roll, continuous length.
-        DefaultPageSettings.PaperSize = new PaperSize("Roll", 299, 1200);
-        DefaultPageSettings.Margins = new Margins(5, 5, 10, 10);
+        ApplyRoll(DefaultPageSettings, 24);
+    }
+
+    /// <summary>
+    /// Puts the 75 mm roll back, as long as this slip, after the printer
+    /// is chosen. Choosing the printer resets the page to the driver's
+    /// own paper, and that paper is a short form: the slip then stops
+    /// part way down and the printer waits for its feed button.
+    /// </summary>
+    internal void FitRoll()
+    {
+        var lines = Rows().Count;
+        ApplyRoll(DefaultPageSettings, lines);
+
+        try
+        {
+            ApplyRoll(PrinterSettings.DefaultPageSettings, lines);
+        }
+        catch (InvalidPrinterException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// How tall the page is for <paramref name="lines"/> of type, in
+    /// hundredths of an inch, with a feed after the last line so it
+    /// clears the tear bar.
+    /// </summary>
+    internal static int RollHeight(int lines)
+    {
+        var height = 24 + Math.Max(1, lines) * 24 + 140;
+
+        return Math.Clamp(height, 220, 8000);
+    }
+
+    /// <summary>
+    /// The roll as a receipt prints on it. Public so the Printer Setup
+    /// test page goes out on the same paper as the receipts.
+    /// </summary>
+    public static void ApplyRoll(PageSettings page, int lines)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        page.Landscape = false;
+        page.Margins = new Margins(MarginHundredths, MarginHundredths, 8, 8);
+        page.PaperSize = new PaperSize("Roll 75 mm", RollWidthHundredths,
+            RollHeight(lines))
+        {
+            RawKind = 256
+        };
+    }
+
+    protected override void OnQueryPageSettings(QueryPageSettingsEventArgs e)
+    {
+        base.OnQueryPageSettings(e);
+        ApplyRoll(e.PageSettings, Math.Max(1, Rows().Count - _next));
     }
 
     protected override void OnBeginPrint(PrintEventArgs e)
     {
         base.OnBeginPrint(e);
         _next = 0;
+        FitRoll();
     }
 
     protected override void OnPrintPage(PrintPageEventArgs e)
@@ -98,29 +166,59 @@ public sealed class ReceiptDocument : PrintDocument
     }
 
     /// <summary>
+    /// The largest type at which a full line still fits the roll.
+    /// </summary>
+    private static float Fitted(Graphics g, float width)
+    {
+        var size = FixedPitch.Size(g, CharactersPerLine, width, 14f);
+
+        using var probe = new Font(FixedPitch.Family, size);
+        using var format = FixedPitch.Format();
+        var across = g.MeasureString(new string('0', CharactersPerLine),
+                                     probe, PointF.Empty, format).Width;
+
+        if (across > width && across > 0)
+            size *= width / across * 0.98f;
+
+        return Math.Max(6f, size);
+    }
+
+    /// <summary>
     /// The slip, top to bottom, as it is printed. Public so a test can
     /// read what the customer will be handed without a printer.
     /// </summary>
-    public IReadOnlyList<ReceiptRow> Rows()
+    public IReadOnlyList<ReceiptRow> Rows() => Rows(CharactersPerLine);
+
+    /// <summary>The slip laid out <paramref name="columns"/> across.</summary>
+    private List<ReceiptRow> Rows(int columns)
     {
         var culture = CultureInfo.CurrentCulture;
         var rows = new List<ReceiptRow>();
         var currency = (_header.CurrencyCode ?? "").Trim();
+        var amountEnd = columns - 3;
+        var (heads, itemFigures) = ItemColumns(columns);
 
+        // The slip is one block of columns in the middle of the roll.
+        // A line starts at the block's left edge, so the amounts line up
+        // under each other; centring each line on its own moved every
+        // amount by half the difference in the lines' lengths.
         void Line(string text, ReceiptStyle style = ReceiptStyle.Body) =>
             rows.Add(new ReceiptRow(text, style, Centred: false));
 
-        void Centre(string text, ReceiptStyle style = ReceiptStyle.Body) =>
-            rows.Add(new ReceiptRow(text, style, Centred: true));
+        void Centre(string text, ReceiptStyle style = ReceiptStyle.Body)
+        {
+            foreach (var piece in Wrap(text, columns, columns))
+                rows.Add(new ReceiptRow(piece, style, Centred: true));
+        }
 
-        void Rule() => Line(new string('-', CharactersPerLine));
+        void Rule() => Line(new string('-', columns));
 
         // The value wraps under itself rather than running off the roll:
         // on forty columns a longer patient's name pushed their file
         // number off the edge.
         void Field(string lead, string value)
         {
-            var room = CharactersPerLine - lead.Length;
+            var room = columns - lead.Length;
             var pieces = Wrap(value, room, room);
 
             Line(lead + pieces[0]);
@@ -129,106 +227,135 @@ public sealed class ReceiptDocument : PrintDocument
                 Line(new string(' ', lead.Length) + more);
         }
 
-        void Amount(string label, decimal value) =>
-            Line(AmountLine(label, value, culture));
+        void Amount(string label, decimal value)
+        {
+            foreach (var row in AmountLines(label, value, culture, amountEnd))
+                Line(row);
+        }
 
         // Who sold it: the name and the address, the VAT number a tax
         // invoice cannot be one without (specification Section 6.10), and
         // the numbers to ring about what is on the slip.
-        Centre(_header.TradingName, ReceiptStyle.Title);
+        // What the administrator chose to print (Receipt Template).
+        var show = _header.Template ?? ReceiptTemplate.Default;
+
+        if (show.TradingName) Centre(_header.TradingName, ReceiptStyle.Title);
 
         // One printed line per address line: a multi-line address drawn
         // in one call overprinted whatever came under it.
-        foreach (var addressLine in (_header.Address ?? "")
-                     .Split('\n')
-                     .Select(part => part.Trim())
-                     .Where(part => part.Length > 0))
-            Centre(addressLine);
+        if (show.Address)
+            foreach (var addressLine in (_header.Address ?? "")
+                         .Split('\n')
+                         .Select(part => part.Trim())
+                         .Where(part => part.Length > 0))
+                Centre(addressLine);
 
         // A pharmacy not yet registered for VAT prints no VAT number
         // rather than a bare label.
-        if (!string.IsNullOrWhiteSpace(_header.VatNumber))
+        if (show.VatNumber && !string.IsNullOrWhiteSpace(_header.VatNumber))
             Centre($"VAT No: {_header.VatNumber.Trim()}");
 
-        if (!string.IsNullOrWhiteSpace(_header.Telephone))
+        if (show.Telephone && !string.IsNullOrWhiteSpace(_header.Telephone))
             Centre($"Tel: {_header.Telephone.Trim()}");
 
-        if (!string.IsNullOrWhiteSpace(_header.WhatsApp))
+        if (show.WhatsApp && !string.IsNullOrWhiteSpace(_header.WhatsApp))
             Centre($"WhatsApp: {_header.WhatsApp.Trim()}");
 
         Rule();
-        Centre("Tax Invoice");
-        Centre(Kind());
-        Rule();
 
-        if (_header.IsCopy) Centre(CopyMark, ReceiptStyle.Bold);
+        if (show.DocumentTitle)
+        {
+            Centre("Tax Invoice");
+            Centre(Kind());
+            Rule();
+        }
+
+        // Never optional: the copy mark is what stops a reprint being
+        // passed off as the original, and without the number a slip
+        // cannot be found again.
+        if (_header.IsCopy && show.CopyMark) Centre(CopyMark, ReceiptStyle.Bold);
 
         Field("Trans No: ", _sale.DocumentNumber);
-        Field("Till Operator : ", _header.OperatorName);
-        Field("Till Number : ", Till());
+        if (show.Operator) Field("Till Operator : ", _header.OperatorName);
+        if (show.TillNumber) Field("Till Number : ", Till());
 
         // When, which a tax invoice has to say.
-        Line(string.Format(culture, "Date : {0:dd/MM/yyyy HH:mm}",
-            _header.PrintedAtLocal));
+        if (show.Date)
+            Line(string.Format(culture, "Date : {0:dd/MM/yyyy HH:mm}",
+                _header.PrintedAtLocal));
 
         // Whose it is. The account a sale went on, and the patient and
         // script a collection paid for, were on no receipt at all
         // (ADM-DEF-09, ADM-OBS-15).
         var who = _sale.Particulars;
 
-        if (who?.AccountNumber is string account)
-            Field("Account : ", $"{account} {who.AccountName}".Trim());
+        if (show.AccountAndPatient)
+        {
+            if (who?.AccountNumber is string account)
+                Field("Account : ", $"{account} {who.AccountName}".Trim());
 
-        if (who?.PatientName is string patient)
-            Field("Patient : ", who.FileNumber is null
-                ? patient
-                : $"{patient} ({who.FileNumber})");
+            if (who?.PatientName is string patient)
+                Field("Patient : ", who.FileNumber is null
+                    ? patient
+                    : $"{patient} ({who.FileNumber})");
 
-        if (who?.ScriptNumber is string script)
-            Line($"REF: Script No-{script}");
+            if (who?.ScriptNumber is string script)
+                Field("REF: Script No-", script);
+        }
 
         Rule();
-        Line(Heads);
-        Rule();
+
+        if (show.ColumnHeadings)
+        {
+            Line(heads);
+            Rule();
+        }
 
         var sold = _sale.Lines.Where(x => !x.IsVoided).ToList();
         var printed = Printed(sold, who?.ScriptNumber);
 
         foreach (var l in printed)
         {
+            // The code on a line of its own (a script charge has none),
+            // the whole name under it, over as many lines as it takes.
             var code = (l.ProductCode ?? "").Trim();
-            var figures = new string(' ', CodeWidth)
-                          + string.Format(culture, Figures,
-                              l.Quantity.ToString("0.###", culture),
-                              l.UnitPrice.ToString("N2", culture));
+            if (show.ProductCodes && code.Length > 0) Line(code);
 
-            // The code in the space before the quantity, with a space still
-            // between them. A code longer than that takes a line of its
-            // own, rather than pushing the figures out from under their
-            // heads.
-            var before = figures.Length - figures.TrimStart().Length - 1;
+            // A collected script is "Script Charge: <number>", never what
+            // was in it, and it prints whatever the template says about
+            // product names: it names no product, and it is the only line
+            // that says what the money was for.
+            if (show.ProductNames || l.IsScript)
+                foreach (var piece in Wrap(l.Description, columns, columns))
+                    Line(piece);
 
-            if (code.Length <= before)
+            // Then how many, at what each, and what the line came to after
+            // any discount, so the amounts add up to what was paid. An
+            // amount too long to sit beside the price goes under it.
+            var figures = show.QuantityAndUnitPrice
+                ? string.Format(culture, itemFigures,
+                    l.Quantity.ToString("0.###", culture),
+                    l.UnitPrice.ToString("N2", culture))
+                : "";
+            var amount = show.LineAmounts
+                ? l.LineTotal.ToString("N2", culture)
+                  + (l.VatRatePercent == 0m ? " NV" : "")
+                : "";
+            var end = amountEnd + (l.VatRatePercent == 0m ? 3 : 0);
+
+            if (figures.Length == 0 && amount.Length == 0)
             {
-                Line(code + figures[code.Length..]);
+                // Neither chosen: the item is its code and name only.
+            }
+            else if (figures.Length < end - amount.Length)
+            {
+                Line(figures.PadRight(end - amount.Length) + amount);
             }
             else
             {
-                Line(code);
                 Line(figures);
+                Line(amount.PadLeft(end));
             }
-
-            // The name with what the line came to, after any discount, so
-            // the amounts add up to what was paid; the whole name, over as
-            // many lines as it takes.
-            var amount = l.LineTotal.ToString("N2", culture);
-            var room = AmountEnd - amount.Length - 1;
-            var name = Wrap(l.Description, room, CharactersPerLine);
-
-            Line(name[0].PadRight(room + 1) + amount
-                 + (l.VatRatePercent == 0m ? " NV" : ""));
-
-            foreach (var more in name.Skip(1)) Line(more);
         }
 
         Rule();
@@ -236,61 +363,68 @@ public sealed class ReceiptDocument : PrintDocument
         // The sum of the amounts above. The sale's own subtotal is before
         // its discounts, which the amounts are not, so a discounted slip
         // did not add up.
-        Amount("Sub Total", printed.Sum(l => l.LineTotal));
+        if (show.SubTotal) Amount("Sub Total", printed.Sum(l => l.LineTotal));
 
-        foreach (var (label, vat) in VatLines(sold, currency, culture))
-            Amount(label, vat);
+        if (show.Vat)
+            foreach (var (label, vat) in VatLines(sold, currency, culture))
+                Amount(label, vat);
 
-        Amount(Labelled("TOTAL", currency) + ":", _sale.Totals.Total);
-        Rule();
+        if (show.Total) Amount(Labelled("TOTAL", currency) + ":", _sale.Totals.Total);
+        if (show.SubTotal || show.Vat || show.Total) Rule();
 
         // What was handed over for each tender. A payment is recorded at
         // what stayed in the drawer, and the change came out of the cash,
         // so the cash line adds it back: 20.00 handed over, not 14.90.
         var change = _sale.Totals.Change;
 
-        foreach (var payment in _sale.Payments ?? Array.Empty<PaymentDto>())
-        {
-            var handed = payment.Amount;
-
-            if (payment.TenderType == "Cash")
+        if (show.Tenders)
+            foreach (var payment in _sale.Payments ?? Array.Empty<PaymentDto>())
             {
-                handed += change;
-                change = 0m;
+                var handed = payment.Amount;
+
+                if (payment.TenderType == "Cash")
+                {
+                    handed += change;
+                    change = 0m;
+                }
+
+                Amount(TenderLabel(payment.TenderType)
+                       + (currency.Length > 0 ? " " + currency : ""), handed);
             }
 
-            Amount(TenderLabel(payment.TenderType)
-                   + (currency.Length > 0 ? " " + currency : ""), handed);
-        }
-
-        if (_sale.Totals.Change > 0m)
+        if (show.Change && _sale.Totals.Change > 0m)
             Amount("Change" + (currency.Length > 0 ? " " + currency : ""),
                    _sale.Totals.Change);
 
-        Rule();
+        if (show.Tenders || show.Change) Rule();
 
         // The patient's portion is what was paid here; the scheme's is
         // claimed. Both, so the patient can see the script was not
         // charged to them in full.
-        if (who?.SchemeShare is decimal share)
+        if (show.MedicalAidShare && who?.SchemeShare is decimal share)
         {
             Amount($"Claimed from {who.SchemeName ?? "medical aid"}", share);
             Amount("Your portion", _sale.Totals.Total);
         }
 
         // Somebody signs for a sale put on their account.
-        if (_sale.Payments?.Any(p => p.TenderType == "Account") == true)
+        if (show.AccountSignature
+            && _sale.Payments?.Any(p => p.TenderType == "Account") == true)
         {
             Line("");
-            Line("Signed ______________________________");
+            Line("Signed ".PadRight(columns, '_'));
         }
 
-        Rule();
+        if (_header.IsCopy && show.CopyMark) Centre(CopyMark, ReceiptStyle.Bold);
 
-        if (_header.IsCopy) Centre(CopyMark, ReceiptStyle.Bold);
-
-        Line("");
-        Centre("Thank you");
+        // Last line of text, after the totals and the cash. The page is
+        // taller than the type, so this is not left on a second page the
+        // printer waits to be fed. Whatever the administrator wrote.
+        if (show.Footer && !string.IsNullOrWhiteSpace(show.FooterText))
+            foreach (var footerLine in show.FooterText.Split('\n')
+                         .Select(part => part.Trim())
+                         .Where(part => part.Length > 0))
+                Centre(footerLine);
 
         return rows;
     }
@@ -310,68 +444,130 @@ public sealed class ReceiptDocument : PrintDocument
     /// long sale everything past the foot of the page - the total and the
     /// tenders first - was never printed.
     /// </remarks>
-    internal bool RenderPage(Graphics g, Rectangle margins)
+    internal bool RenderPage(Graphics g, Rectangle margins) =>
+        Draw(g, margins, Rows(), ref _next);
+
+    /// <summary>
+    /// Draws slip rows from <paramref name="next"/> on as one block of
+    /// thirty-two columns in the roll's largest type, and says whether
+    /// there is more. The receipt and the cash-up slip both print here.
+    /// </summary>
+    internal static bool Draw(Graphics g, Rectangle margins,
+                              IReadOnlyList<ReceiptRow> rows, ref int next)
     {
         ArgumentNullException.ThrowIfNull(g);
+        ArgumentNullException.ThrowIfNull(rows);
 
         float y = margins.Top;
 
-        using var centred = new StringFormat
-        {
-            Alignment = StringAlignment.Center
-        };
+        using var centred = FixedPitch.Format();
+        centred.Alignment = StringAlignment.Center;
 
-        // Forty columns to the width the printer reaches, up to the 8
-        // points the slip was laid out in.
-        var size = FixedPitch.Size(g, CharactersPerLine, margins.Width, 8f);
+        // As large as the 75 mm roll will hold, so a full line fills it
+        // and a line of 32 characters still ends inside the paper.
+        var size = Fitted(g, margins.Width);
         using var body = new Font(FixedPitch.Family, size);
         using var bold = new Font(FixedPitch.Family, size, FontStyle.Bold);
         using var exact = FixedPitch.Format();
 
-        var rows = Rows();
+        // The 32 columns as one block, centred on what the printer reaches.
+        var across = Math.Min(margins.Width, g.MeasureString(
+            new string('0', CharactersPerLine), body, PointF.Empty, exact).Width);
+        var block = new RectangleF(margins.Left + (margins.Width - across) / 2f,
+                                   margins.Top, across, margins.Height);
 
-        while (_next < rows.Count)
+        while (next < rows.Count)
         {
-            var row = rows[_next];
-            var font = row.Style switch
-            {
-                ReceiptStyle.Title => _title,
-                ReceiptStyle.Bold => bold,
-                _ => body
-            };
+            var row = rows[next];
+            var font = row.Style == ReceiptStyle.Body ? body : bold;
 
             // Centred rows wrap within the roll: a long trading name in
             // the large type would otherwise run off both edges.
             var height = row.Centred
-                ? Math.Max(g.MeasureString(row.Text, font, margins.Width).Height,
+                ? Math.Max(g.MeasureString(row.Text, font, (int)block.Width).Height,
                            font.GetHeight(g))
                 : font.GetHeight(g);
 
             // A row that will not fit goes to the next page - unless
             // nothing is on this one yet, or it would never be printed.
-            if (y > margins.Top && y + height > margins.Bottom) return true;
+            // The foot, including Thank you, stays on this page: a second
+            // page is what the receipt printer holds until its button
+            // is pressed, and the foot never came out.
+            var remaining = rows.Count - next;
+            if (y > margins.Top && y + height > margins.Bottom && remaining > 6)
+                return true;
 
             if (row.Centred)
                 g.DrawString(row.Text, font, Brushes.Black,
-                    new RectangleF(margins.Left, y, margins.Width, height),
+                    new RectangleF(block.Left, y, block.Width, height),
                     centred);
             else
-                g.DrawString(row.Text, font, Brushes.Black, margins.Left, y,
+                g.DrawString(row.Text, font, Brushes.Black, block.Left, y,
                              exact);
 
             y += height;
-            _next++;
+            next++;
         }
 
         return false;
     }
 
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) _title.Dispose();
+    /// <summary>
+    /// The slip as ESC/POS text, forty-two across, for the receipt printer
+    /// to print in its own type: what a printer on Windows' "Generic / Text
+    /// Only" driver is sent, which is how the pharmacy's previous system
+    /// had the till printer set up.
+    /// </summary>
+    /// <remarks>
+    /// Drawn, the slip went through that driver's own grid of characters
+    /// (photographed 22 October 2026): it came out over little more than
+    /// half the roll, its last three columns lost, and without its last
+    /// line - the printer prints a line when its line feed comes, and the
+    /// driver sent none after Thank you. As text, every line is centred on
+    /// the roll and ends in a line feed, and the slip is fed past the tear
+    /// bar and cut.
+    /// </remarks>
+    internal byte[] AsText() => AsText(Rows(SlipLayout.Width));
 
-        base.Dispose(disposing);
+    /// <summary>
+    /// Rows no wider than SlipLayout.Width as ESC/POS text: centred rows
+    /// centred on their own, the rest as one centred block. The till-roll
+    /// documents go to a text-only printer the same way.
+    /// </summary>
+    internal static byte[] AsText(IEnumerable<ReceiptRow> rows)
+    {
+        var text = new List<byte>(Initialise);
+
+        foreach (var row in rows)
+        {
+            var bold = row.Style != ReceiptStyle.Body;
+            if (bold) text.AddRange(BoldOn);
+
+            // Every left-aligned line the full width, so they centre as
+            // one block and the amounts stay under each other.
+            text.AddRange(Encoding.ASCII.GetBytes(row.Centred
+                ? row.Text
+                : row.Text.PadRight(SlipLayout.Width)));
+
+            if (bold) text.AddRange(BoldOff);
+            text.Add(LineFeed);
+        }
+
+        text.AddRange(FeedAndCut);
+        return text.ToArray();
     }
+
+    /// ESC @, then ESC a 1: start clean, and centre every line.
+    private static readonly byte[] Initialise = { 0x1B, 0x40, 0x1B, 0x61, 0x01 };
+
+    private static readonly byte[] BoldOn = { 0x1B, 0x45, 0x01 };
+    private static readonly byte[] BoldOff = { 0x1B, 0x45, 0x00 };
+    private const byte LineFeed = 0x0A;
+
+    /// ESC d 4, then GS V 1: four lines on, which takes the last line past
+    /// the tear bar, and a partial cut, which a printer with no cutter
+    /// ignores.
+    private static readonly byte[] FeedAndCut = { 0x1B, 0x64, 0x04, 0x1D, 0x56, 0x01 };
 
     /// <summary>
     /// The items as the slip prints them: everything sold over the
@@ -481,19 +677,27 @@ public sealed class ReceiptDocument : PrintDocument
     private static string Labelled(string label, string currency) =>
         currency.Length == 0 ? label : $"{label}-{currency}";
 
-    private static string AmountLine(string label, decimal value,
-                                     CultureInfo culture)
+    /// <summary>
+    /// A label and its amount, the amount ending at AmountEnd. A label too
+    /// long to sit beside it wraps, the amount on its last line: cut, a
+    /// scheme's name lost the end that said which scheme.
+    /// </summary>
+    private static IEnumerable<string> AmountLines(string label, decimal value,
+                                                   CultureInfo culture, int end)
     {
         var amount = value.ToString("N2", culture);
-        var room = AmountEnd - amount.Length - 1;
+        var room = end - amount.Length - 1;
+        var pieces = Wrap(label, room, room);
 
-        return Trim(label, room).PadRight(room + 1) + amount;
+        foreach (var piece in pieces.SkipLast(1)) yield return piece;
+
+        yield return pieces[^1].PadRight(room + 1) + amount;
     }
 
     /// <summary>
-    /// Splits a description at spaces: the first piece fits beside the
-    /// quantity and the amount, the rest fit the line beneath. A word too
-    /// long for either is split where it has to be.
+    /// Splits text at spaces: the first piece fits the first width, the
+    /// rest fit the second. A word too long for either is split where it
+    /// has to be.
     /// </summary>
     internal static IReadOnlyList<string> Wrap(string value, int first,
                                                int rest) =>
@@ -501,9 +705,6 @@ public sealed class ReceiptDocument : PrintDocument
 
     /// What a reprint says, above the sale and again at the foot.
     internal const string CopyMark = "*** COPY - REPRINTED ***";
-
-    private static string Trim(string text, int width) =>
-        text.Length <= width ? text : text[..width];
 
     /// The tender as the till offers it, not as the enum spells it.
     private static string TenderLabel(string tender) => tender switch

@@ -46,3 +46,27 @@ public sealed record XReadDto(
 public sealed record DeclarationDto(
     Guid TillSessionId, decimal TotalDeclared, decimal TotalVariance,
     IReadOnlyList<VarianceLineDto> Variances);
+
+/// <summary>
+/// Money taken out of a drawer during its shift, as the cash-up, the slip
+/// and the Z-read list it. A voided one is listed and counts for nothing.
+/// </summary>
+public sealed record PayoutDto(Guid Id, Guid TillSessionId, PayoutKind Kind,
+    decimal Amount, string Note, DateTime PaidAtLocal, string PaidByName,
+    bool IsVoided = false, string? VoidReason = null)
+{
+    public string KindName => Kind.DisplayName();
+
+    public static PayoutDto From(TillPayout p, string paidByName)
+    {
+        ArgumentNullException.ThrowIfNull(p);
+
+        return new PayoutDto(p.Id, p.TillSessionId, p.Kind, p.Amount.Amount,
+            p.Note, p.PaidAtUtc.ToLocalTime(), paidByName, p.IsVoided,
+            p.VoidReason);
+    }
+
+    /// What counts against the drawer: the payouts not voided.
+    public static decimal Total(IEnumerable<PayoutDto>? payouts) =>
+        payouts?.Where(p => !p.IsVoided).Sum(p => p.Amount) ?? 0m;
+}

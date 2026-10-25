@@ -62,6 +62,16 @@ public static class LedgerCode
     public const string OwnersCapital = "3000";
     public const string RetainedEarnings = "3100";
 
+    /// <summary>
+    /// What the owner has taken out of the business, from a till's
+    /// drawer or anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// Equity coming down, not an expense: drawings booked as a cost
+    /// would understate the profit the owner is drawing on.
+    /// </remarks>
+    public const string Drawings = "3200";
+
     public const string Sales = "4000";
 
     /// <summary>
@@ -90,6 +100,13 @@ public static class LedgerCode
     /// with.
     /// </remarks>
     public const string ClaimsWrittenOff = "5200";
+
+    /// <summary>
+    /// The small things paid in cash out of a till's drawer - lunch,
+    /// bread, airtime - each recorded at the till with what it was for.
+    /// </summary>
+    public const string TillExpenses = "5800";
+
     public const string CashShortOrOver = "5900";
 
     /// <summary>
@@ -116,6 +133,7 @@ public static class LedgerCode
 
         (OwnersCapital, "Owner's Capital", LedgerAccountType.Equity),
         (RetainedEarnings, "Retained Earnings", LedgerAccountType.Equity),
+        (Drawings, "Drawings", LedgerAccountType.Equity),
 
         (Sales, "Sales", LedgerAccountType.Income),
         (RoundingDifferences, "Rounding Differences", LedgerAccountType.Income),
@@ -123,6 +141,7 @@ public static class LedgerCode
         (Purchases, "Purchases", LedgerAccountType.Expense),
         (StockWrittenOff, "Stock Written Off", LedgerAccountType.Expense),
         (ClaimsWrittenOff, "Claims Written Off", LedgerAccountType.Expense),
+        (TillExpenses, "Till Expenses", LedgerAccountType.Expense),
         (CashShortOrOver, "Cash Short or Over", LedgerAccountType.Expense)
     };
 

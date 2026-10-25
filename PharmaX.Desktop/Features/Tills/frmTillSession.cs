@@ -21,16 +21,31 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
             DeclareRequested?.Invoke(this, EventArgs.Empty);
         btnCloseSession.Click += (_, _) =>
             CloseSessionRequested?.Invoke(this, EventArgs.Empty);
+        btnPayouts.Click += (_, _) =>
+            PayoutsRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(false);
 
         Resize += (_, _) => SizeCountGridToRows();
     }
 
     /// Runtime. Resolved by the container.
-    public frmTillSession(TillSessionPresenter presenter) : this()
+    public frmTillSession(TillSessionPresenter presenter, ViewFactory views) : this()
     {
         _presenter = presenter;
+        _views = views;
         _presenter.Attach(this);
+    }
+
+    private readonly ViewFactory? _views;
+
+    /// <summary>
+    /// Counts and closes another till's session, for its cashier. Set
+    /// before the window is shown.
+    /// </summary>
+    public void ForSession(Guid sessionId)
+    {
+        if (_presenter is not null) _presenter.TargetSessionId = sessionId;
+        Text = "Count and close - on the cashier's behalf";
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -63,17 +78,23 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
             : "Till session";
 
         lblSessionState.Text = session is null
-            ? "No session is open on this till. Nothing can be sold until "
-              + "one is (POS-013)."
+            ? "No session is open on this till. Open one before anything "
+              + "can be sold."
             : string.Format(Format.Culture,
-                "Opened {0} by {1}   -   float {2}   -   {3} X-read(s) taken",
+                "Opened {0} by {1}   -   float {2}   -   {3} X-read(s). "
+                + "Next: count, Declare, then cash up.",
                 Format.DateTimeShort(session.OpenedAtUtc.ToLocalTime()),
                 session.OpenedByName,
                 Format.Money(session.OpeningFloat),
                 session.XReadCount);
 
+        lblCountHint.Text = open
+            ? "Type how many of each note and coin you have counted."
+            : "Open a session first. The count starts after that.";
+
         btnOpen.Enabled = !open;
         btnXRead.Enabled = open;
+        btnPayouts.Enabled = open;
         btnDeclare.Enabled = open;
         btnCloseSession.Enabled = open;
         grdDenominations.Enabled = open;
@@ -84,6 +105,15 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
         grdDenominations.DefaultCellStyle.BackColor = open
             ? PhxTheme.Field
             : PhxTheme.Band;
+
+        if (!open)
+            btnOpen.Focus();
+        else if (!grdDenominations.Focused && grdDenominations.Rows.Count > 0)
+        {
+            grdDenominations.CurrentCell =
+                grdDenominations.Rows[0].Cells["Count"];
+            grdDenominations.Focus();
+        }
     }
 
     public void ShowExpected(IReadOnlyList<TenderExpectationDto> expectations)
@@ -166,6 +196,13 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
 
         lblDeclaredValue.Text = Format.Money(0m);
         SizeCountGridToRows();
+
+        if (btnXRead.Enabled && grdDenominations.Rows.Count > 0)
+        {
+            grdDenominations.CurrentCell =
+                grdDenominations.Rows[0].Cells["Count"];
+            grdDenominations.Focus();
+        }
     }
 
     /// <summary>
@@ -248,8 +285,23 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
                 Format.Money(Math.Abs(variance))),
             hint: "e.g. Change given short on one sale");
 
+    public bool ShowPayouts(Guid? sessionId)
+    {
+        if (_views is null) return false;
+
+        using var payouts = _views.Create<frmPayouts>();
+        payouts.ForSession(sessionId);
+        payouts.ShowDialog(this);
+        return payouts.Changed;
+    }
+
+    public bool PreviewSlip(Application.Sales.PrintableDocument document,
+                            Application.Sales.ReceiptHeaderDto header) =>
+        frmSlipPreview.Confirm(this, document, header);
+
     public event EventHandler? OpenRequested;
     public event EventHandler? XReadRequested;
     public event EventHandler? DeclareRequested;
     public event EventHandler? CloseSessionRequested;
+    public event EventHandler? PayoutsRequested;
 }

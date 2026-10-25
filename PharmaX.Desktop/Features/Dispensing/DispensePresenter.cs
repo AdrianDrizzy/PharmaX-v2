@@ -273,6 +273,11 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
     /// A different quantity or amount for an item before the issue. It is
     /// priced, taken from stock and screened again as a new item is.
     /// </summary>
+    /// <remarks>
+    /// A charge other than the price needs dsp.charge.adjust. Where the
+    /// operator does not hold it, someone who does - a pharmacist, an
+    /// assistant, a manager - authorises it with their own sign-in.
+    /// </remarks>
     private Task ChangeItemAsync() => GuardAsync(async () =>
     {
         if (_dispensingId == Guid.Empty || _items.Count == 0)
@@ -285,7 +290,22 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
             return;
 
         var result = await _dispensing.AmendItemAsync(_dispensingId,
-            answer.LineNo, answer.Quantity, answer.Amount, reason: null);
+            answer.LineNo, answer.Quantity, answer.Amount, answer.Reason);
+
+        if (result.IsFailure
+            && result.Error.Code == DispensingService.ChargeNeedsAuthority)
+        {
+            if (View.PromptChargeAuthorisation(result.Error.Message)
+                is not Guid authoriser)
+            {
+                View.ShowError("The charge was not changed.");
+                return;
+            }
+
+            result = await _dispensing.AmendItemAsync(_dispensingId,
+                answer.LineNo, answer.Quantity, answer.Amount, answer.Reason,
+                authoriser);
+        }
 
         if (result.IsFailure)
         {

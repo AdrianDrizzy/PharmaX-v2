@@ -61,9 +61,15 @@ public sealed class ReportRunner : IReportRunner
             preset, request.From, request.To, request.BranchCode,
             Merge(preset.FixedSlicers, request.Slicers),
             BuildProvenance(request, preset),
-            await OperatorNamesAsync(ct).ConfigureAwait(false));
+            await OperatorNamesAsync(ct).ConfigureAwait(false),
+            request.FromClock, request.ToClock);
 
         var result = await definition.RunAsync(resolved, ct).ConfigureAwait(false);
+
+        // A summary gets its graph here, once, for the preview and both
+        // exports alike.
+        if (result.Chart is null)
+            result = result with { Chart = Exporters.ReportCharts.Suggest(result) };
 
         await RecordAsync(preset, ct).ConfigureAwait(false);
         return result;
@@ -135,10 +141,17 @@ public sealed class ReportRunner : IReportRunner
     private ReportProvenance BuildProvenance(ReportRequest request,
                                              ReportPreset preset)
     {
+        var period = request.FromClock is DateTime from
+                     && request.ToClock is DateTime to
+            ? string.Format(CultureInfo.CurrentCulture,
+                "{0:dd/MM/yyyy HH:mm} to {1:dd/MM/yyyy HH:mm}", from, to)
+            : string.Format(CultureInfo.CurrentCulture,
+                "{0:dd/MM/yyyy} to {1:dd/MM/yyyy}", request.From, request.To);
+
         var summary = string.Format(CultureInfo.CurrentCulture,
-            "{0} | Branch {1} | {2:dd/MM/yyyy} to {3:dd/MM/yyyy}{4}",
-            preset.DisplayName, request.BranchCode, request.From,
-            request.To, Describe(request.Slicers));
+            "{0} | Branch {1} | {2}{3}",
+            preset.DisplayName, request.BranchCode, period,
+            Describe(request.Slicers));
 
         // A report run while the host is unreachable is a report of what
         // this workstation knows, and it says so on the page (RPT-012).

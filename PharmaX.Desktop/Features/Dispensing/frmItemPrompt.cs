@@ -1,6 +1,7 @@
 using System.Globalization;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
+using PharmaX.Application.Reference;
 using PharmaX.Desktop.Controls;
 using PharmaX.Desktop.Mvp;
 
@@ -21,11 +22,14 @@ public sealed class frmItemPrompt : Form
 {
     private readonly TextBox _quantity = new();
     private readonly TextBox _directions = new();
-    private readonly Label _reads = new();
+    private readonly TextBox _reads = new();
     private readonly Label _problem = new();
+    private readonly IReadOnlyDictionary<string, string> _codes;
 
-    private frmItemPrompt(ItemProposalDto proposal)
+    private frmItemPrompt(ItemProposalDto proposal,
+                          IReadOnlyDictionary<string, string> codes)
     {
+        _codes = codes;
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
         Name = "frmItemPrompt";
@@ -65,29 +69,37 @@ public sealed class frmItemPrompt : Form
         // Mandatory: a label without directions cannot be dispensed
         // (DSP-004).
         _directions.Location = new Point(110, 94);
-        _directions.MaxLength = 250;
+        _directions.MaxLength = 500;
         _directions.Name = "txtDirections";
         _directions.Size = new Size(346, 23);
         _directions.Text = proposal.Directions;
         _directions.PlaceholderText = "e.g. T1 TDS, or Take ONE tablet three times a day";
         _directions.TextChanged += (_, _) => ShowWording();
 
-        _reads.AutoSize = false;
+        // The complete directions, as the label will print them, including
+        // a sentence that wraps. The box scrolls rather than clipping.
+        _reads.BackColor = SystemColors.Control;
+        _reads.BorderStyle = BorderStyle.None;
         _reads.ForeColor = PhxTheme.Muted;
         _reads.Location = new Point(110, 122);
+        _reads.Multiline = true;
         _reads.Name = "lblLabelReads";
-        _reads.Size = new Size(346, 36);
+        _reads.ReadOnly = true;
+        _reads.ScrollBars = ScrollBars.Vertical;
+        _reads.Size = new Size(346, 72);
+        _reads.TabStop = false;
+        _reads.WordWrap = true;
 
         _problem.AutoSize = false;
         _problem.ForeColor = PhxTheme.Negative;
-        _problem.Location = new Point(16, 166);
+        _problem.Location = new Point(16, 202);
         _problem.Name = "lblProblem";
         _problem.Size = new Size(270, 36);
 
         var ok = new Button
         {
             DialogResult = DialogResult.OK,
-            Location = new Point(300, 166),
+            Location = new Point(300, 202),
             Name = "btnOk",
             Size = new Size(75, 28),
             Text = "OK"
@@ -96,7 +108,7 @@ public sealed class frmItemPrompt : Form
         var cancel = new Button
         {
             DialogResult = DialogResult.Cancel,
-            Location = new Point(381, 166),
+            Location = new Point(381, 202),
             Name = "btnCancel",
             Size = new Size(75, 28),
             Text = "Cancel"
@@ -110,7 +122,7 @@ public sealed class frmItemPrompt : Form
 
         AcceptButton = ok;
         CancelButton = cancel;
-        ClientSize = new Size(472, 208);
+        ClientSize = new Size(472, 248);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -144,26 +156,31 @@ public sealed class frmItemPrompt : Form
             : null;
     }
 
+    private string Expanded() =>
+        DosageShorthand.Expand(_directions.Text, _codes);
+
     private void ShowWording()
     {
-        var wording = LabelWording.Directions(_directions.Text);
+        var wording = LabelWording.Directions(Expanded());
 
-        _reads.Text = wording.Length == 0 ? "" : $"Label: {wording}";
+        _reads.Text = wording.Length == 0 ? "" : wording;
     }
 
     /// <summary>
     /// The quantity and directions to dispense an item with, starting from
     /// what the script says; null if cancelled.
     /// </summary>
-    public static DirectionsDto? Ask(IWin32Window owner, ItemProposalDto proposal)
+    public static DirectionsDto? Ask(IWin32Window owner, ItemProposalDto proposal,
+        IReadOnlyDictionary<string, string>? codes = null)
     {
         ArgumentNullException.ThrowIfNull(proposal);
 
-        using var dialog = new frmItemPrompt(proposal);
+        using var dialog = new frmItemPrompt(proposal,
+            codes ?? DosageShorthand.Catalogue());
 
         return dialog.ShowDialog(owner) == DialogResult.OK
                && dialog.Quantity is decimal quantity
-            ? new DirectionsDto(quantity, dialog._directions.Text.Trim())
+            ? new DirectionsDto(quantity, dialog.Expanded())
             : null;
     }
 }

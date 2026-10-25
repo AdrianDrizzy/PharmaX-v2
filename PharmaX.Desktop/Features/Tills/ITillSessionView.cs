@@ -17,8 +17,22 @@ public interface ITillSessionView : Mvp.IView
     /// session, or null where nothing was entered.
     decimal? EcoCashStatement { get; }
 
+    /// <summary>
+    /// The money-out window for this session - the one being counted, or
+    /// this till's own where null. True where anything was recorded.
+    /// </summary>
+    bool ShowPayouts(Guid? sessionId);
+
+    /// <summary>
+    /// The read as it will print, on screen. True where the operator chose
+    /// to print it.
+    /// </summary>
+    bool PreviewSlip(Application.Sales.PrintableDocument document,
+                     Application.Sales.ReceiptHeaderDto header);
+
     event EventHandler? OpenRequested;
     event EventHandler? XReadRequested;      // Ctrl+X
     event EventHandler? DeclareRequested;
     event EventHandler? CloseSessionRequested; // Ctrl+Z
+    event EventHandler? PayoutsRequested;
 }

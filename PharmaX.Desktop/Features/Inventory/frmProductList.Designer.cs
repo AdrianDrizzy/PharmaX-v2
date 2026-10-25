@@ -6,6 +6,7 @@ partial class frmProductList
 {
     private System.ComponentModel.IContainer components = null!;
     private Panel pnlTop = null!;
+    private CheckBox chkShowInactive = null!;
     private Panel pnlBottom = null!;
     private Label lblSearch = null!;
     private TextBox txtSearch = null!;
@@ -14,6 +15,7 @@ partial class frmProductList
     private CheckBox chkBatches = null!;
     private Button btnAdd = null!;
     private Button btnEdit = null!;
+    private Button btnDeactivate = null!;
     private Button btnRefresh = null!;
     private Button btnChoose = null!;
     private Button btnExport = null!;
@@ -34,6 +36,7 @@ partial class frmProductList
     {
         components = new System.ComponentModel.Container();
         pnlTop = new Panel();
+        chkShowInactive = new CheckBox();
         pnlBottom = new Panel();
         lblSearch = new Label();
         txtSearch = new TextBox();
@@ -43,6 +46,8 @@ partial class frmProductList
         chkBatches.Name = "chkBatches";
         btnAdd = new Button();
         btnAdd.Name = "btnAdd";
+        btnDeactivate = new Button();
+        btnDeactivate.Name = "btnDeactivate";
         btnEdit = new Button();
         btnEdit.Name = "btnEdit";
         btnRefresh = new Button();
@@ -73,8 +78,16 @@ partial class frmProductList
         chkBatches.Text = "Show &batches and expiry";
         chkBatches.UseVisualStyleBackColor = true;
 
+        // Deactivated products are hidden until asked for.
+        chkShowInactive.AutoSize = true;
+        chkShowInactive.Location = new Point(650, 15);
+        chkShowInactive.Name = "chkShowInactive";
+        chkShowInactive.TabIndex = 2;
+        chkShowInactive.Text = "Show &deactivated";
+        chkShowInactive.UseVisualStyleBackColor = true;
+
         pnlTop.Controls.AddRange(new Control[]
-            { chkBatches, txtSearch, lblSearch });
+            { chkShowInactive, chkBatches, txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 50;
         pnlTop.Name = "pnlTop";
@@ -119,15 +132,21 @@ partial class frmProductList
         btnEdit.Text = "&Edit";
         btnEdit.UseVisualStyleBackColor = true;
 
-        btnRefresh.Location = new Point(204, 8);
+        btnDeactivate.Location = new Point(204, 8);
+        btnDeactivate.Size = new Size(110, 30);
+        btnDeactivate.TabIndex = 3;
+        btnDeactivate.Text = "Deac&tivate";
+        btnDeactivate.UseVisualStyleBackColor = true;
+
+        btnRefresh.Location = new Point(320, 8);
         btnRefresh.Size = new Size(90, 30);
-        btnRefresh.TabIndex = 3;
+        btnRefresh.TabIndex = 4;
         btnRefresh.Text = "&Refresh";
         btnRefresh.UseVisualStyleBackColor = true;
 
         // Hidden until UseAsPicker shows it, so the maintenance screen
         // does not offer a "choose" that would have nobody to answer to.
-        btnChoose.Location = new Point(300, 8);
+        btnChoose.Location = new Point(416, 8);
         btnChoose.Size = new Size(110, 30);
         btnChoose.TabIndex = 4;
         btnChoose.Text = "C&hoose";
@@ -136,7 +155,7 @@ partial class frmProductList
 
         // In Choose's place on the maintenance screen; UseAsPicker swaps
         // them over.
-        btnExport.Location = new Point(300, 8);
+        btnExport.Location = new Point(416, 8);
         btnExport.Size = new Size(110, 30);
         btnExport.TabIndex = 4;
         btnExport.Text = "Ex&port";
@@ -152,7 +171,7 @@ partial class frmProductList
         // The pages are turned on the bar above these (PagerBar), as on
         // every other list.
         pnlBottom.Controls.AddRange(new Control[]
-            { btnClose, btnExport, btnChoose, btnRefresh, btnEdit, btnAdd });
+            { btnClose, btnExport, btnChoose, btnRefresh, btnDeactivate, btnEdit, btnAdd });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
         pnlBottom.Name = "pnlBottom";

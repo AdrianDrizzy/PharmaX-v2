@@ -20,6 +20,12 @@ public sealed class Sale : AuditableEntity
 
     public Guid BranchId { get; private set; }
     public Guid WorkstationId { get; private set; }
+
+    /// <summary>
+    /// The till session the money is taken in. Empty for a basket made up
+    /// for the cashier (Prepare), which is in no session until a till
+    /// recalls it.
+    /// </summary>
     public Guid TillSessionId { get; private set; }
     public Guid OperatorId { get; private set; }
     public Guid? PatientId { get; private set; }
@@ -133,6 +139,21 @@ public sealed class Sale : AuditableEntity
     }
 
     /// <summary>
+    /// A basket made up by someone who does not take the money - the
+    /// pharmacist assistant at the dispensary computer. It is held for the
+    /// cashier and belongs to no till session until a till recalls it.
+    /// </summary>
+    public static Sale Prepare(Guid branchId, Guid workstationId,
+                               Guid operatorId, DateTime occurredAtUtc) =>
+        new()
+        {
+            BranchId = branchId,
+            WorkstationId = workstationId,
+            OperatorId = operatorId,
+            OccurredAtUtc = occurredAtUtc
+        };
+
+    /// <summary>
     /// Marks this sale as collecting a dispensing's co-payment.
     /// </summary>
     public void CollectFor(Guid dispensingId)
@@ -201,6 +222,7 @@ public sealed class Sale : AuditableEntity
     {
         ArgumentNullException.ThrowIfNull(tendered);
         EnsureOpen();
+        EnsureInTillSession();
 
         var payments = tendered.ToList();
         var offered = payments.Aggregate(Money.Zero(),
@@ -265,9 +287,14 @@ public sealed class Sale : AuditableEntity
     }
 
     /// <summary>
-    /// Takes a held sale back up at the till, by whoever is serving now.
+    /// Takes a held sale back up, by whoever is serving now: at a till,
+    /// into its session and onto its computer, where the money is taken.
     /// </summary>
-    public void Resume(Guid tillSessionId, Guid operatorId)
+    /// <param name="tillSessionId">
+    /// Null where it is taken up by someone who does not take the money,
+    /// to add to it: it stays in no till session (Prepare).
+    /// </param>
+    public void Resume(Guid? tillSessionId, Guid workstationId, Guid operatorId)
     {
         if (Status != SaleStatus.Held)
             throw new DomainException("Only a held sale can be recalled.");
@@ -276,7 +303,8 @@ public sealed class Sale : AuditableEntity
             throw new DomainException(
                 "A sale requires an open till session (POS-013).");
 
-        TillSessionId = tillSessionId;
+        TillSessionId = tillSessionId ?? Guid.Empty;
+        WorkstationId = workstationId;
         OperatorId = operatorId;
         Status = SaleStatus.Open;
     }
@@ -312,6 +340,7 @@ public sealed class Sale : AuditableEntity
     public void Finalise(string documentNumber, DateTime nowUtc)
     {
         EnsureOpen();
+        EnsureInTillSession();
 
         if (_lines.Count == 0)
             throw new DomainException("A sale must have at least one line.");
@@ -350,5 +379,14 @@ public sealed class Sale : AuditableEntity
             throw new DomainException(
                 "A finalised sale cannot be changed. Use a return " +
                 "or a credit note (BR-POS-07).");
+    }
+
+    /// The money goes in the drawer of the till whose session it is in.
+    private void EnsureInTillSession()
+    {
+        if (TillSessionId == Guid.Empty)
+            throw new DomainException(
+                "The cashier takes the money for this basket on the till "
+                + "with the drawer. Hold it for them (POS-013).");
     }
 }

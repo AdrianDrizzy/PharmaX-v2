@@ -69,12 +69,20 @@ public interface IDispensingService
     /// </remarks>
     /// <param name="amount">
     /// What the item is charged. Null to price it for the new quantity:
-    /// as a new item would be before the issue, pro rata after it.
+    /// as a new item would be before the issue, pro rata after it. Any
+    /// other amount is a charge adjustment: dsp.charge.adjust and a reason.
     /// </param>
-    /// <param name="reason">Why an issued item is changed.</param>
+    /// <param name="reason">
+    /// Why an issued item is changed, or why the charge is adjusted.
+    /// </param>
+    /// <param name="authorisedBy">
+    /// Who authorised a charge adjustment the operator may not make on
+    /// their own; refused with <see cref="DispensingService.ChargeNeedsAuthority"/>
+    /// where it was needed and not given.
+    /// </param>
     Task<Result<ItemAmendedDto>> AmendItemAsync(Guid dispensingId, int lineNo,
         decimal quantity, decimal? amount, string? reason,
-        CancellationToken ct = default);
+        Guid? authorisedBy = null, CancellationToken ct = default);
 
     Task<IReadOnlyList<ClinicalWarningDto>> PendingWarningsAsync(
         Guid dispensingId, CancellationToken ct = default);
@@ -131,7 +139,8 @@ public interface IDispensingService
     Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId, int lineNo,
         CancellationToken ct = default);
 
-    /// Scripts begun and kept to finish later.
+    /// Scripts begun within the last 24 hours and kept to finish later;
+    /// older ones are set aside first.
     Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
         CancellationToken ct = default);
 }
@@ -158,6 +167,13 @@ public interface ILabelPrinter
                                        CancellationToken ct = default);
 
     /// <summary>
+    /// Prints the same label several times over, in one job: the stickers
+    /// for a run of pre-packs.
+    /// </summary>
+    Task<Sales.PrintResult> PrintCopiesAsync(LabelDto label, int copies,
+                                             CancellationToken ct = default);
+
+    /// <summary>
     /// Prints the trailer label that follows a script's own labels, on
     /// the same printer, and says whether it did.
     /// </summary>
@@ -174,6 +190,13 @@ public sealed class DispensingService : IDispensingService
     /// and named on the audit trail of whoever issued them.
     /// </summary>
     public const int ControlledSchedule = 6;
+
+    /// <summary>
+    /// The refusal of a charge adjustment that someone holding
+    /// dsp.charge.adjust may authorise: the screen asks for them and
+    /// tries again.
+    /// </summary>
+    public const string ChargeNeedsAuthority = "DSP-056";
 
     /// <summary>
     /// Whether the operator releases a hard stop or issues a controlled
@@ -257,12 +280,23 @@ public sealed class DispensingService : IDispensingService
             return Result<DispensingStateDto>.Fail("DSP-011",
                 $"Script {script.ScriptNumber} has no repeats left.");
 
-        // One kept to finish later is picked up where it was left.
+        // One kept to finish later is picked up where it was left - if it
+        // was begun within the last day; an older one is set aside and the
+        // script begun again.
+        await ClearStaleAsync(ct);
+
         if ((await _dispensings.ForPatientAsync(script.PatientId, ct))
             .FirstOrDefault(d => d.ScriptId == script.Id
                                  && d.Status == DispensingStatus.InProgress) is { } kept
             && await _dispensings.GetAsync(kept.Id, ct) is { } resumed)
+        {
+            // Picked up again: its 24 hours start over (ClearStaleAsync), so
+            // it is not set aside under the person finishing it.
+            resumed.UpdatedAtUtc = _clock.UtcNow;
+            await _uow.SaveChangesAsync(ct);
+
             return Result<DispensingStateDto>.Ok(DispensingStateDto.From(resumed));
+        }
 
         var dispensing = Domain.Dispensing.Dispensing.Begin(
             script.Id, script.PatientId, _user.Id, script.RepeatsUsed);
@@ -428,7 +462,7 @@ public sealed class DispensingService : IDispensingService
 
     public async Task<Result<ItemAmendedDto>> AmendItemAsync(Guid dispensingId,
         int lineNo, decimal quantity, decimal? amount, string? reason,
-        CancellationToken ct = default)
+        Guid? authorisedBy = null, CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ScriptDispense);
 
@@ -469,17 +503,68 @@ public sealed class DispensingService : IDispensingService
                     + "Reverse it and dispense it again to change it.");
         }
 
+        // Pro rata to what it was charged, as the screen suggests it.
+        var proRata = Math.Round(line.TariffAmount.Amount * quantity / line.Quantity,
+                                 2, MidpointRounding.AwayFromZero);
+
+        // Before the issue an amount at all is the operator's own; after
+        // it, one other than the pro rata the screen offered.
+        var adjusting = issued ? amount is decimal given && given != proRata
+                               : amount is not null;
+        Guid? adjustedFor = null;
+
+        if (adjusting)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                return Fail("DSP-055", "Say why the charge is being changed: it "
+                    + "is kept on the record.");
+
+            switch (_permissions.Check(PermissionCode.DispensingChargeAdjust))
+            {
+                case PermissionOutcome.Granted:
+                    break;
+
+                case PermissionOutcome.RequiresSupervisor when authorisedBy is null:
+                    return Fail(ChargeNeedsAuthority, "Changing the charge needs "
+                        + "a pharmacist, an assistant, a manager or the "
+                        + "administrator to authorise it.");
+
+                // Someone else, who holds it: authorising yourself is not a
+                // second pair of eyes.
+                case PermissionOutcome.RequiresSupervisor
+                    when authorisedBy is Guid by && by != _user.Id
+                         && _permissions.UserHolds(by, PermissionCode.DispensingChargeAdjust):
+                    adjustedFor = by;
+                    break;
+
+                default:
+                    // Out of the transaction first: the refusal is written on
+                    // its own connection.
+                    await tx.DisposeAsync();
+                    _audit.Refused(PermissionCode.DispensingChargeAdjust,
+                        "Dispensing", dispensing.Id,
+                        authorisedBy is null
+                            ? "Not held."
+                            : "The authoriser may not change a charge.");
+
+                    return Fail("DSP-057", authorisedBy is null
+                        ? "You do not have permission to change the charge."
+                        : "The person who authorised this may not change a charge.");
+            }
+        }
+
         var before = dispensing.CoPaymentTotal.Amount;
         var was = $"{line.Description} x{line.Quantity:0.###} at "
                   + $"{line.TariffAmount.Amount:0.00}";
+
+        // What the item comes to without the adjustment, for the record.
+        var priced = proRata;
 
         try
         {
             if (issued)
             {
-                var charged = amount ?? Math.Round(
-                    line.TariffAmount.Amount * quantity / line.Quantity, 2,
-                    MidpointRounding.AwayFromZero);
+                var charged = amount ?? proRata;
                 var units = quantity - line.Quantity;
 
                 dispensing.AmendLine(lineNo, quantity,
@@ -496,6 +581,7 @@ public sealed class DispensingService : IDispensingService
                 }
 
                 line = dispensing.Lines.MaxBy(l => l.LineNo)!;
+                priced = line.TariffAmount.Amount;
 
                 if (amount is decimal charged)
                     dispensing.AmendLine(line.LineNo, quantity,
@@ -510,7 +596,23 @@ public sealed class DispensingService : IDispensingService
 
         _audit.Applied("dsp.item.amend", "Dispensing", dispensing.Id,
             $"{was} -> x{line.Quantity:0.###} at {line.TariffAmount.Amount:0.00}"
-            + (issued ? $": {reason!.Trim()}" : ""));
+            + (string.IsNullOrWhiteSpace(reason) ? "" : $": {reason.Trim()}"));
+
+        // Its own entry, so the charges changed by hand - and who let them -
+        // can be read off the audit trail without the quantity changes.
+        if (adjusting)
+        {
+            var authoriser = adjustedFor is Guid by
+                ? (await _users.GetAsync(by, ct))?.Username ?? by.ToString()
+                : null;
+
+            _audit.Applied(PermissionCode.DispensingChargeAdjust, "Dispensing",
+                dispensing.Id,
+                $"{line.Description} x{line.Quantity:0.###} priced "
+                + $"{priced:0.00}, charged {line.TariffAmount.Amount:0.00}: "
+                + reason!.Trim()
+                + (authoriser is null ? "" : $" (authorised by {authoriser})"));
+        }
 
         if (issued)
             _outbox.Append("Dispensing", dispensing.Id,
@@ -521,7 +623,10 @@ public sealed class DispensingService : IDispensingService
 
         return Result<ItemAmendedDto>.Ok(new ItemAmendedDto(
             DispensingStateDto.From(dispensing), issued, before,
-            dispensing.CoPaymentTotal.Amount, dispensing.SaleId is not null));
+            dispensing.CoPaymentTotal.Amount,
+            // A till sale, or a script taken off the queue without one
+            // (settled before PharmaX). Still waiting means neither.
+            dispensing.SaleId is not null || dispensing.CollectedAtUtc is not null));
     }
 
     /// <summary>
@@ -886,6 +991,9 @@ public sealed class DispensingService : IDispensingService
 
         var patient = await _patients.GetAsync(dispensing.PatientId, ct);
         var pharmacist = await _users.GetAsync(responsible, ct);
+        var scheme = patient?.MedicalAidSchemeId is Guid schemeId
+            ? (await _reference.GetAsync(ReferenceKind.MedicalAidScheme, schemeId, ct))?.Name
+            : null;
 
         // Counted in the bag, 1 of n: a line taken off before the issue
         // leaves a gap in the line numbers that a label must not show.
@@ -904,7 +1012,8 @@ public sealed class DispensingService : IDispensingService
                 ItemNumber: i + 1,
                 ItemCount: dispensing.Lines.Count,
                 PrescriberName: script.PrescriberName,
-                PrescriberNumber: script.PrescriberNumber)).ToList();
+                PrescriberNumber: script.PrescriberNumber,
+                SchemeName: scheme)).ToList();
 
         // The scheme's share of the bill, recognised now rather than
         // whenever somebody remembers to submit a batch. Inside the issue
@@ -1089,10 +1198,48 @@ public sealed class DispensingService : IDispensingService
             PrescriberNumber: script?.PrescriberNumber));
     }
 
+    /// <summary>
+    /// How long a script begun and not issued is kept to finish later.
+    /// </summary>
+    private static readonly TimeSpan KeptFor = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Sets aside every dispensing begun or last picked up more than a day
+    /// ago and never issued, those already on file included. Nothing left
+    /// the shelf for them, so nothing is put back.
+    /// </summary>
+    /// <remarks>
+    /// The time gone by since it was begun or resumed (UpdatedAtUtc), both
+    /// ends in UTC, so a script begun late in the evening still has its
+    /// full 24 hours, and one picked up again is not set aside while it is
+    /// being finished. Issued scripts waiting to be collected are not in
+    /// progress and are not touched.
+    /// </remarks>
+    private async Task ClearStaleAsync(CancellationToken ct)
+    {
+        var stale = (await _dispensings.InProgressAsync(ct))
+            .Where(d => _clock.UtcNow - d.UpdatedAtUtc > KeptFor)
+            .ToList();
+
+        if (stale.Count == 0) return;
+
+        foreach (var dispensing in stale)
+        {
+            dispensing.Abandon();
+            _audit.Applied("dsp.dispensing.abandon", "Dispensing", dispensing.Id,
+                "Not finished within 24 hours of being begun.");
+        }
+
+        await _uow.SaveChangesAsync(ct);
+    }
+
     public async Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ScriptDispense);
+
+        // Only today's: one begun more than a day ago is set aside first.
+        await ClearStaleAsync(ct);
 
         var kept = new List<SuspendedDispensingDto>();
 
@@ -1244,6 +1391,10 @@ public interface IDispensingRepository
     /// starts from: the person, then which of their items to print again.
     Task<IReadOnlyList<Domain.Dispensing.Dispensing>> ForPatientAsync(
         Guid patientId, CancellationToken ct = default);
+
+    /// Issued during a UTC range, newest first. The day's labels.
+    Task<IReadOnlyList<Domain.Dispensing.Dispensing>> IssuedBetweenAsync(
+        DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 
     /// <summary>
     /// Dispensings that have been issued and still owe a co-payment,

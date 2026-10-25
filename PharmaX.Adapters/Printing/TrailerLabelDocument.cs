@@ -1,26 +1,27 @@
 using System.Drawing.Printing;
 using System.Globalization;
 using PharmaX.Application.Dispensing;
+using PharmaX.Application.Sales;
 
 namespace PharmaX.Adapters.Printing;
 
 /// <summary>
-/// The trailer label, on the same 102 by 36 millimetre stock as the item
-/// labels and printed straight after them: the script number and the
+/// The trailer label, on the same page as the item labels and printed
+/// straight after them: the script number and the
 /// patient, every medicine on the script with how many were dispensed,
 /// the prescriber and the date, and the pharmacy.
 /// </summary>
 /// <remarks>
-/// Laid out as the pharmacy's existing trailer labels are, on the same 48
-/// characters by 8 lines as the item labels:
+/// Laid out as the pharmacy's existing trailer labels are, on the same
+/// page and the same columns as the item labels:
 /// <code>
 /// RX#: 13049 JOSEPHAT NYAKUNHUWA (001)
 /// ENALAPRIL +5 10MG TAB (15)
 /// SPIRONOLACTONE ALDAC 25MG TAB (5)
 /// DR: madondoro D                       08/09/2026
-/// Bethrapha Pharmacy, 28 Woodstock Road
-/// Keep out of reach of children.
+/// Bethrapha Pharmacy, 28 Woodstock Road, Thorngrove, Bulawayo
 /// </code>
+/// No "Keep out of reach of children": the bag the labels go on prints it.
 /// A script with more medicines than one label holds carries on to a
 /// second, headed the same way, so nothing on the script is left off.
 /// Whether a trailer prints at all is the dispensing screen's choice
@@ -46,14 +47,20 @@ public sealed class TrailerLabelDocument : PrintDocument
         _trailer = trailer;
         _foot = Foot(trailer, dispensedBy, telephone);
 
-        // The item labels' stock, so the trailer comes off the same roll.
-        DefaultPageSettings.PaperSize = new PaperSize("Label", 400, 144);
-        DefaultPageSettings.Margins = new Margins(4, 4, 4, 4);
+        // The item labels' page, so the trailer comes off the same roll.
+        LabelDocument.ApplyStock(DefaultPageSettings);
+    }
+
+    protected override void OnQueryPageSettings(QueryPageSettingsEventArgs e)
+    {
+        base.OnQueryPageSettings(e);
+        LabelDocument.ApplyStock(e.PageSettings);
     }
 
     protected override void OnBeginPrint(PrintEventArgs e)
     {
         base.OnBeginPrint(e);
+        LabelDocument.ApplyStock(DefaultPageSettings);
         _next = 0;
         _page = 0;
     }
@@ -76,29 +83,30 @@ public sealed class TrailerLabelDocument : PrintDocument
     {
         ArgumentNullException.ThrowIfNull(trailer);
 
-        return new[] { Heading(trailer, continued: false) }
-            .Concat(trailer.Items.Select(Item))
+        return HeadingLines(trailer, continued: false)
+            .Concat(trailer.Items.SelectMany(ItemLines))
             .Concat(Foot(trailer, dispensedBy, telephone))
             .ToList();
     }
 
     /// <summary>
     /// What closes every trailer label: the prescriber and the date, the
-    /// pharmacy, its telephone and "Keep out of reach of children", which
-    /// every label carries.
+    /// pharmacy with its address, and its telephone.
     /// </summary>
     private static List<string> Foot(TrailerLabelDto trailer,
         string? dispensedBy, string? telephone)
     {
         var foot = new List<string> { Spread(Doctor(trailer), Dated(trailer)) };
 
+        // The pharmacy and its address whole, over two lines where it
+        // takes them, as the item labels carry it.
         if (!string.IsNullOrWhiteSpace(dispensedBy))
-            foot.Add(Fit(dispensedBy.Trim(), Columns));
+            foot.AddRange(SlipLayout.Wrap(dispensedBy.Trim(), Columns, Columns)
+                                    .Where(piece => piece.Length > 0));
 
         if (!string.IsNullOrWhiteSpace(telephone))
             foot.Add(Fit($"Tel: {telephone.Trim()}", Columns));
 
-        foot.Add(LabelWording.KeepOutOfReach);
         return foot;
     }
 
@@ -110,60 +118,72 @@ public sealed class TrailerLabelDocument : PrintDocument
     {
         ArgumentNullException.ThrowIfNull(g);
 
-        // The heading and the foot on every label; the medicines between.
+        // The heading and the foot on every label; the medicines between,
+        // printed as the item labels are. In the smaller face: in the full
+        // one the date against the right edge lost the last digit of its
+        // year to the edge of what the printer reaches.
+        var rows = TakePage();
+
+        LabelPrint.Draw(g, bounds,
+            rows.Select(row => new LabelRow(row, LabelStyle.Detail, Compact: true)).ToList(),
+            Columns, Math.Max(LabelDocument.LineCount, rows.Count));
+
+        return _next < _trailer.Items.Count;
+    }
+
+    /// <summary>
+    /// The next sticker's rows, and advances the count of medicines used.
+    /// </summary>
+    private List<string> TakePage()
+    {
         var room = Math.Max(1, LabelDocument.LineCount - 1 - _foot.Count);
         var items = _trailer.Items;
-        var rows = new List<string> { Heading(_trailer, continued: _page > 0) };
+        var rows = new List<string>();
+        rows.AddRange(HeadingLines(_trailer, continued: _page > 0));
+        var used = 0;
 
-        for (var last = Math.Min(items.Count, _next + room); _next < last; _next++)
-            rows.Add(Item(items[_next]));
-
-        rows.AddRange(_foot);
-
-        var size = FixedPitch.Size(g, Columns, bounds.Width, 12f,
-            Math.Max(LabelDocument.LineCount, rows.Count), bounds.Height);
-
-        using var font = new Font(FixedPitch.Family, size);
-        using var exact = FixedPitch.Format();
-
-        var height = font.GetHeight(g);
-        float y = bounds.Top;
-
-        foreach (var row in rows)
+        while (_next < items.Count)
         {
-            g.DrawString(row, font, Brushes.Black, bounds.Left, y, exact);
-            y += height;
+            var lines = ItemLines(items[_next]).ToList();
+            if (used > 0 && used + lines.Count > room)
+                break;
+
+            rows.AddRange(lines);
+            used += Math.Max(1, lines.Count);
+            _next++;
         }
 
+        rows.AddRange(_foot);
         _page++;
 
-        return _next < items.Count;
+        return rows;
     }
 
     /// <summary>
-    /// "RX#:", the script, the patient and which issue it is, shortening
-    /// the name rather than losing the issue number.
+    /// "RX#:", the script, the patient and which issue it is. A long
+    /// name wraps; the issue number is not dropped.
     /// </summary>
-    private static string Heading(TrailerLabelDto trailer, bool continued)
+    private static IEnumerable<string> HeadingLines(TrailerLabelDto trailer, bool continued)
     {
         var culture = CultureInfo.CurrentCulture;
-        var lead = $"RX#: {trailer.ScriptNumber} ";
-        var tail = string.Format(culture, " ({0:000}){1}", trailer.FillNumber,
-                                 continued ? " cont." : "");
+        var text = string.Format(culture, "RX#: {0} {1} ({2:000}){3}",
+            trailer.ScriptNumber, trailer.PatientName.Trim(), trailer.FillNumber,
+            continued ? " cont." : "");
 
-        return (lead + Fit(trailer.PatientName.Trim(),
-                           Columns - lead.Length - tail.Length) + tail).Trim();
+        return SlipLayout.Wrap(text.Trim(), Columns, Columns)
+                         .Where(piece => piece.Length > 0);
     }
 
     /// <summary>
-    /// A medicine and how many, shortening the name rather than the
-    /// quantity: the quantity is what the bag is checked against.
+    /// A medicine and how many, wrapping the name onto the next line
+    /// rather than dropping characters. The quantity stays with the name.
     /// </summary>
-    private static string Item(TrailerItemDto item)
+    private static IEnumerable<string> ItemLines(TrailerItemDto item)
     {
         var quantity = $" ({item.Quantity.ToString("0.##", CultureInfo.CurrentCulture)})";
 
-        return Fit(item.Description.Trim(), Columns - quantity.Length) + quantity;
+        return SlipLayout.Wrap(item.Description.Trim() + quantity, Columns, Columns)
+                         .Where(piece => piece.Length > 0);
     }
 
     /// <summary>

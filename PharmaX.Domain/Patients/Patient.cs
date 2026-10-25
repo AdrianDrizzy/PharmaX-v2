@@ -153,4 +153,7 @@ public sealed class Patient : AuditableEntity
     public void LinkClinicalProfile(Guid profileId) => ClinicalProfileId = profileId;
 
     public void Deactivate() => IsActive = false;
+
+    /// Back on the searches: a file deactivated by mistake, or a patient returned.
+    public void Reactivate() => IsActive = true;
 }

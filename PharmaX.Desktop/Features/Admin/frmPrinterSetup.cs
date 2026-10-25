@@ -49,6 +49,12 @@ public sealed class frmPrinterSetup : PhxFormBase
 
     private static readonly Choice WindowsDefault = new(null, "(Windows default)");
 
+    /// Labels never go to the Windows default, which at a till is the
+    /// receipt printer (PrinterResolver.Resolve), so the blank entry says
+    /// what it means for them.
+    private static readonly Choice NoLabelPrinter =
+        new(null, "(none chosen - labels will not print)");
+
     public frmPrinterSetup(IWorkstationSettings settings,
                            PharmacyProfile pharmacy,
                            IPrinterDirectory directory)
@@ -104,7 +110,7 @@ public sealed class frmPrinterSetup : PhxFormBase
 
         _testReceipt.Location = new Point(24, below + 122);
         _testReceipt.Size = new Size(150, 32);
-        _testReceipt.Text = "&Test page";
+        _testReceipt.Text = "&Test receipt";
         _testReceipt.Click += async (_, _) => await PrintTestPageAsync();
 
         _save.Location = new Point(378, below + 122);
@@ -135,6 +141,7 @@ public sealed class frmPrinterSetup : PhxFormBase
     {
         base.OnLoad(e);
         await RefreshAsync(note: null);
+        _receipt.Focus();
     }
 
     /// <summary>
@@ -181,7 +188,8 @@ public sealed class frmPrinterSetup : PhxFormBase
             var lost = new[]
             {
                 await FillAsync(_receipt, WorkstationSettingKey.ReceiptPrinter, options),
-                await FillAsync(_label, WorkstationSettingKey.LabelPrinter, options),
+                await FillAsync(_label, WorkstationSettingKey.LabelPrinter, options,
+                                NoLabelPrinter),
                 await FillAsync(_document, WorkstationSettingKey.DocumentPrinter, options)
             }.FirstOrDefault(problem => problem is not null);
 
@@ -229,7 +237,8 @@ public sealed class frmPrinterSetup : PhxFormBase
     /// else the one saved. Says so where the saved one has gone.
     /// </summary>
     private async Task<string?> FillAsync(ComboBox combo, string key,
-                                          IReadOnlyList<Choice> options)
+                                          IReadOnlyList<Choice> options,
+                                          Choice? blank = null)
     {
         var keep = _loaded ? Chosen(combo) : await _settings.GetAsync(key);
 
@@ -237,7 +246,7 @@ public sealed class frmPrinterSetup : PhxFormBase
 
         // A blank entry means "whatever Windows calls the default", which
         // is the right answer on a till with one printer.
-        combo.Items.Add(WindowsDefault);
+        combo.Items.Add(blank ?? WindowsDefault);
         combo.Items.AddRange(options.Cast<object>().ToArray());
 
         if (string.IsNullOrWhiteSpace(keep))
@@ -271,8 +280,10 @@ public sealed class frmPrinterSetup : PhxFormBase
         // A printer that has since been removed leaves the choice on the
         // default rather than on a name that no longer resolves.
         combo.SelectedIndex = 0;
-        return $"The saved printer '{keep}' is no longer installed, so the "
-               + "Windows default is being used.";
+        return $"The saved printer '{keep}' is no longer installed"
+               + (blank is null
+                   ? ", so the Windows default is being used."
+                   : ". Choose another.");
     }
 
     private static bool IsHere(string computer) =>
@@ -394,6 +405,19 @@ public sealed class frmPrinterSetup : PhxFormBase
 
     private async Task SaveAsync()
     {
+        // Labels on the receipt printer come out on the receipt roll - the
+        // mistake the Windows default made for them - so it is asked.
+        var receipt = Chosen(_receipt) ?? PrinterResolver.WindowsDefault();
+        var label = Chosen(_label);
+
+        if (label is not null
+            && string.Equals(label, receipt, StringComparison.OrdinalIgnoreCase)
+            && !Confirm($"Labels and receipts are both set to print on "
+                        + $"{NetworkPrinters.Describe(label)}, so labels will "
+                        + "come out on the receipt roll." + Environment.NewLine
+                        + Environment.NewLine + "Save anyway?"))
+            return;
+
         foreach (var printer in new[] { Chosen(_receipt), Chosen(_label),
                                         Chosen(_document) }.Distinct())
             if (!await ConnectAsync(printer)) return;
@@ -433,9 +457,15 @@ public sealed class frmPrinterSetup : PhxFormBase
             if (chosen is not null)
                 document.PrinterSettings.PrinterName = chosen;
 
+            // On the roll the receipts are given, so the width it reports
+            // is the width a receipt gets.
+            ReceiptDocument.ApplyRoll(document.DefaultPageSettings, 10);
+            var reach = 0.0;
+
             document.PrintPage += (_, e) =>
             {
                 using var font = new Font("Consolas", 9f);
+                reach = e.PageSettings.PrintableArea.Width * 0.254;
 
                 // Headed as the receipts are, with the pharmacy's own
                 // name: a till set up for the pharmacy should not print
@@ -445,9 +475,16 @@ public sealed class frmPrinterSetup : PhxFormBase
                     + $"{Format.DateTimeShort(DateTime.Now)}\n"
                     + $"Printer: {document.PrinterSettings.PrinterName}\n"
                     + $"Sent from: {Environment.MachineName}\n"
-                    + "If you can read this, receipts will print.",
+                    + $"Prints {reach:0} mm wide on {e.PageSettings.PaperSize.PaperName}\n"
+                    + "The line below runs edge to edge.",
                     font, Brushes.Black, e.MarginBounds.Left,
                     e.MarginBounds.Top);
+
+                // Across everything the printer reaches: where it stops
+                // short of the roll's right edge, receipts do too.
+                var y = e.MarginBounds.Top + 7 * font.GetHeight(e.Graphics);
+                e.Graphics.DrawLine(Pens.Black, 0, y,
+                    e.PageSettings.PrintableArea.Width - 1, y);
 
                 e.HasMorePages = false;
             };
@@ -456,10 +493,20 @@ public sealed class frmPrinterSetup : PhxFormBase
             // as long as the network does to accept the job.
             await Task.Run(document.Print);
 
-            _status.ForeColor = PhxTheme.Muted;
+            // A 75 mm roll is printed about 72 mm wide. Much less is a
+            // printer set up for 58 mm paper, and a receipt on it fills
+            // only the left of the roll.
+            var narrow = reach is > 0 and < 65;
+
+            _status.ForeColor = narrow ? PhxTheme.ProblemText : PhxTheme.Muted;
             _status.Text = "Test page sent to "
                            + NetworkPrinters.Describe(
-                               document.PrinterSettings.PrinterName) + ".";
+                               document.PrinterSettings.PrinterName)
+                           + (reach > 0 ? $". It prints {reach:0} mm wide" : "")
+                           + (narrow
+                               ? " - set it to 80 mm paper in Windows (Printing "
+                                 + "preferences) so receipts fill the roll."
+                               : ".");
         }
 #pragma warning disable CA1031 // Deliberately broad: see the comment below.
         catch (Exception ex)

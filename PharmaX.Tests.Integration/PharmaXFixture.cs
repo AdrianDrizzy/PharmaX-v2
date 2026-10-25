@@ -34,7 +34,11 @@ public sealed class PharmaXFixture : IDisposable
     /// </remarks>
     public static PharmaXFixture Trading(bool autoPost) => new(autoPost);
 
-    private PharmaXFixture(bool autoPost)
+    /// An installation set up for a named pharmacy, as an installer build is.
+    public static PharmaXFixture ForPharmacy(PharmacyOptions pharmacy) =>
+        new(autoPost: true, pharmacy);
+
+    private PharmaXFixture(bool autoPost, PharmacyOptions? pharmacy = null)
     {
         _databasePath = Path.Combine(Path.GetTempPath(),
             $"pharmax-test-{Guid.NewGuid():N}.db");
@@ -53,7 +57,8 @@ public sealed class PharmaXFixture : IDisposable
                 LocalConnection = $"Data Source={_databasePath}",
                 HostConnection = ""      // standalone: no host to reach
             },
-            Accounting = new AccountingOptions { AutoPost = autoPost }
+            Accounting = new AccountingOptions { AutoPost = autoPost },
+            Pharmacy = pharmacy ?? new PharmacyOptions()
         };
 
         var services = new ServiceCollection();

@@ -12,6 +12,7 @@ partial class frmTariffList
     private Label lblCount = null!;
     private ComboBox cboScheme = null!;
     private TextBox txtSearch = null!;
+    private CheckBox chkInactive = null!;
     private PhxGrid grdTariffs = null!;
     private Button btnAdd = null!;
     private Button btnEdit = null!;
@@ -40,6 +41,7 @@ partial class frmTariffList
         lblCount = new Label();
         cboScheme = new ComboBox();
         txtSearch = new TextBox();
+        chkInactive = new CheckBox();
         grdTariffs = new PhxGrid();
         btnAdd = new Button();
         btnAdd.Name = "btnAdd";
@@ -70,8 +72,14 @@ partial class frmTariffList
         txtSearch.Location = new Point(413, 13);
         txtSearch.Name = "txtSearch";
         txtSearch.PlaceholderText = "Product code, description or society";
-        txtSearch.Size = new Size(300, 23);
+        txtSearch.Size = new Size(200, 23);
         txtSearch.TabIndex = 1;
+
+        chkInactive.AutoSize = true;
+        chkInactive.Location = new Point(620, 15);
+        chkInactive.Name = "chkInactive";
+        chkInactive.Text = "Show inactive";
+        chkInactive.TabIndex = 2;
 
         lblCount.AutoSize = false;
         lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -80,7 +88,7 @@ partial class frmTariffList
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
         pnlTop.Controls.AddRange(new Control[]
-            { lblCount, txtSearch, lblSearch, cboScheme, lblScheme });
+            { lblCount, chkInactive, txtSearch, lblSearch, cboScheme, lblScheme });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 50;
         pnlTop.Name = "pnlTop";
@@ -114,7 +122,7 @@ partial class frmTariffList
         btnToggle.Location = new Point(204, 8);
         btnToggle.Size = new Size(110, 30);
         btnToggle.TabIndex = 4;
-        btnToggle.Text = "&Retire";
+        btnToggle.Text = "Deac&tivate";
         btnToggle.UseVisualStyleBackColor = true;
 
         btnRefresh.Location = new Point(320, 8);

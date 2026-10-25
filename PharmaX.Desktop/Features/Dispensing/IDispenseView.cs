@@ -50,6 +50,10 @@ public interface IDispenseView : Mvp.IView
     /// Returns the pharmacist who authenticated, or null if cancelled.
     Guid? PromptPharmacistAuthorisation(string reasonShown);
 
+    /// Returns whoever authorised changing the charge - someone holding
+    /// dsp.charge.adjust - or null if cancelled.
+    Guid? PromptChargeAuthorisation(string reasonShown);
+
     /// Returns the reason given, or null if the pharmacist declined to
     /// override a hard-stop warning.
     string? PromptWarningOverride(ClinicalWarningDto warning);

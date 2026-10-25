@@ -1,5 +1,6 @@
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing.Dtos;
+using PharmaX.Application.Reference;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
@@ -15,7 +16,7 @@ namespace PharmaX.Application.Dispensing;
 public sealed record DispensedItemDto(Guid DispensingId, string ScriptNumber,
     string DocumentNumber, string PatientName, DateOnly DispensedOn,
     int Labels, Guid ScriptId = default, decimal CoPayment = 0m,
-    string Items = "");
+    string Items = "", Guid PatientId = default);
 
 /// <summary>
 /// How a run of labels went: how many printed, where, and any note about
@@ -32,6 +33,13 @@ public interface ILabelReprintService
     /// </summary>
     Task<Result<IReadOnlyList<DispensedItemDto>>> ForPatientAsync(
         Guid patientId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Labels issued on one local day, newest first. What the Labels
+    /// screen opens on, before a patient is chosen.
+    /// </summary>
+    Task<Result<IReadOnlyList<DispensedItemDto>>> ForDayAsync(
+        DateOnly day, CancellationToken ct = default);
 
     /// <summary>
     /// Rebuilds the labels for an issued dispensing so they can be
@@ -67,14 +75,16 @@ public sealed class LabelReprintService : ILabelReprintService
     private readonly IAuditWriter _audit;
     private readonly IUnitOfWork _uow;
     private readonly IWorkstationSettings _settings;
+    private readonly IReferenceRepository? _reference;
 
     public LabelReprintService(IDispensingRepository dispensings,
         IScriptRepository scripts, IPatientRepository patients,
         IUserRepository users, ILabelPrinter printer,
         IPermissionService permissions, IAuditWriter audit, IUnitOfWork uow,
-        IWorkstationSettings settings)
+        IWorkstationSettings settings, IReferenceRepository? reference = null)
     {
         _settings = settings;
+        _reference = reference;
         _dispensings = dispensings;
         _scripts = scripts;
         _patients = patients;
@@ -105,21 +115,58 @@ public sealed class LabelReprintService : ILabelReprintService
         {
             var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
 
-            rows.Add(new DispensedItemDto(
-                dispensing.Id,
-                script?.ScriptNumber ?? "",
-                dispensing.DocumentNumber,
-                patient.FullName,
-                DateOnly.FromDateTime(
-                    (dispensing.IssuedAtUtc ?? DateTime.UtcNow).ToLocalTime()),
-                dispensing.Lines.Count, dispensing.ScriptId,
-                dispensing.CoPaymentTotal.Amount,
-                ScriptDto.ItemList(dispensing.Lines.OrderBy(l => l.LineNo)
-                    .Select(l => (l.Description, l.Quantity)))));
+            rows.Add(Row(dispensing, script?.ScriptNumber ?? "", patient.FullName,
+                patient.Id));
         }
 
         return Result<IReadOnlyList<DispensedItemDto>>.Ok(rows);
     }
+
+    public async Task<Result<IReadOnlyList<DispensedItemDto>>> ForDayAsync(
+        DateOnly day, CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var (from, to) = DayWindow(day);
+        var issued = await _dispensings.IssuedBetweenAsync(from, to, ct);
+        var names = new Dictionary<Guid, (string Name, Guid Id)>();
+        var rows = new List<DispensedItemDto>();
+
+        foreach (var dispensing in issued)
+        {
+            if (!names.TryGetValue(dispensing.PatientId, out var who))
+            {
+                var patient = await _patients.GetAsync(dispensing.PatientId, ct);
+                who = (patient?.FullName ?? "", dispensing.PatientId);
+                names[dispensing.PatientId] = who;
+            }
+
+            var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
+            rows.Add(Row(dispensing, script?.ScriptNumber ?? "", who.Name, who.Id));
+        }
+
+        return Result<IReadOnlyList<DispensedItemDto>>.Ok(rows);
+    }
+
+    /// The local day as the UTC range the issued-at clock is stored in.
+    internal static (DateTime FromUtc, DateTime ToUtc) DayWindow(DateOnly day)
+    {
+        var from = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+        var to = day.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Local)
+            .ToUniversalTime();
+        return (from, to);
+    }
+
+    private static DispensedItemDto Row(Domain.Dispensing.Dispensing dispensing,
+        string scriptNumber, string patientName, Guid patientId) =>
+        new(dispensing.Id, scriptNumber, dispensing.DocumentNumber, patientName,
+            DateOnly.FromDateTime(
+                (dispensing.IssuedAtUtc ?? DateTime.UtcNow).ToLocalTime()),
+            dispensing.Lines.Count, dispensing.ScriptId,
+            dispensing.CoPaymentTotal.Amount,
+            ScriptDto.ItemList(dispensing.Lines.OrderBy(l => l.LineNo)
+                .Select(l => (l.Description, l.Quantity))),
+            patientId);
 
     public async Task<Result<IReadOnlyList<LabelDto>>> BuildAsync(
         Guid dispensingId, CancellationToken ct = default)
@@ -134,6 +181,11 @@ public sealed class LabelReprintService : ILabelReprintService
 
         var pharmacist = dispensing.PharmacistId is Guid id
             ? await _users.GetAsync(id, ct)
+            : null;
+
+        var scheme = _reference is not null
+                     && patient?.MedicalAidSchemeId is Guid schemeId
+            ? (await _reference.GetAsync(ReferenceKind.MedicalAidScheme, schemeId, ct))?.Name
             : null;
 
         IReadOnlyList<LabelDto> labels = dispensing.Lines
@@ -152,7 +204,8 @@ public sealed class LabelReprintService : ILabelReprintService
                 ItemNumber: i + 1,
                 ItemCount: dispensing.Lines.Count,
                 PrescriberName: script?.PrescriberName,
-                PrescriberNumber: script?.PrescriberNumber)).ToList();
+                PrescriberNumber: script?.PrescriberNumber,
+                SchemeName: scheme)).ToList();
 
         return Result<IReadOnlyList<LabelDto>>.Ok(labels);
     }

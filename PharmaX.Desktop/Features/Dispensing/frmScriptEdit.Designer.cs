@@ -213,8 +213,13 @@ partial class frmScriptEdit
         {
             Name = "Directions", HeaderText = "Directions (on label)",
             FillWeight = 118,
-            SortMode = DataGridViewColumnSortMode.NotSortable
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                WrapMode = DataGridViewTriState.True
+            }
         });
+        grdItems.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
         grdItems.Columns.Add(new DataGridViewCheckBoxColumn
         {

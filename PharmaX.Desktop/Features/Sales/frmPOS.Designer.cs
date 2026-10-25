@@ -11,6 +11,9 @@ partial class frmPOS
     private Panel pnlCustomer = null!;
     private Panel pnlTotals = null!;
     private Panel pnlFunctions = null!;
+    private FlowLayoutPanel pnlHeaderKeys = null!;
+    private LinkLabel lnkCustomer = null!;
+    private ContextMenuStrip mnuLine = null!;
     private TableLayoutPanel tblTotals = null!;
     private ScanBar scanBar = null!;
     private PhxGrid grdLines = null!;
@@ -97,7 +100,7 @@ partial class frmPOS
         scanBar.Dock = DockStyle.Top;
         scanBar.Height = 52;
         scanBar.Name = "scanBar";
-        scanBar.Prompt = "Scan / name";
+        scanBar.Prompt = "Scan or type the item";
 
         // ---- Who is being served -----------------------------------------
         lblCustomer.AutoSize = false;
@@ -185,7 +188,11 @@ partial class frmPOS
         // result was not: a white box with a border and bold centred
         // text is a button to everyone who looks at it, so the bar
         // invited the click it then ignored.
-        foreach (var (key, label) in PosKeyMap.Bar)
+        // Only the keys used on every sale get a button of their own; the
+        // rest are under More. Thirteen buttons shared out across a small
+        // till screen were too narrow to read. Every key still works from
+        // the keyboard whether or not it has a button.
+        foreach (var (key, label) in PosKeyMap.Bar.Where(k => PosKeyMap.OnBar.Contains(k.Key)))
         {
             var button = new Button
             {
@@ -209,6 +216,78 @@ partial class frmPOS
             pnlFunctions.Controls.Add(button);
             x += 117;
         }
+
+        // ---- The keys that live elsewhere ---------------------------------
+        // Reprint, Lock and Close in the header, beside the clock: things
+        // done to the till rather than to the sale.
+        pnlHeaderKeys = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            FlowDirection = FlowDirection.LeftToRight,
+            Name = "pnlHeaderKeys",
+            Padding = new Padding(0, 8, 8, 0),
+            Size = new Size(3 * 136 + 8, 62),
+            WrapContents = false
+        };
+
+        foreach (var key in PosKeyMap.InHeader)
+        {
+            var button = new Button
+            {
+                Font = PhxTheme.Emphasis,
+                Name = $"btn{key}",
+                Size = new Size(130, 34),
+                Tag = key,
+                Text = PosKeyMap.LabelFor(key),
+                UseVisualStyleBackColor = true
+            };
+            button.Click += OnFunctionButton;
+            pnlHeaderKeys.Controls.Add(button);
+        }
+
+        pnlHeader.Controls.Add(pnlHeaderKeys);
+
+        // Customer, beside who the sale is for.
+        lnkCustomer = new LinkLabel
+        {
+            AutoSize = false,
+            Dock = DockStyle.Right,
+            Font = PhxTheme.Emphasis,
+            Name = "lnkCustomer",
+            Tag = PosKeyMap.Customer,
+            Text = "Change customer (F3)",
+            TextAlign = ContentAlignment.MiddleRight,
+            Width = 230
+        };
+        lnkCustomer.LinkClicked += (_, _) => OnFunctionButton(lnkCustomer, EventArgs.Empty);
+        pnlCustomer.Controls.Add(lnkCustomer);
+
+        // Void line on the line itself: right-click it, or press Delete.
+        mnuLine = new ContextMenuStrip { Font = PhxTheme.Emphasis, Name = "mnuLine" };
+        var voidLine = new ToolStripMenuItem(PosKeyMap.LabelFor(PosKeyMap.VoidLine).Replace("Esc ", "", StringComparison.Ordinal) + " (Esc)")
+        {
+            Name = "mnuVoidLine",
+            Tag = PosKeyMap.VoidLine
+        };
+        voidLine.Click += (_, _) => OnFunctionButton(voidLine, EventArgs.Empty);
+        mnuLine.Items.Add(voidLine);
+        grdLines.ContextMenuStrip = mnuLine;
+
+        // A right-click picks the line it lands on first, so the void
+        // hits the line under the pointer, not the one highlighted before.
+        grdLines.CellMouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
+            grdLines.ClearSelection();
+            grdLines.CurrentCell = grdLines.Rows[e.RowIndex].Cells[Math.Max(0, e.ColumnIndex)];
+        };
+
+        grdLines.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Delete) return;
+            e.Handled = true;
+            Raise(PosKeyMap.VoidLine);
+        };
 
         // Shared out across the width the till has, so every key stays on
         // screen however many there are and whatever the display scaling.

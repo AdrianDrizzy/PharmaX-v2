@@ -32,7 +32,8 @@ public sealed class ReferenceListPresenter : PresenterBase<IReferenceListView>
 
     private Task LoadAsync() => GuardAsync(async () =>
     {
-        var result = await _reference.ListAsync(View.Kind, View.SearchText);
+        var result = await _reference.ListAsync(View.Kind, View.SearchText,
+            View.IncludeInactive);
 
         if (result.IsFailure)
         {
@@ -65,8 +66,8 @@ public sealed class ReferenceListPresenter : PresenterBase<IReferenceListView>
         var active = View.SelectedIsActive;
 
         var question = active
-            ? $"Retire this {labels.Singular}? It stays on past records "
-              + "but cannot be chosen again."
+            ? $"Deactivate this {labels.Singular}? It stays on past records "
+              + "and leaves this list."
             : $"Bring this {labels.Singular} back into use?";
 
         if (!View.Confirm(question)) return;

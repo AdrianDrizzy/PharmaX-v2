@@ -38,4 +38,13 @@ public class DosageShorthandTests
     {
         DosageShorthand.Expand("T1 OD UF", Codes).Should().Be("Take 1 tablet once a day UF");
     }
+
+    [Fact]
+    public void A_pharmacys_own_meaning_replaces_the_standard_one()
+    {
+        var codes = DosageShorthand.Catalogue(new[] { ("UF", "until finished"), ("OD", "every morning") });
+
+        DosageShorthand.Expand("T1 OD UF", codes)
+            .Should().Be("Take 1 tablet every morning until finished");
+    }
 }

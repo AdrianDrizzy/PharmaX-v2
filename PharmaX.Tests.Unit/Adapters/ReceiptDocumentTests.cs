@@ -1,3 +1,4 @@
+using System.Text;
 using FluentAssertions;
 using PharmaX.Adapters.Printing;
 using PharmaX.Application.Sales;
@@ -17,8 +18,8 @@ namespace PharmaX.Tests.Unit.Adapters;
 /// </remarks>
 public class ReceiptDocumentTests : IDisposable
 {
-    /// The 76 mm roll, in hundredths of an inch.
-    private const int Width = 299;
+    /// The 75 mm roll, in hundredths of an inch.
+    private const int Width = 295;
     private const int Height = 900;
 
     private readonly string _logoPath = Path.Combine(
@@ -115,29 +116,116 @@ public class ReceiptDocumentTests : IDisposable
         var texts = Texts(Rows(sale, Header(null) with { OperatorName = "test" }));
 
         texts.SkipWhile(t => !t.StartsWith('-')).Should().Equal(
-            "----------------------------------------",
+            "--------------------------------",
             "Tax Invoice",
             "Cash Sale",
-            "----------------------------------------",
+            "--------------------------------",
             "Trans No: 31159",
             "Till Operator : test",
             "Till Number : 1",
             "Date : 11/09/2026 09:30",
-            "----------------------------------------",
-            "Code    QTY    Unit Price     Amount Inc",
-            "----------------------------------------",
-            "1616     10 @        0.25",
-            "MYPRODOL                         2.50 NV",
-            "----------------------------------------",
-            "Sub Total                        2.50",
-            "VAT-USD :                        0.00",
-            "TOTAL-USD:                       2.50",
-            "----------------------------------------",
-            "Cash USD                         2.50",
-            "----------------------------------------",
-            "----------------------------------------",
-            "",
+            "--------------------------------",
+            "Code  QTY  Unit Price Amount Inc",
+            "--------------------------------",
+            "1616",
+            "MYPRODOL",
+            "     10 @        0.25    2.50 NV",
+            "--------------------------------",
+            "Sub Total                2.50",
+            "VAT-USD :                0.00",
+            "TOTAL-USD:               2.50",
+            "--------------------------------",
+            "Cash USD                 2.50",
+            "--------------------------------",
             "Thank you");
+    }
+
+    /// <remarks>
+    /// 75 mm, and as long as the slip. A fixed short page is what made
+    /// the printer stop in the middle and wait for its feed button.
+    /// </remarks>
+    [Fact]
+    public void The_roll_is_75_mm_and_as_long_as_the_slip()
+    {
+        ReceiptDocument.RollWidthHundredths.Should().Be(295);
+
+        using var document = new ReceiptDocument(Sale(), Header(null));
+        var height = ReceiptDocument.RollHeight(document.Rows().Count);
+
+        height.Should().BeGreaterThan(document.Rows().Count * 14);
+        height.Should().BeLessThan(1200,
+            "a fixed 12-inch page is what the printer was stopping in");
+
+        var sale = Sale() with
+        {
+            Lines = Enumerable.Range(1, 40)
+                .Select(i => Line($"P{i}", $"Product number {i}", 1m, 1m, rate: 15m))
+                .ToArray()
+        };
+
+        using var longer = new ReceiptDocument(sale, Header(null));
+
+        ReceiptDocument.RollHeight(longer.Rows().Count).Should().BeGreaterThan(height);
+    }
+
+    [Fact]
+    public void A_long_address_stays_whole_and_centred()
+    {
+        var header = Header(null) with
+        {
+            Address = "28 Woodstock Road, Thorngrove\nBulawayo\n(Along Luveve Road)"
+        };
+
+        var rows = Rows(Sale(), header);
+        var address = rows.Where(row => row.Centred).Select(row => row.Text).ToList();
+
+        address.Should().Contain("28 Woodstock Road, Thorngrove",
+            "it fits the 32 columns, so it stays one line");
+        address.Should().Contain("Bulawayo");
+        address.Should().Contain("(Along Luveve Road)");
+        rows[0].Text.Should().Be("Riverside Pharmacy");
+        rows[^1].Text.Should().Be("Thank you");
+    }
+
+    /// <remarks>
+    /// The slip is one block in the middle of the roll. Centred line by
+    /// line, a total ending three columns short of an item's "NV" was
+    /// moved a column and a half further right than the item's amount.
+    /// </remarks>
+    [Fact]
+    public void The_amounts_line_up_under_each_other()
+    {
+        var rows = Rows(Sale(), Header(null));
+
+        rows.Where(row => row.Text.StartsWith("Trans No", StringComparison.Ordinal)
+                          || row.Text.StartsWith("Sub Total", StringComparison.Ordinal)
+                          || row.Text.StartsWith('-'))
+            .Should().OnlyContain(row => !row.Centred);
+
+        using var page = Render(Header(null));
+
+        // The block is centred: as much white either side of the rules.
+        var (left, right) = InkAcross(page, RuleRow(page));
+        Math.Abs(left - (Width - 1 - right)).Should().BeLessThanOrEqualTo(3);
+    }
+
+    /// <remarks>
+    /// Thirty-two columns so the sizing can still reach 10 points. The
+    /// slip itself is capped at 9, because 10 point ran off the 75 mm roll.
+    /// </remarks>
+    [Fact]
+    public void The_type_is_larger_and_nothing_runs_off_the_roll()
+    {
+        using var page = new Bitmap(Width, Height);
+        using var g = Graphics.FromImage(page);
+
+        FixedPitch.Size(g, ReceiptDocument.CharactersPerLine, Width - 20, 10f)
+            .Should().Be(10f, "the shorter line leaves room for 10 point type");
+
+        using var slip = Render(Header(null));
+
+        LastInkColumn(slip).Should().BeLessThan(Width - 10,
+            "every amount ends inside the roll");
     }
 
     [Fact]
@@ -146,8 +234,9 @@ public class ReceiptDocumentTests : IDisposable
         var texts = Texts(Rows(Sale(), Header(null)));
 
         texts.Should().ContainInOrder(
-            "PAN500    2 @       34.95",
-            AmountRow("Panado 500mg 20s", "69.90"));
+            "PAN500",
+            "Panado 500mg 20s",
+            ItemRow("2", "34.95", "69.90"));
 
         texts.Should().Contain(AmountRow("VAT-USD : 15.0%", "9.12"));
         texts.Should().Contain(AmountRow("Cash USD", "100.00"));
@@ -205,7 +294,7 @@ public class ReceiptDocumentTests : IDisposable
 
         var texts = Texts(Rows(sale, Header(null)));
 
-        texts.Should().Contain(AmountRow("Panado 500mg 20s", "62.91"));
+        texts.Should().Contain(ItemRow("2", "34.95", "62.91"));
         texts.Should().Contain(AmountRow("Sub Total", "62.91"));
         texts.Should().Contain(AmountRow("TOTAL-USD:", "62.91"));
         texts.Should().NotContain(t => t.StartsWith("Discount", StringComparison.Ordinal));
@@ -226,31 +315,32 @@ public class ReceiptDocumentTests : IDisposable
 
         var texts = Texts(Rows(sale, Header(null)));
 
-        texts.Should().Contain(AmountRow("Ibuprofen 200mg 20s", "1.00") + " NV");
+        texts.Should().Contain(ItemRow("1", "1.00", "1.00") + " NV");
         texts.Should().NotContain(t => t.StartsWith("Change", StringComparison.Ordinal),
             "nothing was handed back");
     }
 
     /// <remarks>
-    /// A code fills the space before the quantity; only one longer than
-    /// that takes a line of its own.
+    /// The code on its own line, the name under it, then the figures, so
+    /// a long code or name never pushes a figure from under its head.
     /// </remarks>
     [Fact]
-    public void A_code_sits_beside_its_figures_while_it_fits()
+    public void Code_name_and_figures_each_take_a_line()
     {
         var sale = Sale() with
         {
             Lines = new[]
             {
-                Line("VITC1000", "Vitamin C 1000mg 20s", 1m, 6.00m, rate: 15m),
-                Line("AVERYLONGCODE", "Panado 500mg 20s", 2m, 3.50m, rate: 15m)
+                Line("AVERYLONGCODE", "Metformin 850mg tablets 60s extended release",
+                     2m, 3.50m, rate: 15m)
             }
         };
 
         Texts(Rows(sale, Header(null))).Should().ContainInOrder(
-            "VITC1000  1 @        6.00",
             "AVERYLONGCODE",
-            "          2 @        3.50");
+            "Metformin 850mg tablets 60s",
+            "extended release",
+            ItemRow("2", "3.50", "7.00"));
     }
 
     [Fact]
@@ -299,18 +389,54 @@ public class ReceiptDocumentTests : IDisposable
                                        || t.Contains("Enalapril", StringComparison.Ordinal));
 
         texts.Should().ContainInOrder(
-            "          1 @       14.00",
-            AmountRow("Script Charge: 417", "14.00") + " NV",
-            "PAN500    2 @       34.95",
-            AmountRow("Panado 500mg 20s", "69.90"));
+            "Script Charge: 417",
+            ItemRow("1", "14.00", "14.00") + " NV",
+            "PAN500",
+            "Panado 500mg 20s",
+            ItemRow("2", "34.95", "69.90"));
     }
 
     [Fact]
-    public void A_reprint_says_copy_at_the_head_and_the_foot()
+    public void A_script_keeps_its_number_when_the_template_hides_product_names()
     {
-        var texts = Texts(Rows(Sale(), Header(null) with { IsCopy = true }));
+        var sale = Sale() with
+        {
+            Lines = new[]
+            {
+                Line("AMOX500", "Amoxicillin 500mg caps x 21", 1m, 9.00m, rate: 0m)
+                    with { IsScript = true },
+                Line("PAN500", "Panado 500mg 20s", 2m, 34.95m, rate: 15m)
+                    with { LineNo = 2 }
+            },
+            Particulars = new ReceiptParticularsDto(null, null, "Tendai Moyo",
+                "F00012", "417", null, null)
+        };
 
-        texts.Count(t => t == "*** COPY - REPRINTED ***").Should().Be(2);
+        var header = Header(null) with
+        {
+            Template = ReceiptTemplate.Default with { ProductNames = false }
+        };
+
+        var texts = Texts(Rows(sale, header));
+
+        texts.Should().Contain("Script Charge: 417");
+        texts.Should().NotContain(t => t.Contains("Amoxicillin", StringComparison.Ordinal)
+                                       || t.Contains("Panado", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_reprint_looks_like_the_original_unless_the_mark_is_turned_on()
+    {
+        var plain = Texts(Rows(Sale(), Header(null) with { IsCopy = true }));
+        plain.Should().NotContain("*** COPY - REPRINTED ***",
+            "the pharmacy asked for copies without the mark");
+
+        var marked = Texts(Rows(Sale(), Header(null) with
+        {
+            IsCopy = true,
+            Template = ReceiptTemplate.Default with { CopyMark = true }
+        }));
+        marked.Count(t => t == "*** COPY - REPRINTED ***").Should().Be(2);
     }
 
     [Fact]
@@ -333,8 +459,63 @@ public class ReceiptDocumentTests : IDisposable
                 "F00012", "13972", null, null)
         };
 
-        Rows(sale, Header(null)).Where(r => !r.Centred)
-            .Should().OnlyContain(r => r.Text.Length <= 40);
+        var rows = Rows(sale, Header(null) with { IsCopy = true });
+
+        rows.Should().OnlyContain(r => r.Text.Length <= ReceiptDocument.CharactersPerLine);
+        rows[^1].Text.Should().Be("Thank you");
+    }
+
+    /// <remarks>
+    /// The pharmacy's till printer is on Windows' Generic / Text Only
+    /// driver, as its previous system set it up. Drawn through it, the slip
+    /// came out on half the roll without its last columns or Thank you
+    /// (photographed 22 October 2026). As text it is forty-two across and
+    /// centred, every line ends in a line feed so the last one prints, and
+    /// it is fed past the tear bar and cut.
+    /// </remarks>
+    [Fact]
+    public void As_text_the_slip_fills_the_roll_and_prints_its_last_line()
+    {
+        using var document = new ReceiptDocument(Sale(), Header(null));
+        var bytes = document.AsText();
+
+        bytes.Take(5).Should().Equal(new byte[] { 0x1B, 0x40, 0x1B, 0x61, 0x01 },
+            "the printer starts clean and centres every line");
+        bytes.TakeLast(6).Should().Equal(new byte[] { 0x1B, 0x64, 0x04, 0x1D, 0x56, 0x01 },
+            "the slip is fed past the tear bar and cut");
+
+        var lines = Encoding.ASCII.GetString(bytes[5..^6])
+            .Replace("\u001BE\u0001", "", StringComparison.Ordinal)
+            .Replace("\u001BE\u0000", "", StringComparison.Ordinal)
+            .Split('\n');
+
+        lines[^1].Should().BeEmpty("every line ends in a line feed");
+        lines[^2].Should().Be("Thank you");
+        lines[..^1].Should().OnlyContain(line => line.Length <= SlipLayout.Width);
+        lines.Should().ContainInOrder(
+            "Code   QTY      Unit Price      Amount Inc",
+            "PAN500".PadRight(SlipLayout.Width),
+            ("         2 @         34.95".PadRight(34) + "69.90").PadRight(SlipLayout.Width),
+            ("Sub Total".PadRight(34) + "69.90").PadRight(SlipLayout.Width));
+    }
+
+    /// <remarks>
+    /// A label too long to sit beside its amount wraps rather than losing
+    /// its end: which scheme was claimed from is the part that matters.
+    /// </remarks>
+    [Fact]
+    public void A_long_total_label_wraps_with_the_amount_on_its_last_line()
+    {
+        var sale = Sale() with
+        {
+            Particulars = new ReceiptParticularsDto(null, null, "Tendai Moyo",
+                "F00012", "13972", "Premier Service Medical Aid Society", 25.00m)
+        };
+
+        Texts(Rows(sale, Header(null))).Should().ContainInOrder(
+            "Claimed from Premier",
+            "Service Medical Aid",
+            AmountRow("Society", "25.00"));
     }
 
     /// <remarks>
@@ -378,8 +559,108 @@ public class ReceiptDocumentTests : IDisposable
 
     /// Where an amount ends: three columns short of the roll's edge, to
     /// leave room for " NV".
+    [Fact]
+    public void The_receipt_template_leaves_out_what_the_administrator_unticked()
+    {
+        var header = Header(null) with
+        {
+            Address = "28 Woodstock Road",
+            Template = ReceiptTemplate.Default with
+            {
+                Address = false,
+                ProductCodes = false,
+                QuantityAndUnitPrice = false,
+                Vat = false,
+                FooterText = "Get well soon"
+            }
+        };
+
+        using var document = new ReceiptDocument(Sale(), header);
+        var text = string.Join("\n", document.Rows().Select(r => r.Text));
+
+        text.Should().NotContain("Woodstock");
+        text.Should().NotContain(" @ ", "quantity and unit price are off");
+        text.Should().NotContain("VAT-");
+        text.Should().Contain("Get well soon").And.NotContain("Thank you");
+        text.Should().Contain("TOTAL", "the total was left on");
+    }
+
+    [Fact]
+    public void The_receipt_number_prints_whatever_the_template_says()
+    {
+        var nothing = ReceiptTemplate.Default with
+        {
+            TradingName = false, Address = false, VatNumber = false, Telephone = false,
+            WhatsApp = false, DocumentTitle = false, Operator = false, TillNumber = false,
+            Date = false, AccountAndPatient = false, ColumnHeadings = false, ProductCodes = false,
+            ProductNames = false, QuantityAndUnitPrice = false, LineAmounts = false,
+            SubTotal = false, Vat = false, Total = false, Tenders = false, Change = false,
+            MedicalAidShare = false, AccountSignature = false, Footer = false
+        };
+
+        using var document = new ReceiptDocument(Sale(),
+            Header(null) with { IsCopy = true, Template = nothing });
+        var text = string.Join("\n", document.Rows().Select(r => r.Text));
+
+        text.Should().Contain("Trans No:");
+        text.Should().NotContain("COPY - REPRINTED");
+    }
+
+    [Fact]
+    public void A_saved_template_reads_back_and_a_broken_one_prints_the_full_slip()
+    {
+        var saved = ReceiptTemplate.Default with { Telephone = false, FooterText = "Bye" };
+
+        ReceiptTemplate.Parse(saved.ToJson()).Should().Be(saved);
+        ReceiptTemplate.Parse("{not json").Should().Be(ReceiptTemplate.Default);
+        ReceiptTemplate.Parse(null).Should().Be(ReceiptTemplate.Default);
+    }
+
     private static string AmountRow(string label, string amount) =>
-        label.PadRight(37 - amount.Length) + amount;
+        label.PadRight(ReceiptDocument.AmountEnd - amount.Length) + amount;
+
+    /// An item's figures: the quantity under QTY, the price under Unit
+    /// Price, the amount under Amount Inc.
+    private static string ItemRow(string quantity, string price, string amount) =>
+        $"{quantity,7} @{price,12}".PadRight(ReceiptDocument.AmountEnd - amount.Length)
+        + amount;
+
+    /// The first row of pixels with ink across most of the page: a rule.
+    private static int RuleRow(Bitmap page)
+    {
+        for (var y = 0; y < page.Height; y++)
+        {
+            var (left, right) = InkAcross(page, y);
+            if (right - left > page.Width * 0.8) return y;
+        }
+
+        return 0;
+    }
+
+    private static (int Left, int Right) InkAcross(Bitmap page, int y)
+    {
+        var (left, right) = (page.Width, 0);
+
+        for (var x = 0; x < page.Width; x++)
+        {
+            if (!IsDark(page.GetPixel(x, y))) continue;
+            left = Math.Min(left, x);
+            right = x;
+        }
+
+        return (left, right);
+    }
+
+    private static int LastInkColumn(Bitmap page)
+    {
+        var last = 0;
+
+        for (var y = 0; y < page.Height; y++)
+            for (var x = last; x < page.Width; x++)
+                if (IsDark(page.GetPixel(x, y))) last = x;
+
+        return last;
+    }
 
     /// Renders the slip a page at a time until it is done; says how many.
     private static int Pages(SaleDto sale)

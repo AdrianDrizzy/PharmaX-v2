@@ -377,6 +377,8 @@ public sealed class frmSystemSetup : PhxFormBase
         _markup.Value = Math.Clamp(markup, _markup.Minimum, _markup.Maximum);
         _rounding.SelectedItem = (step <= 0m ? 0.01m : step).ToString("0.00", CultureInfo.InvariantCulture);
         if (_rounding.SelectedIndex < 0) _rounding.SelectedIndex = 0;
+
+        _currencies.Focus();
     }
 
     private void SelectPalette(string? id)

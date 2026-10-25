@@ -276,7 +276,7 @@ public class ProductEditorStockTests : IClassFixture<PharmaXFixture>
         var listed = PharmaXFixture.Resolve<IProductService>(list);
 
         (await listed.ApplyCellEditAsync(new ProductCellEditDto(id, batchId,
-            ProductCell.QuantityOnHand, "4"))).IsSuccess.Should().BeTrue();
+            ProductCell.QuantityOnHand, "4", "Counted"))).IsSuccess.Should().BeTrue();
 
         var product = await FetchAsync(id);
 
@@ -294,7 +294,7 @@ public class ProductEditorStockTests : IClassFixture<PharmaXFixture>
             .Which.QuantityOnHand.Should().Be(9m, "the editor saved 9");
 
         var counted = await listed.ApplyCellEditAsync(new ProductCellEditDto(
-            id, batchId, ProductCell.QuantityOnHand, "7"));
+            id, batchId, ProductCell.QuantityOnHand, "7", "Two broken"));
 
         counted.IsSuccess.Should().BeTrue(counted.Error.Message);
 
@@ -322,7 +322,8 @@ public class ProductEditorStockTests : IClassFixture<PharmaXFixture>
         CategoryId: p.CategoryId,
         ManufacturerId: p.ManufacturerId,
         UnitsPerPack: p.UnitsPerPack,
-        Barcodes: p.Barcodes);
+        Barcodes: p.Barcodes,
+        StockReason: "Counted on the shelf");
 
     private static List<ProductBatchEditDto> Rows(ProductDto p) =>
         (p.Batches ?? Array.Empty<ProductBatchDto>())

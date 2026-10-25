@@ -13,12 +13,40 @@ public sealed class ReceiptPrinter : IReceiptPrinter
 {
     private readonly ILogger<ReceiptPrinter> _log;
     private readonly IWorkstationSettings _settings;
+    private readonly IPharmacySettings? _pharmacy;
+
+    public ReceiptPrinter(ILogger<ReceiptPrinter> log,
+                          IWorkstationSettings settings,
+                          IPharmacySettings pharmacy)
+        : this(log, settings) => _pharmacy = pharmacy;
 
     public ReceiptPrinter(ILogger<ReceiptPrinter> log,
                           IWorkstationSettings settings)
     {
         _log = log;
         _settings = settings;
+    }
+
+    /// <summary>
+    /// The administrator's Receipt Template, pharmacy-wide. A template
+    /// that cannot be read prints the full slip rather than none.
+    /// </summary>
+    private async Task<ReceiptTemplate> TemplateAsync(CancellationToken ct)
+    {
+        if (_pharmacy is null) return ReceiptTemplate.Default;
+
+        try
+        {
+            return ReceiptTemplate.Parse(
+                await _pharmacy.GetAsync(ReceiptTemplate.SettingKey, ct).ConfigureAwait(false));
+        }
+#pragma warning disable CA1031 // A slip must still print.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log.LogWarning(ex, "Could not read the receipt template; printing the full slip.");
+            return ReceiptTemplate.Default;
+        }
     }
 
     public bool IsAvailable => PrinterSettings.InstalledPrinters.Count > 0;
@@ -32,6 +60,10 @@ public sealed class ReceiptPrinter : IReceiptPrinter
         ReceiptHeaderDto header, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sale);
+        ArgumentNullException.ThrowIfNull(header);
+
+        if (header.Template is null)
+            header = header with { Template = await TemplateAsync(ct).ConfigureAwait(false) };
 
         using var doc = new ReceiptDocument(sale, header);
 
@@ -62,11 +94,35 @@ public sealed class DocumentPrinter : IDocumentPrinter
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        using var doc = new PlainDocument(document, header);
+        // Thirty-two across prints as the receipt does (the cash-up slip).
+        using PrintDocument doc = document.Columns == ReceiptDocument.CharactersPerLine
+            ? new SlipDocument(document, header)
+            : new PlainDocument(document, header);
 
         return await Spooler.PrintAsync(doc, _settings,
             WorkstationSettingKey.ReceiptPrinter, "receipt",
             document.Title, _log, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The document laid out on the roll as PrintAsync prints it, row for
+    /// row, for a preview on screen before it goes to the printer.
+    /// </summary>
+    /// <returns>The rows, and how many characters across they are laid out in.</returns>
+    public static (IReadOnlyList<ReceiptRow> Rows, int Columns) Layout(
+        PrintableDocument document, ReceiptHeaderDto header)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(header);
+
+        if (document.Columns == ReceiptDocument.CharactersPerLine)
+        {
+            using var slip = new SlipDocument(document, header);
+            return (slip.Rows(), ReceiptDocument.CharactersPerLine);
+        }
+
+        using var plain = new PlainDocument(document, header);
+        return (plain.Rows(), SlipLayout.Width);
     }
 }
 
@@ -76,9 +132,18 @@ public sealed class DocumentPrinter : IDocumentPrinter
 /// </summary>
 internal static class Spooler
 {
+    /// The driver Windows names "Generic / Text Only": it prints what it
+    /// is sent as characters, in the printer's own type.
+    private const string TextOnlyDriver = "Generic / Text Only";
+
+    /// <param name="orDefault">
+    /// Whether the Windows default will do when no printer is chosen for
+    /// this purpose (PrinterResolver.Resolve).
+    /// </param>
     public static async Task<PrintResult> PrintAsync(PrintDocument doc,
         IWorkstationSettings settings, string settingKey, string purpose,
-        string jobName, ILogger log, CancellationToken ct)
+        string jobName, ILogger log, CancellationToken ct,
+        bool orDefault = true)
     {
         string? chosen;
 
@@ -102,7 +167,7 @@ internal static class Spooler
             chosen = null;
         }
 
-        var choice = PrinterResolver.Resolve(chosen, purpose);
+        var choice = PrinterResolver.Resolve(chosen, purpose, orDefault);
 
         if (!choice.CanPrint)
         {
@@ -114,15 +179,57 @@ internal static class Spooler
                 : PrintResult.Failed(choice.Printer, choice.Problem!);
         }
 
-        doc.DocumentName = jobName;
-        doc.PrinterSettings.PrinterName = choice.Printer!;
+        var printer = choice.Printer!;
+        Action print;
 
-        if (!doc.PrinterSettings.IsValid)
+        // A till printer on Windows' "Generic / Text Only" driver - as the
+        // pharmacy's previous system set it up - is sent the receipt and
+        // the till-roll documents as text, in the printer's own type.
+        // Drawn, the slip came out on half the roll, cut short at the side
+        // and at the foot.
+        Func<byte[]>? asText = doc switch
         {
-            var problem = $"Windows could not open the {purpose} printer "
-                          + $"'{choice.Printer}'.";
-            log.LogWarning("{Job} not printed: {Problem}", jobName, problem);
-            return PrintResult.Failed(choice.Printer, problem);
+            ReceiptDocument receipt => receipt.AsText,
+            PlainDocument plain => plain.AsText,
+            SlipDocument slip => slip.AsText,
+            _ => null
+        };
+
+        if (asText is not null
+            && string.Equals(Devices.RawPrinter.DriverOf(printer), TextOnlyDriver,
+                             StringComparison.OrdinalIgnoreCase))
+        {
+            print = () => Devices.RawPrinter.Send(printer, asText(), jobName);
+        }
+        else
+        {
+            doc.DocumentName = jobName;
+            doc.PrinterSettings.PrinterName = printer;
+
+            // The driver's own paper is put back when the printer is named.
+            // A receipt on that paper is a short form and stops mid-slip.
+            switch (doc)
+            {
+                case ReceiptDocument receipt:
+                    receipt.FitRoll();
+                    break;
+                case PlainDocument plain:
+                    plain.FitRoll();
+                    break;
+                case SlipDocument slip:
+                    slip.FitRoll();
+                    break;
+            }
+
+            if (!doc.PrinterSettings.IsValid)
+            {
+                var problem = $"Windows could not open the {purpose} printer "
+                              + $"'{printer}'.";
+                log.LogWarning("{Job} not printed: {Problem}", jobName, problem);
+                return PrintResult.Failed(printer, problem);
+            }
+
+            print = doc.Print;
         }
 
         try
@@ -131,7 +238,7 @@ internal static class Spooler
             // takes as long as the driver takes, and a driver that stops
             // to ask where to save a PDF takes as long as the operator
             // does - neither is a reason for the screen to stop redrawing.
-            await Task.Run(doc.Print, ct).ConfigureAwait(false);
+            await Task.Run(print, ct).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Deliberately broad: the driver stack can throw almost anything.
         catch (Exception ex)
@@ -169,9 +276,31 @@ public sealed class PlainDocument : PrintDocument
         _document = document;
         _header = header;
 
-        // The till's 76 mm roll, as the receipt.
-        DefaultPageSettings.PaperSize = new PaperSize("Roll", 299, 1200);
-        DefaultPageSettings.Margins = new Margins(5, 5, 10, 10);
+        ReceiptDocument.ApplyRoll(DefaultPageSettings, 40);
+    }
+
+    /// <summary>
+    /// The same 75 mm roll as a receipt, as long as this document.
+    /// </summary>
+    internal void FitRoll()
+    {
+        var lines = 12 + _document.Lines.Count;
+        ReceiptDocument.ApplyRoll(DefaultPageSettings, lines);
+
+        try
+        {
+            ReceiptDocument.ApplyRoll(PrinterSettings.DefaultPageSettings, lines);
+        }
+        catch (InvalidPrinterException)
+        {
+        }
+    }
+
+    protected override void OnQueryPageSettings(QueryPageSettingsEventArgs e)
+    {
+        base.OnQueryPageSettings(e);
+        ReceiptDocument.ApplyRoll(e.PageSettings,
+            Math.Max(1, 12 + _document.Lines.Count - _next));
     }
 
     protected override void OnBeginPrint(PrintEventArgs e)
@@ -179,6 +308,7 @@ public sealed class PlainDocument : PrintDocument
         base.OnBeginPrint(e);
         _next = 0;
         _headed = false;
+        FitRoll();
     }
 
     protected override void OnPrintPage(PrintPageEventArgs e)
@@ -226,33 +356,11 @@ public sealed class PlainDocument : PrintDocument
         if (!_headed)
         {
             _headed = true;
-            Line(_header.TradingName, _title);
 
-            foreach (var part in (_header.Address ?? "").Split('\n')
-                         .Select(p => p.Trim()).Where(p => p.Length > 0))
-                Line(part, body);
+            foreach (var row in Head())
+                Line(row.Text, row.Style == ReceiptStyle.Body ? body : _title);
 
-            if (!string.IsNullOrWhiteSpace(_header.VatNumber))
-                Line($"VAT {_header.VatNumber}", body);
-
-            // A quotation or a goods received note is taken away and
-            // asked about later, like the receipt and the label.
-            if (!string.IsNullOrWhiteSpace(_header.Telephone))
-                Line($"Tel: {_header.Telephone.Trim()}", body);
-
-            Line($"{_header.BranchAndTill}  {_header.OperatorName}", body);
-            Line(_header.PrintedAtLocal.ToString("dd/MM/yyyy HH:mm",
-                CultureInfo.CurrentCulture), body);
-            Line(new string('-', SlipLayout.Width), body);
-            Line(_document.Title, _title);
-            Line(new string('-', SlipLayout.Width), body);
-
-            // The documents open with their own title as their first line
-            // as well, so it printed twice (ADM-OBS-07).
-            if (_next == 0 && _document.Lines.Count > 0
-                && string.Equals(_document.Lines[0].Trim(),
-                                 _document.Title.Trim(), StringComparison.Ordinal))
-                _next = 1;
+            if (_next == 0) _next = FirstLine();
         }
 
         while (_next < _document.Lines.Count)
@@ -269,6 +377,71 @@ public sealed class PlainDocument : PrintDocument
         return false;
     }
 
+    /// <summary>
+    /// The document as ESC/POS text, for a till printer on Windows'
+    /// "Generic / Text Only" driver: drawn through it, it came out on half
+    /// the roll, as the receipt did (ReceiptDocument.AsText). A line wider
+    /// than the roll wraps; the rest go as they are, their spacing kept.
+    /// </summary>
+    internal byte[] AsText() => ReceiptDocument.AsText(Rows());
+
+    /// <summary>
+    /// The document top to bottom as the text printer is sent it: the head,
+    /// then the lines, each wider than the roll wrapped.
+    /// </summary>
+    public IReadOnlyList<ReceiptRow> Rows() =>
+        Head()
+            .Concat(_document.Lines.Skip(FirstLine())
+                .Select(line => new ReceiptRow(line, ReceiptStyle.Body, Centred: false)))
+            .SelectMany(row => row.Text.Length <= SlipLayout.Width
+                ? new[] { row }
+                : SlipLayout.Wrap(row.Text, SlipLayout.Width, SlipLayout.Width)
+                    .Select(piece => row with { Text = piece }))
+            .ToList();
+
+    /// <summary>
+    /// The pharmacy, who printed it and when, and the title, at the head
+    /// of the first page.
+    /// </summary>
+    private IEnumerable<ReceiptRow> Head()
+    {
+        static ReceiptRow Body(string text) => new(text, ReceiptStyle.Body, Centred: false);
+        var rule = Body(new string('-', SlipLayout.Width));
+
+        yield return new ReceiptRow(_header.TradingName, ReceiptStyle.Title, Centred: false);
+
+        foreach (var part in (_header.Address ?? "").Split('\n')
+                     .Select(p => p.Trim()).Where(p => p.Length > 0))
+            yield return Body(part);
+
+        if (!string.IsNullOrWhiteSpace(_header.VatNumber))
+            yield return Body($"VAT {_header.VatNumber}");
+
+        // A quotation or a goods received note is taken away and asked
+        // about later, like the receipt and the label.
+        if (!string.IsNullOrWhiteSpace(_header.Telephone))
+            yield return Body($"Tel: {_header.Telephone.Trim()}");
+
+        yield return Body($"{_header.BranchAndTill}  {_header.OperatorName}");
+        yield return Body(_header.PrintedAtLocal.ToString("dd/MM/yyyy HH:mm",
+            CultureInfo.CurrentCulture));
+        yield return rule;
+        yield return new ReceiptRow(_document.Title, ReceiptStyle.Title, Centred: false);
+        yield return rule;
+    }
+
+    /// <summary>
+    /// Where the document's own lines start. The documents open with their
+    /// own title as their first line as well, so it printed twice
+    /// (ADM-OBS-07).
+    /// </summary>
+    private int FirstLine() =>
+        _document.Lines.Count > 0
+        && string.Equals(_document.Lines[0].Trim(), _document.Title.Trim(),
+                         StringComparison.Ordinal)
+            ? 1
+            : 0;
+
     protected override void Dispose(bool disposing)
     {
         if (disposing) _title.Dispose();
@@ -279,59 +452,116 @@ public sealed class PlainDocument : PrintDocument
 }
 
 /// <summary>
-/// A dispensing label on the pharmacy's continuous dot-matrix stock: 102
-/// by 36 millimetres (4 by 1 7/16 inches) on the Epson LX-350, printed as
-/// 48 characters by 8 lines - 12 to the inch, the grid the previous
-/// system printed in.
+/// A dispensing label on the pharmacy's 77 mm by 39 mm stickers, one
+/// sticker to a page so that each label starts where its sticker does:
+/// at 37 mm a page, every label crept up its sticker until the last line
+/// fell off. Forty-two columns at fifteen to the inch, the rows spread
+/// down what the printer reaches.
 /// </summary>
 /// <remarks>
-/// Laid out row for row as the pharmacy's own labels, which go on the
-/// printed dispensing bag:
+/// A pre-pack or a template sticker, stuck on the printed dispensing bag
+/// wherever it lands, is laid out row for row as the pharmacy's own
+/// labels are, the first row and the price and date underlined:
 /// <code>
-/// CO-CODAMOL 30MG TAB (12)
-/// TAKE 2 TABLETS AFTER MEALS THREE TIMES DAILY FOR
-/// PAIN MAY CAUSE DROWSINESS
-///
-/// EXPIRY: 30/06/2030                BATCH NO: 0874
-///                             PACKED ON:11/10/2026
+/// PARACETAMOL 500MG TAB (20)
+/// TAKE 1-2 TABLETS AFTER MEALS ORALLY 3 TIMES
+/// DAILY AFTER FOOD WHEN NECESSARY
+/// EXPIRY: 30/06/2028          BATCH NO: 2076
+/// 0.50                  PACKED ON:19/10/2026
 /// Bethrapha Pharmacy, 28 Woodstock Road
-/// Thorngroove, Bulawayo
+/// Thorngrove, Bulawayo
 /// </code>
-/// The medicine and how many; the directions as they were typed with the
-/// warnings run on after them, in capitals; whose it is on the fourth
-/// row, which a pre-pack made up for the shelf leaves empty; the expiry
-/// against the batch; the date; and the pharmacy. "Keep out of reach of
-/// children" is printed on the bag.
+/// The medicine and how many; the directions as they were typed with as
+/// many of the warnings as fit two lines run on after them, in capitals;
+/// the expiry against the batch, on every label; the price, where there
+/// is one, against the date; and the pharmacy with its address. A
+/// patient's label is laid out differently (PatientRows). "Keep out of
+/// reach of children" is printed on the bag.
 /// </remarks>
 public sealed class LabelDocument : PrintDocument
 {
-    /// The characters across the stock.
-    public const int Columns = 48;
+    /// The characters across the sticker, fifteen to the inch.
+    public const int Columns = 42;
 
     /// The lines down it.
     public const int LineCount = 8;
 
-    /// The rows above the expiry: the medicine, how to take it, and
-    /// whose it is on the last of them.
-    private const int Head = 4;
+    /// 77 mm, in hundredths of an inch.
+    public const int WidthHundredths = 303;
+
+    /// 39 mm, in hundredths of an inch: the distance from one sticker to
+    /// the next on the roll.
+    public const int HeightHundredths = 154;
+
+    /// Written where nothing records the expiry - a medicine not kept by
+    /// batch - for it to be filled in by hand.
+    internal const string NoExpiry = "EXPIRY: __/__/____";
+
+    /// How many rows the directions and warnings have before the type
+    /// steps down.
+    private const int DirectionLines = 2;
 
     private readonly LabelDto _label;
     private readonly PharmacyImprint? _pharmacy;
+    private readonly int _copies;
+    private int _printed;
 
     /// <param name="pharmacy">
     /// The pharmacy the medicine came from - its name and its address -
     /// which every dispensed label has to carry. The label printed without
     /// it, so a container out of its bag said nothing of where it was
-    /// dispensed (ADM-DEF-16). Its telephone number is not on the label,
-    /// as it is not on the pharmacy's own.
+    /// dispensed (ADM-DEF-16).
     /// </param>
-    public LabelDocument(LabelDto label, PharmacyImprint? pharmacy = null)
+    /// <param name="copies">
+    /// How many of the same label, one after another on the stock: the
+    /// stickers for a run of pre-packs.
+    /// </param>
+    public LabelDocument(LabelDto label, PharmacyImprint? pharmacy = null,
+                         int copies = 1)
     {
         _label = label;
         _pharmacy = pharmacy;
+        _copies = Math.Max(1, copies);
 
-        DefaultPageSettings.PaperSize = new PaperSize("Label", 400, 144);
-        DefaultPageSettings.Margins = new Margins(4, 4, 4, 4);
+        ApplyItemStock(DefaultPageSettings);
+    }
+
+    /// <summary>
+    /// 77 mm by 39 mm, put back on after the printer is chosen. Choosing
+    /// the printer resets the page to the driver's own paper, and a driver
+    /// then scales the sticker so one line of type comes out sheared.
+    /// </summary>
+    internal static void ApplyStock(PageSettings page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        page.Landscape = false;
+        page.PaperSize = new PaperSize("Label 77x39 mm",
+            WidthHundredths, HeightHundredths);
+        page.Margins = new Margins(6, 6, 4, 4);
+    }
+
+    /// <summary>
+    /// The item labels use the whole sticker. The trailer keeps the
+    /// inset above, which already fits its address.
+    /// </summary>
+    private static void ApplyItemStock(PageSettings page)
+    {
+        ApplyStock(page);
+        page.Margins = new Margins(0, 0, 0, 0);
+    }
+
+    protected override void OnQueryPageSettings(QueryPageSettingsEventArgs e)
+    {
+        base.OnQueryPageSettings(e);
+        ApplyItemStock(e.PageSettings);
+    }
+
+    protected override void OnBeginPrint(PrintEventArgs e)
+    {
+        base.OnBeginPrint(e);
+        ApplyItemStock(DefaultPageSettings);
+        _printed = 0;
     }
 
     protected override void OnPrintPage(PrintPageEventArgs e)
@@ -339,8 +569,7 @@ public sealed class LabelDocument : PrintDocument
         base.OnPrintPage(e);
         ArgumentNullException.ThrowIfNull(e);
 
-        RenderPage(e.Graphics!, FixedPitch.Area(e));
-        e.HasMorePages = false;
+        e.HasMorePages = RenderPage(e.Graphics!, FixedPitch.Area(e));
     }
 
     /// <summary>
@@ -350,59 +579,251 @@ public sealed class LabelDocument : PrintDocument
     /// </summary>
     public IReadOnlyList<LabelRow> Rows()
     {
+        if (!string.IsNullOrWhiteSpace(_label.PatientName))
+            return PatientRows();
+
         var culture = CultureInfo.CurrentCulture;
         var rows = new List<LabelRow>();
 
-        // What it is and how many: "CO-CODAMOL 30MG TAB (12)".
-        Add(rows, string.Format(culture, "{0} ({1:0.##})",
-                _label.ProductDescription.Trim(), _label.Quantity)
-                .ToUpperInvariant(),
-            LabelStyle.Product);
+        // What it is and how many: "PARACETAMOL 500MG TAB (20)". No medicine
+        // is the quantity on its own, still in brackets: "(20)".
+        var name = _label.ProductDescription.Trim();
+        var product = name.Length == 0
+            ? string.Format(culture, "({0:0.##})", _label.Quantity)
+            : string.Format(culture, "{0} ({1:0.##})", name, _label.Quantity);
+        Add(rows, product.ToUpperInvariant(), LabelStyle.Product, underlined: true);
 
-        // How to take it, with the warnings the caller gave - or those
-        // that go with the medicine, never none - run on after it.
-        var warnings = _label.Cautions.Count > 0
-            ? _label.Cautions
-            : LabelWording.Warnings(_label.ProductDescription);
+        var omit = _label.Omit;
 
-        Add(rows, string.Join(" ", warnings.Select(w => w.Trim())
-                                           .Prepend(LabelWording.Directions(_label.Directions)))
-                  .ToUpperInvariant(),
-            LabelStyle.Directions);
+        // How to take it, then straight on to the expiry: no blank row,
+        // which pushed the address off the sticker.
+        if (Directions() is string directions)
+            Add(rows, directions, LabelStyle.Directions);
 
-        // Whose it is, on the last row of the head. A pre-pack made up for
-        // the shelf has nobody's name, and the row stays empty.
-        while (rows.Count < Head - 1)
-            rows.Add(new LabelRow("", LabelStyle.Directions));
-
-        if (!string.IsNullOrWhiteSpace(_label.PatientName))
-            Add(rows, _label.PatientName, LabelStyle.Patient);
-        else if (rows.Count < Head)
-            rows.Add(new LabelRow("", LabelStyle.Patient));
-
-        Spread(rows,
-            _label.Expiry is DateOnly expiry
+        // The expiry on every label, a patient's and a pre-pack's alike;
+        // where nothing records it, a space to write it in. A template
+        // can leave the expiry, the batch, or both off.
+        var expiryText = omit?.Expiry == true
+            ? ""
+            : _label.Expiry is DateOnly expiry
                 ? string.Format(culture, "EXPIRY: {0:dd/MM/yyyy}", expiry)
-                : "",
-            string.IsNullOrWhiteSpace(_label.BatchNumber)
-                ? ""
-                : $"BATCH NO: {_label.BatchNumber.Trim()}");
+                : NoExpiry;
+        var batchText = omit?.Batch == true || string.IsNullOrWhiteSpace(_label.BatchNumber)
+            ? ""
+            : $"BATCH NO: {_label.BatchNumber.Trim()}";
 
-        Spread(rows, "", string.Format(culture, "PACKED ON:{0:dd/MM/yyyy}",
-                                       _label.DispensedOn));
+        if (expiryText.Length > 0 || batchText.Length > 0)
+            Spread(rows, expiryText, batchText);
+
+        var priceText = omit?.Price == true || _label.Price is not decimal price
+            ? ""
+            : price.ToString("N2", culture);
+        var packedText = omit?.PackedOn == true
+            ? ""
+            : string.Format(culture, "PACKED ON:{0:dd/MM/yyyy}", _label.DispensedOn);
+
+        if (priceText.Length > 0 || packedText.Length > 0)
+            Spread(rows, priceText, packedText, underlined: true);
 
         // The pharmacy and its street, then the rest of the address.
-        if (_pharmacy is not null)
+        // From here down the type is smaller, so the year and the
+        // address stay on the sticker.
+        if (_pharmacy is not null && (omit?.Pharmacy != true || omit?.Address != true))
         {
             var address = AddressLines(_pharmacy.Address).ToList();
+            var named = omit?.Pharmacy == true
+                ? ""
+                : (_pharmacy.TradingName ?? "").Trim();
+            var street = omit?.Address == true ? null : address.FirstOrDefault();
+            var rest = omit?.Address == true
+                ? ""
+                : string.Join(", ", address.Skip(string.IsNullOrEmpty(street) ? 0 : 1));
 
-            Add(rows, DispensedBy(_pharmacy.TradingName, address.FirstOrDefault()),
-                LabelStyle.Imprint);
-            Add(rows, string.Join(", ", address.Skip(1)), LabelStyle.Imprint);
+            Add(rows, DispensedBy(named, street), LabelStyle.Imprint);
+            Add(rows, rest, LabelStyle.Imprint);
         }
 
         return rows;
     }
+
+    /// <summary>
+    /// A patient's label, laid out as the dispensing label the pharmacy
+    /// asked to follow (photographed on a bag, 21 October 2026): every
+    /// row in capitals and as full as it will go, the quantity, the expiry
+    /// and the date against the right edge, and no blank row, so the whole
+    /// address is on the sticker.
+    /// <code>
+    /// LEVONORGESTREL BACKUP 1.5MG                (1)
+    /// TAKE AT ONCE USE ONLY AS DIRECTED.
+    /// Rx:SC-001-000023                EXP:__/__/____
+    /// NOBUHLE MASUKU / CIMAS              21/10/2026
+    /// BETHRAPHA PHARMACY, 28 WOODSTOCK ROAD,
+    /// THORNGROVE, BULAWAYO, (ALONG LUVEVE ROAD)
+    /// </code>
+    /// Every row is in the smaller face, the right edge of a full row is
+    /// where the label printer stops: on the trailer the year lost its
+    /// last digit there. No more than eight rows where the directions
+    /// allow it: a ninth is too short for the label printer's own face,
+    /// and the whole label came out tiny.
+    /// </summary>
+    private List<LabelRow> PatientRows()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        var rows = new List<LabelRow>();
+
+        IEnumerable<LabelRow> As(IEnumerable<string> pieces, LabelStyle style) =>
+            pieces.Where(piece => piece.Length > 0)
+                .Select(piece => new LabelRow(piece, style, Compact: true));
+
+        void Put(IEnumerable<string> pieces, LabelStyle style) =>
+            rows.AddRange(As(pieces, style));
+
+        Put(EndingWith(_label.ProductDescription.Trim().ToUpperInvariant(),
+                       string.Format(culture, "({0:0.##})", _label.Quantity)),
+            LabelStyle.Product);
+
+        // The directions go under the medicine, but are worked out last,
+        // from the rows the rest of the label leaves.
+        var under = rows.Count;
+
+        // The script, the batch and the expiry: on one row where they fit,
+        // else the script above the batch and the expiry. No dispenser's
+        // initials (the pharmacy asked, 22 October 2026): they pushed the
+        // batch onto a row of its own.
+        var rx = $"Rx:{_label.ScriptNumber.Trim()}";
+        var batch = string.IsNullOrWhiteSpace(_label.BatchNumber)
+            ? ""
+            : $"BN:{_label.BatchNumber.Trim()}";
+        var expiry = _label.Expiry is DateOnly date
+            ? string.Format(culture, "EXP:{0:dd/MM/yyyy}", date)
+            : "EXP:__/__/____";
+
+        if (Joined(rx, batch).Length + 1 + expiry.Length <= Columns)
+        {
+            Put(EndingWith(Joined(rx, batch), expiry), LabelStyle.Detail);
+        }
+        else
+        {
+            Put(Wrap(rx), LabelStyle.Detail);
+            Put(EndingWith(batch, expiry), LabelStyle.Detail);
+        }
+
+        // Whose it is and their medical aid, with the date. The scheme is
+        // cut short to stay on the row; the name never is.
+        var dated = _label.DispensedOn.ToString("dd/MM/yyyy", culture);
+        var who = _label.PatientName.Trim().ToUpperInvariant();
+        var room = Columns - dated.Length - 1;
+
+        if (!string.IsNullOrWhiteSpace(_label.SchemeName) && who.Length + 5 < room)
+        {
+            who = $"{who} / {_label.SchemeName.Trim().ToUpperInvariant()}";
+            who = who[..Math.Min(who.Length, room)].TrimEnd();
+        }
+
+        Put(EndingWith(who, dated), LabelStyle.Patient);
+
+        // The pharmacy and its address as one run, over as many rows as
+        // it takes.
+        if (_pharmacy is not null)
+            Put(Wrap(DispensedBy(_pharmacy.TradingName ?? "", _pharmacy.Address)
+                         .ToUpperInvariant()),
+                LabelStyle.Imprint);
+
+        if (Directions(LineCount - rows.Count) is string directions)
+            rows.InsertRange(under, As(Wrap(directions), LabelStyle.Directions));
+
+        return rows;
+    }
+
+    /// <summary>
+    /// How to take it, in capitals, with the warnings the caller gave - or
+    /// those that go with the medicine - run on after it, the most
+    /// important first. That one goes on while <paramref name="rows"/>
+    /// hold it - on a pre-pack always, so no sticker goes out without a
+    /// warning; the rest while two lines hold them as well. The
+    /// directions themselves are never cut. Null where a template leaves
+    /// them off.
+    /// </summary>
+    private string? Directions(int rows = int.MaxValue)
+    {
+        var omit = _label.Omit;
+        if (omit?.Directions == true) return null;
+
+        var warnings = omit?.Warning == true
+            ? Array.Empty<string>()
+            : _label.Cautions.Count > 0
+                ? _label.Cautions
+                : LabelWording.Warnings(_label.ProductDescription);
+
+        var directions = LabelWording.Directions(_label.Directions);
+        var first = true;
+
+        foreach (var warning in warnings)
+        {
+            var cleaned = LabelWording.WithoutShareNotice(warning);
+            if (cleaned.Length == 0) continue;
+
+            var longer = $"{directions} {cleaned}".Trim();
+            var limit = first ? rows : Math.Min(rows, DirectionLines);
+            if (Wrap(longer.ToUpperInvariant()).Count > limit) break;
+
+            directions = longer;
+            first = false;
+        }
+
+        return directions.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Text wrapped to the label with <paramref name="end"/> against the
+    /// right edge of its last row, or on a row of its own where it will
+    /// not fit beside it.
+    /// </summary>
+    private static List<string> EndingWith(string text, string end)
+    {
+        var pieces = Wrap(text);
+        var last = pieces.Count == 0 ? "" : pieces[^1];
+
+        if (pieces.Count > 0 && last.Length + 1 + end.Length > Columns)
+        {
+            pieces.Add(end.PadLeft(Columns));
+            return pieces;
+        }
+
+        if (pieces.Count > 0) pieces.RemoveAt(pieces.Count - 1);
+        pieces.Add(last.PadRight(Columns - end.Length) + end);
+        return pieces;
+    }
+
+    private static string Joined(params string[] parts) =>
+        string.Join(" ", parts.Where(part => part.Length > 0));
+
+    /// <summary>
+    /// A row with one text at its start and the other against its end -
+    /// the expiry and the batch - or each on rows of its own where both
+    /// will not fit.
+    /// </summary>
+    private static void Spread(List<LabelRow> rows, string left, string right,
+                               bool underlined = false)
+    {
+        if (left.Length + 1 + right.Length <= Columns)
+        {
+            rows.Add(new LabelRow(
+                (left.PadRight(Columns - right.Length) + right).TrimEnd(),
+                LabelStyle.Detail, underlined, Compact: true));
+            return;
+        }
+
+        Add(rows, left, LabelStyle.Detail, underlined);
+        rows.AddRange(Wrap(right).Select(piece =>
+            new LabelRow(piece.PadLeft(Columns), LabelStyle.Detail, underlined,
+                Compact: true)));
+    }
+
+    private static void Add(List<LabelRow> rows, string? text, LabelStyle style,
+                            bool underlined = false) =>
+        rows.AddRange(Wrap(text).Select(piece => new LabelRow(piece, style, underlined,
+            Compact: style is LabelStyle.Detail or LabelStyle.Imprint)));
 
     /// <summary>
     /// The lines the label carries, top to bottom. Public so a test can
@@ -430,53 +851,21 @@ public sealed class LabelDocument : PrintDocument
             .Where(piece => piece.Length > 0)
             .ToList();
 
-    private static void Add(List<LabelRow> rows, string? text, LabelStyle style) =>
-        rows.AddRange(Wrap(text).Select(piece => new LabelRow(piece, style)));
-
     /// <summary>
-    /// A row with one text at its start and the other against its end -
-    /// the expiry and the batch - or each on rows of its own where both
-    /// will not fit.
+    /// Draws one label and says whether another copy follows. Separate
+    /// from OnPrintPage so a test can render it to a bitmap.
     /// </summary>
-    private static void Spread(List<LabelRow> rows, string left, string right)
-    {
-        if (left.Length + 1 + right.Length <= Columns)
-        {
-            rows.Add(new LabelRow(
-                (left.PadRight(Columns - right.Length) + right).TrimEnd(),
-                LabelStyle.Detail));
-            return;
-        }
-
-        Add(rows, left, LabelStyle.Detail);
-        rows.AddRange(Wrap(right).Select(piece =>
-            new LabelRow(piece.PadLeft(Columns), LabelStyle.Detail)));
-    }
-
-    internal void RenderPage(Graphics g, Rectangle bounds)
+    internal bool RenderPage(Graphics g, Rectangle bounds)
     {
         ArgumentNullException.ThrowIfNull(g);
 
+        // Forty-two across, and the rows spread down the whole of what the
+        // printer reaches - over six lines at the least, so a short label
+        // is not set in lines twice the usual height.
         var rows = Rows();
+        LabelPrint.Draw(g, bounds, rows, Columns, lines: 6);
 
-        // Forty-eight across and eight down. Where what has to go on runs
-        // past eight lines - long directions with a patient's name - the
-        // type steps down rather than the pharmacy's name falling off the
-        // bottom of the stock.
-        var size = FixedPitch.Size(g, Columns, bounds.Width, 12f,
-                                   Math.Max(LineCount, rows.Count), bounds.Height);
-
-        using var font = new Font(FixedPitch.Family, size);
-        using var exact = FixedPitch.Format();
-
-        var height = font.GetHeight(g);
-        float y = bounds.Top;
-
-        foreach (var row in rows)
-        {
-            g.DrawString(row.Text, font, Brushes.Black, bounds.Left, y, exact);
-            y += height;
-        }
+        return ++_printed < _copies;
     }
 }
 
@@ -489,10 +878,10 @@ public enum LabelStyle
     /// How to take it, and the warnings.
     Directions,
 
-    /// Whose medicine it is, on the fourth row.
+    /// Whose medicine it is, with their medical aid and the date.
     Patient,
 
-    /// The expiry, the batch and the date.
+    /// The expiry, the batch, the price and the date.
     Detail,
 
     /// The pharmacy and its address, at the foot.
@@ -500,7 +889,17 @@ public enum LabelStyle
 }
 
 /// <summary>One printed row of a label.</summary>
-public sealed record LabelRow(string Text, LabelStyle Style);
+/// <param name="Underlined">
+/// Underlined word by word, as the medicine and the price and date are on
+/// the pharmacy's own labels.
+/// </param>
+/// <param name="Compact">
+/// The expiry, the date and the address: two pixels smaller and on a
+/// shorter line, so the year and the street stay on the sticker. The
+/// trailer label does not set this.
+/// </param>
+public sealed record LabelRow(string Text, LabelStyle Style, bool Underlined = false,
+                              bool Compact = false);
 
 /// <summary>
 /// The pharmacy as it prints at the foot of a dispensing label: who
@@ -536,19 +935,28 @@ public sealed class LabelPrinter : ILabelPrinter
     /// from the Labels screen - but the screen is told, so it no longer
     /// says the label printed when it did not.
     /// </remarks>
-    public async Task<PrintResult> PrintAsync(LabelDto label,
-                                              CancellationToken ct = default)
+    public Task<PrintResult> PrintAsync(LabelDto label,
+                                        CancellationToken ct = default) =>
+        PrintCopiesAsync(label, 1, ct);
+
+    public async Task<PrintResult> PrintCopiesAsync(LabelDto label, int copies,
+                                                    CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(label);
 
         using var doc = new LabelDocument(label, _pharmacy is null
             ? null
             : new PharmacyImprint(_pharmacy.TradingName, _pharmacy.Address,
-                                  _pharmacy.Telephone));
+                                  _pharmacy.Telephone), copies);
 
+        // Only on the printer chosen for labels: the Windows default at a
+        // till is the receipt printer, and labels sent there came out on
+        // the receipt roll.
         return await Spooler.PrintAsync(doc, _settings,
             WorkstationSettingKey.LabelPrinter, "label",
-            $"Label {label.ScriptNumber} {label.ProductDescription}", _log, ct)
+            $"Label {label.ScriptNumber} {label.ProductDescription}"
+            + (copies > 1 ? $" x{copies}" : ""), _log, ct,
+            orDefault: false)
             .ConfigureAwait(false);
     }
 
@@ -569,7 +977,8 @@ public sealed class LabelPrinter : ILabelPrinter
 
         return await Spooler.PrintAsync(doc, _settings,
             WorkstationSettingKey.LabelPrinter, "label",
-            $"Trailer label {trailer.ScriptNumber}", _log, ct)
+            $"Trailer label {trailer.ScriptNumber}", _log, ct,
+            orDefault: false)
             .ConfigureAwait(false);
     }
 }

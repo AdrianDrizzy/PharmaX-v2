@@ -8,8 +8,46 @@ using QuestPDF.Infrastructure;
 
 namespace PharmaX.Reporting.Exporters;
 
+/// <summary>
+/// The pharmacy's particulars as the head of an export prints them: the
+/// address a line at a time, then the VAT number and telephone together.
+/// </summary>
+internal static class Letterhead
+{
+    public static IReadOnlyList<string> Lines(IReportBranding branding)
+    {
+        var lines = (branding.Address ?? "")
+            .Split('\n')
+            .Select(l => l.Trim().TrimEnd(','))
+            .Where(l => l.Length > 0)
+            .ToList();
+
+        var numbers = new List<string>();
+        if (!string.IsNullOrWhiteSpace(branding.VatNumber))
+            numbers.Add($"VAT No: {branding.VatNumber.Trim()}");
+        if (!string.IsNullOrWhiteSpace(branding.Telephone))
+            numbers.Add($"Tel: {branding.Telephone.Trim()}");
+        if (numbers.Count > 0) lines.Add(string.Join("   |   ", numbers));
+
+        return lines;
+    }
+
+    public static string RunBy(ReportResult report) => string.Format(
+        CultureInfo.CurrentCulture, "Run by {0} at {1:dd/MM/yyyy HH:mm} - {2}",
+        report.Provenance.RunByUsername, report.Provenance.RunAtLocal,
+        report.Provenance.DataCurrency);
+
+    /// The main table and every section after it, as one list.
+    public static IEnumerable<ReportSection> Tables(ReportResult report) =>
+        new[] { new ReportSection("", report.Columns, report.Rows) }
+            .Concat(report.Sections);
+}
+
 public sealed class ExcelExporter : IReportExporter, IWorkbookWriter
 {
+    private static readonly XLColor HeaderFill = XLColor.FromHtml("#DCE6F2");
+    private static readonly XLColor Banding = XLColor.FromHtml("#F5F7FA");
+
     private readonly IReportBranding _branding;
 
     public ExcelExporter(IReportBranding branding) => _branding = branding;
@@ -29,72 +67,226 @@ public sealed class ExcelExporter : IReportExporter, IWorkbookWriter
     /// <summary>
     /// The same workbook, written where the caller says.
     /// </summary>
+    /// <remarks>
+    /// The pharmacy's letterhead, the report's provenance (RPT-012), its
+    /// headline figures, then each table under a coloured header row. A
+    /// chart goes on a sheet of its own, so it never covers a figure.
+    /// </remarks>
     public void WriteTo(ReportResult report, string path)
     {
         ArgumentNullException.ThrowIfNull(report);
 
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add(SheetName(report.Title));
+        sheet.Style.Font.FontName = "Calibri";
+        sheet.Style.Font.FontSize = 10;
 
-        var top = AddLogo(sheet);
+        var row = AddLogo(sheet);
 
         // Whose report it is, in words as well as the logo: the logo
         // alone left a workbook forwarded to an accountant naming nobody
         // (ADM-OBS-06).
         if (!string.IsNullOrWhiteSpace(_branding.TradingName))
         {
-            sheet.Cell(top, 1).Value = _branding.TradingName;
-            sheet.Cell(top, 1).Style.Font.Bold = true;
-            sheet.Cell(top, 1).Style.Font.FontSize = 13;
-            top++;
+            sheet.Cell(row, 1).Value = _branding.TradingName;
+            sheet.Cell(row, 1).Style.Font.Bold = true;
+            sheet.Cell(row, 1).Style.Font.FontSize = 14;
+            row++;
         }
+
+        foreach (var line in Letterhead.Lines(_branding))
+        {
+            sheet.Cell(row, 1).Value = line;
+            sheet.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#4B5563");
+            row++;
+        }
+
+        row++;
 
         // Provenance first, so an exported file can still answer
         // "what was this?" a month later (RPT-012).
-        sheet.Cell(top, 1).Value = report.Title;
-        sheet.Cell(top, 1).Style.Font.Bold = true;
-        sheet.Cell(top + 1, 1).Value = report.Provenance.ParameterSummary;
-        sheet.Cell(top + 2, 1).Value = string.Format(
-            CultureInfo.CurrentCulture,
-            "Run by {0} at {1:dd/MM/yyyy HH:mm} - {2}",
-            report.Provenance.RunByUsername, report.Provenance.RunAtLocal,
-            report.Provenance.DataCurrency);
+        sheet.Cell(row, 1).Value = report.Title;
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 1).Style.Font.FontSize = 16;
+        sheet.Cell(row + 1, 1).Value = report.Provenance.ParameterSummary;
+        sheet.Cell(row + 2, 1).Value = Letterhead.RunBy(report);
+        sheet.Range(row + 1, 1, row + 2, 1).Style.Font.FontColor = XLColor.FromHtml("#6B7280");
+        row += 4;
 
-        var headerRow = top + 4;
-
-        for (var c = 0; c < report.Columns.Count; c++)
+        foreach (var figure in report.Figures)
         {
-            var cell = sheet.Cell(headerRow, c + 1);
-            cell.Value = report.Columns[c].Header;
-            cell.Style.Font.Bold = true;
+            sheet.Cell(row, 1).Value = figure.Label;
+            sheet.Cell(row, 1).Style.Font.Bold = true;
+            sheet.Cell(row, 2).Value = figure.Value;
+            sheet.Cell(row, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            row++;
         }
 
-        for (var i = 0; i < report.Rows.Count; i++)
+        if (report.Figures.Count > 0) row++;
+
+        var first = true;
+        var widest = 1;
+
+        foreach (var table in Letterhead.Tables(report))
         {
-            for (var c = 0; c < report.Columns.Count; c++)
+            if (!first && table.Rows.Count == 0) continue;
+
+            if (table.Title.Length > 0)
             {
-                var column = report.Columns[c];
-                report.Rows[i].TryGetValue(column.Key, out var value);
-                var cell = sheet.Cell(headerRow + 1 + i, c + 1);
+                sheet.Cell(row, 1).Value = table.Title;
+                sheet.Cell(row, 1).Style.Font.Bold = true;
+                sheet.Cell(row, 1).Style.Font.FontSize = 12;
+                row++;
+            }
+
+            var headerRow = row;
+            row = WriteTable(sheet, table, row);
+            widest = Math.Max(widest, table.Columns.Count);
+
+            // The main table can be filtered and stays in view as it
+            // scrolls; with sections below, a filter would hide them.
+            if (first && report.Sections.Count == 0 && table.Rows.Count > 0)
+            {
+                sheet.Range(headerRow, 1, row - 1, table.Columns.Count).SetAutoFilter();
+                sheet.SheetView.FreezeRows(headerRow);
+            }
+
+            first = false;
+            row += 2;
+        }
+
+        sheet.Columns(1, widest).AdjustToContents(1, row);
+
+        foreach (var column in sheet.Columns(1, widest))
+            column.Width = Math.Min(Math.Max(column.Width, 9), 60);
+
+        if (report.Chart is ReportChart chart) AddChart(workbook, chart);
+
+        sheet.PageSetup.PageOrientation = widest > 6
+            ? XLPageOrientation.Landscape
+            : XLPageOrientation.Portrait;
+        sheet.PageSetup.FitToPages(1, 0);
+
+        workbook.SaveAs(path);
+    }
+
+    /// Writes one table from <paramref name="row"/> and returns the row after it.
+    private static int WriteTable(IXLWorksheet sheet, ReportSection table, int row)
+    {
+        for (var c = 0; c < table.Columns.Count; c++)
+        {
+            var cell = sheet.Cell(row, c + 1);
+            cell.Value = table.Columns[c].Header;
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = HeaderFill;
+            cell.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+
+            if (table.Columns[c].RightAlign)
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        }
+
+        row++;
+
+        for (var i = 0; i < table.Rows.Count; i++, row++)
+        {
+            for (var c = 0; c < table.Columns.Count; c++)
+            {
+                var column = table.Columns[c];
+                table.Rows[i].TryGetValue(column.Key, out var value);
+                var cell = sheet.Cell(row, c + 1);
 
                 cell.Value = value switch
                 {
                     null => Blank.Value,
                     decimal d => d,
                     DateTime dt => dt,
+                    DateOnly day => day.ToDateTime(TimeOnly.MinValue),
                     int n => n,
+                    long n => n,
+                    double n => n,
                     bool flag => flag,
                     _ => value.ToString()
                 };
 
-                if (column.Format is not null)
-                    cell.Style.NumberFormat.Format = column.Format;
+                if (ExcelFormat(column.Format) is { } format)
+                    cell.Style.NumberFormat.Format = format;
+
+                if (i % 2 == 1) cell.Style.Fill.BackgroundColor = Banding;
             }
         }
 
-        sheet.Columns().AdjustToContents();
+        return row;
+    }
 
-        workbook.SaveAs(path);
+    /// <summary>
+    /// A column's format in Excel's own terms.
+    /// </summary>
+    /// <remarks>
+    /// The columns carry .NET format strings, which the preview and the
+    /// PDF use as they are. Handed to Excel as they were, "N2" is not a
+    /// number format, and Excel opened every report workbook by offering
+    /// to repair its styles. Dates and times ("dd/MM/yyyy HH:mm") read the
+    /// same in both and pass through.
+    /// </remarks>
+    public static string? ExcelFormat(string? format)
+    {
+        if (string.IsNullOrWhiteSpace(format)) return null;
+
+        if (format.Length == 2 && char.IsAsciiDigit(format[1]))
+        {
+            var places = format[1] - '0';
+            var decimals = places == 0 ? "" : "." + new string('0', places);
+
+            switch (char.ToUpperInvariant(format[0]))
+            {
+                case 'N':
+                case 'C':
+                    return "#,##0" + decimals;
+                case 'F':
+                    return "0" + decimals;
+                case 'P':
+                    return "0" + decimals + "%";
+            }
+        }
+
+        return format;
+    }
+
+    /// <summary>The graph on a sheet of its own, as a picture.</summary>
+    private static void AddChart(XLWorkbook workbook, ReportChart chart)
+    {
+        try
+        {
+            var sheet = workbook.Worksheets.Add("Graph");
+            sheet.Cell(1, 1).Value = chart.Title;
+            sheet.Cell(1, 1).Style.Font.Bold = true;
+            sheet.Cell(1, 1).Style.Font.FontSize = 14;
+
+            using var stream = new MemoryStream(ReportCharts.Picture(chart, 720, 360));
+            sheet.AddPicture(stream).MoveTo(sheet.Cell(3, 1)).Scale(0.5);
+
+            // The figures it was drawn from, beside it, so the graph can be
+            // checked or charted again in Excel.
+            sheet.Cell(3, 14).Value = "Label";
+            sheet.Cell(3, 15).Value = chart.ValueLabel;
+            sheet.Range(3, 14, 3, 15).Style.Font.Bold = true;
+            sheet.Range(3, 14, 3, 15).Style.Fill.BackgroundColor = HeaderFill;
+
+            for (var i = 0; i < chart.Points.Count; i++)
+            {
+                sheet.Cell(4 + i, 14).Value = chart.Points[i].Label;
+                sheet.Cell(4 + i, 15).Value = chart.Points[i].Value;
+                sheet.Cell(4 + i, 15).Style.NumberFormat.Format = "#,##0.00";
+            }
+
+            sheet.Column(14).AdjustToContents();
+            sheet.Column(15).AdjustToContents();
+        }
+#pragma warning disable CA1031 // The figures are the report; a picture that fails costs nothing.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
     }
 
     /// <summary>
@@ -152,6 +344,8 @@ public sealed class ExcelExporter : IReportExporter, IWorkbookWriter
             .Where(ch => !"\\/?*[]:".Contains(ch, StringComparison.Ordinal))
             .ToArray());
 
+        if (cleaned.Length == 0 || cleaned == "Graph") cleaned = "Report";
+
         return cleaned.Length <= 31 ? cleaned : cleaned[..31];
     }
 
@@ -198,8 +392,13 @@ public sealed class CsvExporter : IReportExporter
     }
 }
 
-public sealed class PdfExporter : IReportExporter
+public sealed class PdfExporter : IReportExporter, IPdfWriter
 {
+    private const string Accent = "#2F6DB5";
+    private const string HeaderFill = "#DCE6F2";
+    private const string Banding = "#F5F7FA";
+    private const string Muted = "#6B7280";
+
     private readonly IReportBranding _branding;
 
     public PdfExporter() : this(new NoReportBranding()) { }
@@ -212,84 +411,203 @@ public sealed class PdfExporter : IReportExporter
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        QuestPDF.Settings.License = LicenseType.Community;
-
         var path = Path.Combine(directory,
             ExcelExporter.FileName(report, "pdf"));
+
+        WriteTo(report, path);
+        return path;
+    }
+
+    public void WriteTo(ReportResult report, string path)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var widest = Letterhead.Tables(report).Max(t => t.Columns.Count);
+        var logo = ReadLogo();
 
         Document.Create(container =>
         {
             container.Page(page =>
             {
-                // Landscape, because a report with eight columns on
-                // portrait A4 is a report nobody reads on paper.
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1, Unit.Centimetre);
-                page.DefaultTextStyle(x => x.FontSize(8));
+                // Landscape where the table is wide, because a report with
+                // eight columns on portrait A4 is a report nobody reads on
+                // paper.
+                page.Size(widest > 6 ? PageSizes.A4.Landscape() : PageSizes.A4);
+                page.Margin(1.2f, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(8.5f).FontColor("#1F2937"));
 
-                page.Header().Column(header =>
+                page.Header().Element(header => Header(header, report, logo));
+
+                page.Content().PaddingTop(8).Column(body =>
                 {
-                    if (!string.IsNullOrWhiteSpace(_branding.TradingName))
-                        header.Item().Text(_branding.TradingName)
-                            .FontSize(11).Bold();
+                    body.Spacing(10);
 
-                    header.Item().Text(report.Title).FontSize(14).Bold();
-                    header.Item().Text(report.Provenance.ParameterSummary);
+                    if (report.Figures.Count > 0)
+                        body.Item().Element(c => Figures(c, report.Figures));
 
-                    // RPT-012: every page says what this is and how
-                    // current it is, because pages get separated.
-                    header.Item().Text(string.Format(
-                        CultureInfo.CurrentCulture,
-                        "Run by {0} at {1:dd/MM/yyyy HH:mm} - {2}",
-                        report.Provenance.RunByUsername,
-                        report.Provenance.RunAtLocal,
-                        report.Provenance.DataCurrency)).FontSize(7);
-                });
-
-                page.Content().PaddingVertical(6).Table(table =>
-                {
-                    // Each column as wide as what it holds, within limits:
-                    // shared out equally, fifteen columns left an item's
-                    // name wrapping a word to a line beside a date column
-                    // with room to spare.
-                    var widths = Widths(report);
-
-                    table.ColumnsDefinition(columns =>
+                    if (report.Chart is ReportChart chart)
                     {
-                        foreach (var width in widths)
-                            columns.RelativeColumn(width);
-                    });
+                        var svg = ReportCharts.Svg(chart, 720, 300);
+                        body.Item().Height(210).AlignCenter().Svg(svg).FitArea();
+                    }
 
-                    table.Header(h =>
+                    foreach (var table in Letterhead.Tables(report))
                     {
-                        foreach (var column in report.Columns)
-                            h.Cell().BorderBottom(1).PaddingBottom(2)
-                             .Text(column.Header).Bold();
-                    });
+                        if (table.Rows.Count == 0 && table.Title.Length > 0) continue;
 
-                    foreach (var row in report.Rows)
-                    {
-                        foreach (var column in report.Columns)
+                        body.Item().Column(block =>
                         {
-                            row.TryGetValue(column.Key, out var value);
+                            if (table.Title.Length > 0)
+                                block.Item().PaddingBottom(3).Text(table.Title)
+                                     .FontSize(11).Bold().FontColor(Accent);
 
-                            table.Cell().PaddingVertical(1)
-                                 .AlignRight(column.RightAlign)
-                                 .Text(Render(value, column.Format));
-                        }
+                            block.Item().Element(c => Table(c, table));
+                        });
                     }
                 });
 
-                page.Footer().AlignRight().Text(text =>
+                page.Footer().Row(row =>
                 {
-                    text.CurrentPageNumber();
-                    text.Span(" of ");
-                    text.TotalPages();
+                    row.RelativeItem().Text(text =>
+                    {
+                        text.Span(report.Title).FontColor(Muted);
+                        if (!string.IsNullOrWhiteSpace(_branding.TradingName))
+                            text.Span("  -  " + _branding.TradingName).FontColor(Muted);
+                    });
+
+                    row.AutoItem().AlignRight().Text(text =>
+                    {
+                        text.Span("Page ").FontColor(Muted);
+                        text.CurrentPageNumber().FontColor(Muted);
+                        text.Span(" of ").FontColor(Muted);
+                        text.TotalPages().FontColor(Muted);
+                    });
                 });
             });
         }).GeneratePdf(path);
+    }
 
-        return path;
+    /// <summary>
+    /// The letterhead on every page: logo left, the pharmacy's particulars
+    /// beside it, then what the report is and how current (RPT-012) -
+    /// because pages get separated.
+    /// </summary>
+    private void Header(IContainer container, ReportResult report, byte[]? logo)
+    {
+        container.Column(column =>
+        {
+            column.Item().Row(row =>
+            {
+                if (logo is not null)
+                    row.ConstantItem(70).Height(48).AlignMiddle().Image(logo).FitArea();
+
+                row.RelativeItem().PaddingLeft(logo is null ? 0 : 10).Column(details =>
+                {
+                    if (!string.IsNullOrWhiteSpace(_branding.TradingName))
+                        details.Item().Text(_branding.TradingName).FontSize(13).Bold();
+
+                    foreach (var line in Letterhead.Lines(_branding))
+                        details.Item().Text(line).FontSize(8).FontColor(Muted);
+                });
+
+                row.RelativeItem().AlignRight().Column(title =>
+                {
+                    title.Item().AlignRight().Text(report.Title).FontSize(15).Bold()
+                         .FontColor(Accent);
+                    title.Item().AlignRight().Text(report.Provenance.ParameterSummary)
+                         .FontSize(7.5f).FontColor(Muted);
+                    title.Item().AlignRight().Text(Letterhead.RunBy(report))
+                         .FontSize(7).FontColor(Muted);
+                });
+            });
+
+            column.Item().PaddingTop(6).LineHorizontal(1).LineColor(Accent);
+        });
+    }
+
+    /// The headline figures as a row of tiles.
+    private static void Figures(IContainer container, IReadOnlyList<ReportFigure> figures)
+    {
+        container.Table(table =>
+        {
+            var across = Math.Min(figures.Count, 5);
+
+            table.ColumnsDefinition(columns =>
+            {
+                for (var i = 0; i < across; i++) columns.RelativeColumn();
+            });
+
+            foreach (var figure in figures)
+                table.Cell().Padding(3).Border(0.5f).BorderColor("#D1D5DB")
+                     .Background(Banding).Padding(6).Column(tile =>
+                     {
+                         tile.Item().Text(figure.Label).FontSize(7.5f).FontColor(Muted);
+                         tile.Item().Text(figure.Value).FontSize(12).Bold();
+                     });
+        });
+    }
+
+    private static void Table(IContainer container, ReportSection section)
+    {
+        var widths = Widths(section.Columns, section.Rows);
+
+        container.Table(table =>
+        {
+            // Each column as wide as what it holds, within limits:
+            // shared out equally, fifteen columns left an item's
+            // name wrapping a word to a line beside a date column
+            // with room to spare.
+            table.ColumnsDefinition(columns =>
+            {
+                foreach (var width in widths)
+                    columns.RelativeColumn(width);
+            });
+
+            table.Header(h =>
+            {
+                foreach (var column in section.Columns)
+                    h.Cell().Background(HeaderFill).PaddingVertical(3).PaddingHorizontal(3)
+                     .AlignRight(column.RightAlign)
+                     .Text(column.Header).Bold();
+            });
+
+            for (var i = 0; i < section.Rows.Count; i++)
+            {
+                var row = section.Rows[i];
+                var fill = i % 2 == 1 ? Banding : "#FFFFFF";
+
+                foreach (var column in section.Columns)
+                {
+                    row.TryGetValue(column.Key, out var value);
+
+                    table.Cell().Background(fill).PaddingVertical(2).PaddingHorizontal(3)
+                         .AlignRight(column.RightAlign)
+                         .Text(Render(value, column.Format));
+                }
+            }
+        });
+    }
+
+    private byte[]? ReadLogo()
+    {
+        var path = _branding.LogoPath;
+
+        try
+        {
+            return string.IsNullOrWhiteSpace(path) || !File.Exists(path)
+                ? null
+                : File.ReadAllBytes(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -300,10 +618,15 @@ public sealed class PdfExporter : IReportExporter
     public static IReadOnlyList<float> Widths(ReportResult report)
     {
         ArgumentNullException.ThrowIfNull(report);
+        return Widths(report.Columns, report.Rows);
+    }
 
-        var sample = report.Rows.Take(400).ToList();
+    private static List<float> Widths(IReadOnlyList<ReportColumn> columns,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows)
+    {
+        var sample = rows.Take(400).ToList();
 
-        return report.Columns
+        return columns
             .Select(column =>
             {
                 var longest = sample

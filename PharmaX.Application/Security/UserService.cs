@@ -245,7 +245,11 @@ public sealed class UserService : IUserService
     {
         foreach (var role in roles.Distinct(StringComparer.Ordinal))
         {
+            // Cashing up is the cashier's own duty, which a manager does not
+            // have (19 October 2026); it is no wider authority, so a manager
+            // still takes cashiers on.
             var missing = StandardRoleGrants.For(role)
+                .Where(code => code != PermissionCode.SessionCashUp)
                 .FirstOrDefault(code => !_permissions.Has(code));
 
             if (missing is null) continue;

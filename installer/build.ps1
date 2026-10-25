@@ -19,7 +19,17 @@
 [CmdletBinding()]
 param(
     [string] $Configuration = 'Release',
-    [string] $SeedFrom = (Join-Path $env:USERPROFILE 'Downloads\Exports\Exports'),
+
+    # The latest export from the previous system, taken 23 October 2026.
+    # The one before it (6 October) is in Downloads\Exports\Exports.
+    [string] $SeedFrom = (Join-Path $env:USERPROFILE 'Documents\Exports from DIspenseware as 23102026'),
+
+    # The pharmacy this installer is for. Its name and address go into the
+    # database the installer ships, so every till prints them on its
+    # receipts and labels from the first sale; the export holds the
+    # patients' addresses, not the pharmacy's. Address lines split by |.
+    [string] $TradingName = 'Bethrapha Pharmacy',
+    [string] $Address = '28 Woodstock Road|Thorngrove|Bulawayo',
 
     # For trying PharmaX out, never for the pharmacy: the first
     # administrator signs in as admin / changeme#1 and is not made to
@@ -119,15 +129,19 @@ New-Item -ItemType Directory $seed | Out-Null
 Write-Host "Building the database from $SeedFrom..." -ForegroundColor Cyan
 
 # Pointed at the new file and nothing else: no shared database, and none
-# of a developer's test accounts or demo data.
+# of a developer's test accounts or demo data. Run as the pharmacy it is
+# for, whatever this machine's own setup says.
 $overrides = 'Database__LocalConnection', 'Database__SharedConnection',
-             'Development__SeedTestUsers'
+             'Development__SeedTestUsers', 'Pharmacy__TradingName',
+             'Pharmacy__Address'
 $kept = @{}
 foreach ($name in $overrides) {
     $kept[$name] = [Environment]::GetEnvironmentVariable($name)
     [Environment]::SetEnvironmentVariable($name, $null)
 }
 $env:Database__LocalConnection = "Data Source=$seedDb"
+$env:Pharmacy__TradingName = $TradingName
+$env:Pharmacy__Address = ($Address -split '\|' | ForEach-Object { $_.Trim() }) -join "`n"
 
 $started = Get-Date
 try {
@@ -166,6 +180,16 @@ if (Test-Path "$seedDb-wal") {
 }
 
 Copy-Item $report.FullName (Join-Path $seed 'import-report.txt')
+
+# The address is what every receipt and label will print, so a build that
+# did not record it is not one to ship.
+$recorded = Select-String -Path $report.FullName -SimpleMatch -Quiet `
+    -Pattern "The pharmacy's address, for every till"
+
+if (-not $recorded) {
+    throw "The import did not record the pharmacy's address. Its report is " +
+          "$($report.FullName)."
+}
 
 Write-Host ("Database built: {0} ({1} MB). Every total agrees with the export." -f
     $seedDb, [math]::Round((Get-Item $seedDb).Length / 1MB, 1)) -ForegroundColor Green

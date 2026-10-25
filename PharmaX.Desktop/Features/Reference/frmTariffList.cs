@@ -58,6 +58,12 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) => CloseView(true);
 
+        chkInactive.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(grdTariffs)?.Restart();
+            SearchChanged?.Invoke(this, EventArgs.Empty);
+        };
+
         grdTariffs.DoubleClick += (_, _) =>
             EditRequested?.Invoke(this, EventArgs.Empty);
 
@@ -85,6 +91,8 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
     }
 
     public string SearchText => txtSearch.Text.Trim();
+
+    public bool IncludeInactive => chkInactive.Checked;
 
     public Guid? SchemeFilter =>
         cboScheme.SelectedValue is Guid id && id != AllSchemes ? id : null;
@@ -140,7 +148,7 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
         var hasRow = grdTariffs.CurrentRow?.DataBoundItem is TariffListItemDto;
 
         btnToggle.Enabled = hasRow;
-        btnToggle.Text = SelectedIsActive || !hasRow ? "&Retire" : "&Bring back";
+        btnToggle.Text = SelectedIsActive || !hasRow ? "Deac&tivate" : "&Bring back";
     }
 
     public event EventHandler? SearchChanged;

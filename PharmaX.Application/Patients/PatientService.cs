@@ -12,10 +12,12 @@ public interface IPatientService
 {
     /// <param name="skip">Matches passed over first, for a later page.</param>
     Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(string term,
-        int take = 100, int skip = 0, CancellationToken ct = default);
+        int take = 100, int skip = 0, bool includeInactive = false,
+        CancellationToken ct = default);
 
     /// How many patients the same search matches, across every page.
-    Task<Result<int>> CountAsync(string term, CancellationToken ct = default);
+    Task<Result<int>> CountAsync(string term, bool includeInactive = false,
+                                 CancellationToken ct = default);
 
     Task<Result<PatientDto>> GetAsync(Guid id, CancellationToken ct = default);
 
@@ -26,6 +28,9 @@ public interface IPatientService
                              CancellationToken ct = default);
 
     Task<Result> DeactivateAsync(Guid id, CancellationToken ct = default);
+
+    /// A deactivated patient back on the searches.
+    Task<Result> ReactivateAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
     /// Files already open that may be the patient being captured: the
@@ -111,14 +116,14 @@ public sealed class PatientService : IPatientService
     }
 
     public async Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(
-        string term, int take = 100, int skip = 0,
+        string term, int take = 100, int skip = 0, bool includeInactive = false,
         CancellationToken ct = default)
     {
         // A patient list is clinical information, so reading it needs the
         // dispensing permission rather than the product one.
         _permissions.Demand(PermissionCode.PatientMaintain);
 
-        var patients = await _patients.SearchAsync(term, take, skip, ct);
+        var patients = await _patients.SearchAsync(term, take, skip, includeInactive, ct);
 
         var allergic = await _patients
             .WithAllergiesAsync(patients.Select(p => p.Id), ct);
@@ -131,12 +136,12 @@ public sealed class PatientService : IPatientService
         return Result<IReadOnlyList<PatientListItemDto>>.Ok(items);
     }
 
-    public async Task<Result<int>> CountAsync(string term,
+    public async Task<Result<int>> CountAsync(string term, bool includeInactive = false,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.PatientMaintain);
 
-        return Result<int>.Ok(await _patients.CountAsync(term, ct));
+        return Result<int>.Ok(await _patients.CountAsync(term, includeInactive, ct));
     }
 
     public async Task<Result<PatientDto>> GetAsync(Guid id,
@@ -261,6 +266,22 @@ public sealed class PatientService : IPatientService
         patient.Deactivate();
 
         _audit.Applied("pat.patient.deactivate", "Patient", patient.Id);
+        await _uow.SaveChangesAsync(ct);
+
+        return Result.Ok();
+    }
+
+    public async Task<Result> ReactivateAsync(Guid id,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.PatientMaintain);
+
+        var patient = await _patients.GetAsync(id, ct);
+        if (patient is null) return Result.Fail("PAT-000", "Patient not found.");
+
+        patient.Reactivate();
+
+        _audit.Applied("pat.patient.reactivate", "Patient", patient.Id);
         await _uow.SaveChangesAsync(ct);
 
         return Result.Ok();

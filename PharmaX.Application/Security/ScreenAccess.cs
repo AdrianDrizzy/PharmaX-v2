@@ -36,8 +36,23 @@ public static class ScreenAccess
             ["exit"] = _ => true,
             ["about"] = _ => true,
 
+            // Ask PharmaX: general questions, no pharmacy data behind it.
+            ["assistant"] = _ => true,
+
+            // The day's receipts, to give a customer a copy: whoever is
+            // at the counter. Copies are marked and recorded.
+            ["receipts"] = _ => true,
+
             // The drawer belongs to whoever sells from it.
             ["till"] = p => p.Has(PermissionCode.SaleCreate),
+
+            // A cashier cashes up their own shift; the pharmacist, the
+            // assistant, the manager and the administrator any cashier's,
+            // and they see the whole day (as does whoever reads the books).
+            ["cash-up"] = p => p.HasAny(PermissionCode.SessionCashUp,
+                                        PermissionCode.SessionCloseOtherUser),
+            ["end-of-day"] = p => p.HasAny(PermissionCode.SessionCloseOtherUser,
+                                           PermissionCode.ReportFinancial),
 
             // Dispensary.
             ["dispensing"] = p => p.Has(PermissionCode.ScriptDispense),
@@ -131,6 +146,9 @@ public static class ScreenAccess
             ["users"] = p => p.Has(PermissionCode.UserRoleAssign),
             ["branches"] = p => p.Has(PermissionCode.SettingsChange),
             ["system-setup"] = p => p.Has(PermissionCode.SettingsChange),
+
+            // What every till's receipt prints: the administrator's.
+            ["receipt-template"] = p => p.Has(PermissionCode.SettingsChange),
             ["data-import"] = p => p.Has(PermissionCode.SettingsChange),
             ["backup"] = p => p.Has(PermissionCode.SettingsChange),
             ["system-console"] = p => p.Has(PermissionCode.SettingsChange),

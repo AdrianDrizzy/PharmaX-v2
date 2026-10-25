@@ -221,8 +221,8 @@ public sealed partial class DataImporter
 
                 foreach (var tender in counts.GroupBy(c => Tender(c.Text(F.Tender))))
                 {
-                    var expected = tender.Sum(c => c.Number(F.SystemTotal));
-                    var declared = tender.Sum(c => c.Number(F.Declared));
+                    var expected = tender.Sum(c => Dollars(c, F.SystemTotal));
+                    var declared = tender.Sum(c => Dollars(c, F.Declared));
                     declaration.AddLine(tender.Key, Money.Of(expected), Money.Of(declared));
                     expectedTotal += expected;
                     declaredTotal += declared;
@@ -243,11 +243,25 @@ public sealed partial class DataImporter
 
         run.Report.Count("Till sessions closed with a cash-up", closed);
         run.Report.Count("Till sessions no cash-up covered (left suspended)", open);
+        run.Report.Count("Cash-up lines in another currency (turned into dollars at its rate)",
+            counted.Values.Sum(v => v.Count(Foreign)));
         run.Report.Figure("Cash-ups: expected by the till", expectedTotal);
         run.Report.Figure("Cash-ups: counted", declaredTotal);
         run.Report.Check("Cash-up lines", cashUps.Count(c => c.Clean(F.ZRead) is not null),
             counted.Values.Sum(v => v.Count));
     }
+
+    /// <summary>
+    /// A cash-up figure in dollars. A till counting a second currency
+    /// writes its totals in that currency, with how many of it make a
+    /// dollar: 68,822 ZWG at 36 to the dollar is 1,911.72.
+    /// </summary>
+    private static decimal Dollars(SourceRow row, string[] column) =>
+        Foreign(row)
+            ? Math.Round(row.Number(column) / row.Number(F.Rate), 2, MidpointRounding.AwayFromZero)
+            : row.Number(column);
+
+    private static bool Foreign(SourceRow row) => row.Number(F.Rate) is > 0m and not 1m;
 
     private static long Long(string text) =>
         long.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
@@ -379,7 +393,13 @@ public sealed partial class DataImporter
                 collected++;
             }
             else if (dispensing.AwaitsCollection)
+            {
+                // Settled in the previous system, whose receipt did not come
+                // across: listed here, not left waiting under Collect to be
+                // paid again (19 October 2026).
+                dispensing.SettledBeforePharmaX(issuedAt);
                 waiting.Add($"Script {number} of {prescribedOn:dd/MM/yyyy}: {dispensing.CoPaymentTotal}");
+            }
 
             _db.Scripts.Add(script);
             _db.Dispensings.Add(dispensing);
@@ -400,7 +420,7 @@ public sealed partial class DataImporter
                    .Sum(r => r.Number(F.LinePrice) + r.Number(F.Fee)),
             dispensed, tolerance: lines * 0.005m + 0.005m);
 
-        run.Report.Review("Prescriptions with no till receipt in the files - waiting under Collect until taken or reversed", waiting);
+        run.Report.Review("Prescriptions with no till receipt in the files - taken as settled before the changeover, not waiting under Collect", waiting);
         run.Report.Review("Prescription lines with no quantity, left out", zero);
     }
 

@@ -121,12 +121,17 @@ public sealed record ProductEditDto(
 
     // The counted quantity of a product whose stock is not on a batch.
     // Null leaves it as it is. A change is posted as a stock adjustment
-    // and needs inv.stocktake.post.
+    // and needs inv.stock.correct or inv.stocktake.post.
     decimal? QuantityOnHand = null,
 
     // The batches on the shelf as the editor left them, plus any it
     // added. Null leaves them as they are; a batch left out is kept.
-    IReadOnlyList<ProductBatchEditDto>? Batches = null);
+    IReadOnlyList<ProductBatchEditDto>? Batches = null,
+
+    // Why the stock on hand changed, where the edit changes it: required
+    // then, and carried on the adjustment and the audit entry. A new
+    // product's first stock is its opening stock when nothing is said.
+    string? StockReason = null);
 
 /// <summary>
 /// One batch row of the product editor. No batch id is a batch the
@@ -144,7 +149,8 @@ public sealed record ProductBatchEditDto(
 /// <param name="Extra">
 /// The expiry date (yyyy-MM-dd) when <paramref name="Column"/> is
 /// <see cref="ProductCell.OpenBatch"/>, which is a batch number and a
-/// date together. Null for every other column.
+/// date together; why the stock changed when it is
+/// <see cref="ProductCell.QuantityOnHand"/>. Null for every other column.
 /// </param>
 public sealed record ProductCellEditDto(
     Guid ProductId,

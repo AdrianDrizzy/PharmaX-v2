@@ -72,11 +72,14 @@ public sealed class Dispensing : AuditableEntity
     /// A dispensing with nothing to pay is not waiting for anything -
     /// a fully covered medical aid script is finished the moment it is
     /// issued, and putting it in a queue for a cashier to collect
-    /// nothing would only teach the cashiers to ignore the queue.
+    /// nothing would only teach the cashiers to ignore the queue. Nor is
+    /// one with a collection date and no sale: a script from before
+    /// PharmaX, settled there and taken off the list (19 October 2026).
     /// </remarks>
     public bool AwaitsCollection =>
         Status == DispensingStatus.Issued
         && SaleId is null
+        && CollectedAtUtc is null
         && !CoPaymentTotal.IsZero;
 
     public IReadOnlyList<ClinicalWarning> PendingWarnings =>
@@ -248,6 +251,22 @@ public sealed class Dispensing : AuditableEntity
     }
 
     /// <summary>
+    /// Takes a script from before PharmaX off the list of those waiting to
+    /// be paid for: settled in the previous system, whose till receipts
+    /// did not come across. The record stays; no sale is made for it.
+    /// </summary>
+    public void SettledBeforePharmaX(DateTime atUtc)
+    {
+        if (Status != DispensingStatus.Issued || SaleId is not null
+            || CollectedAtUtc is not null)
+            throw new DomainException(
+                "Only an issued script nobody has paid for can be taken off "
+                + "the list.");
+
+        CollectedAtUtc = atUtc;
+    }
+
+    /// <summary>
     /// Reverses an issued dispensing. The record stays: a reversal is a
     /// new fact about the dispensing, not the removal of an old one.
     /// </summary>
@@ -289,6 +308,14 @@ public sealed class Dispensing : AuditableEntity
 
     private void EnsureInProgress()
     {
+        // Set aside unfinished - by the person who closed it, or after 24
+        // hours - is not "issued", and saying so sent people looking for
+        // a dispensing that was never made.
+        if (Status == DispensingStatus.Abandoned)
+            throw new DomainException(
+                "This script was set aside unfinished. Begin it again to "
+                + "dispense it.");
+
         if (Status != DispensingStatus.InProgress)
             throw new DomainException(
                 "This dispensing has been issued and cannot be changed.");

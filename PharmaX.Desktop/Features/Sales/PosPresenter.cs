@@ -621,6 +621,16 @@ public sealed class PosPresenter : PresenterBase<IPosView>
             return Task.CompletedTask;
         }
 
+        // A pharmacist assistant makes the basket up and holds it. The
+        // cashier recalls it on the till that has the drawer and takes the
+        // money there, so it lands in that till's session.
+        if (!_permissions.Has(PermissionCode.SaleTakePayment))
+        {
+            View.ShowInfo("Press F8 Hold. The cashier recalls it with F9 on "
+                          + "the till with the drawer and takes the money there.");
+            return Task.CompletedTask;
+        }
+
         var payments = View.PromptPayment(_sale.Totals.Total);
         if (payments is null) return Task.CompletedTask;
 

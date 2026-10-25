@@ -66,6 +66,10 @@ public class DailySalesMarginTests : IClassFixture<PharmaXFixture>
         after.Scripts.Should().Be(before.Scripts + coPayment,
             "and the report says how much of it was a co-payment");
 
+        after.Counter.Should().Be(before.Counter + 200m,
+            "and how much was sold over the counter: the sales less the "
+            + "co-payment");
+
         after.Cost.Should().Be(before.Cost + 120m,
             "the counter sale's cost, and nothing against the collection");
 
@@ -136,7 +140,66 @@ public class DailySalesMarginTests : IClassFixture<PharmaXFixture>
             && (decimal)r["Sales"]! <= -100m);
     }
 
+    /// <remarks>
+    /// Sales Summary is asked for between two clock times, and a refund in
+    /// that time comes off the tender it was paid back in: left out, the
+    /// summary said the drawer held money that had been handed back.
+    /// </remarks>
+    [Fact]
+    public async Task A_sales_summary_takes_a_refund_off_its_tender()
+    {
+        await _steps.OpenTillAsync();
+        await _steps.ProductAsync("DSMS", "Summary throat spray 20ml", 50m);
+
+        var now = DateTime.Now;
+        var from = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0)
+            .AddMinutes(-1);
+        var summary = new ReportRequest("pos.sales.summary", "1",
+            DateOnly.FromDateTime(from), DateOnly.FromDateTime(now.AddHours(1)),
+            new Dictionary<string, string?>(),
+            FromClock: from, ToClock: from.AddHours(1));
+
+        var before = await CashAsync(summary);
+
+        var receipt = await SellAsync("DSMS", 3m);
+        await RefundAsync(receipt, (1m, true));
+
+        var after = await CashAsync(summary);
+
+        after.Sales.Should().Be(before.Sales + 150m);
+        after.Refunds.Should().Be(before.Refunds - 50m);
+        after.Net.Should().Be(before.Net + 100m, "three sold and one handed back");
+
+        // Nothing from before the window.
+        var earlier = summary with
+        {
+            FromClock = from.AddHours(-3),
+            ToClock = from.AddHours(-2)
+        };
+
+        (await CashAsync(earlier)).Sales.Should().Be(0m);
+    }
+
     // ---- Steps -----------------------------------------------------------
+
+    /// The Cash row of Sales Summary, or nothing where none was taken.
+    private async Task<(decimal Sales, decimal Refunds, decimal Net)> CashAsync(
+        ReportRequest request)
+    {
+        await _steps.SignInAsync("dsm.mgr1", Role.Standard.Manager);
+
+        using var scope = _steps.Fixture.NewScope();
+
+        var report = await PharmaXFixture.Resolve<IReportRunner>(scope)
+            .RunAsync(request);
+
+        var cash = report.Rows.SingleOrDefault(r => Equals(r["Tender"], "Cash"));
+
+        return cash is null
+            ? (0m, 0m, 0m)
+            : ((decimal)cash["Sales"]!, (decimal)cash["Refunds"]!,
+               (decimal)cash["Net"]!);
+    }
 
     /// The TOTAL row of Daily Sales (Line Items).
     private async Task<(decimal Total, decimal Cost, decimal Margin)>
@@ -190,7 +253,7 @@ public class DailySalesMarginTests : IClassFixture<PharmaXFixture>
     }
 
     private sealed record Day(decimal Sales, decimal Scripts, decimal Cost,
-                              decimal Margin);
+                              decimal Margin, decimal Counter);
 
     /// <summary>
     /// The day's row of Daily Sales, or nothing where the day has not
@@ -211,9 +274,10 @@ public class DailySalesMarginTests : IClassFixture<PharmaXFixture>
             Equals(r["Group"], day.ToString("yyyy-MM-dd")));
 
         return row is null
-            ? new Day(0m, 0m, 0m, 0m)
+            ? new Day(0m, 0m, 0m, 0m, 0m)
             : new Day((decimal)row["Sales"]!, (decimal)row["Scripts"]!,
-                      (decimal)row["Cost"]!, (decimal)row["Margin"]!);
+                      (decimal)row["Cost"]!, (decimal)row["Margin"]!,
+                      (decimal)row["Counter"]!);
     }
 
     private async Task<string> SellAsync(string code, decimal quantity)

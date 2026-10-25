@@ -34,7 +34,8 @@ public sealed partial class ProductService
             ProductCell.RetailPrice =>
                 await EditRetailAsync(product, edit.Value, ct),
             ProductCell.QuantityOnHand =>
-                await EditQuantityAsync(product, edit.BatchId, edit.Value, ct),
+                await EditQuantityAsync(product, edit.BatchId, edit.Value,
+                    edit.Extra, ct),
             ProductCell.Schedule =>
                 await EditScheduleAsync(product, edit.Value, ct),
             ProductCell.BatchTracked =>
@@ -224,8 +225,9 @@ public sealed partial class ProductService
         return Result.Ok();
     }
 
+    /// <param name="reason">Why the stock changed, as the list asked for it.</param>
     private async Task<Result> EditQuantityAsync(Product product,
-        Guid? batchId, string? value, CancellationToken ct)
+        Guid? batchId, string? value, string? reason, CancellationToken ct)
     {
         if (!decimal.TryParse(value, NumberStyles.Number,
                 CultureInfo.InvariantCulture, out var quantity))
@@ -273,27 +275,24 @@ public sealed partial class ProductService
             return Result.Fail("INV-031",
                 "Quantity on hand cannot be negative.");
 
+        var why = (reason ?? "").Trim();
+
+        if (why.Length == 0) return Result.Fail("INV-033", NoReason);
+        if (why.Length > ReasonLength) why = why[..ReasonLength];
+
         _permissions.Demand(PermissionCode.ProductMaintain);
-        _permissions.Demand(PermissionCode.StockTakePost);
+        DemandStockCorrection();
 
         if (batch is not null) batch.AdjustBy(delta);
 
-        var balance = product.QuantityOnHand + delta;
+        var before = product.QuantityOnHand;
+        var balance = before + delta;
         product.SetQuantityOnHand(balance);
 
-        _movements.Add(StockMovement.Record(
-            productId: product.Id,
-            batchId: batch?.Id,
-            movementType: MovementType.Adjustment,
-            quantity: delta,
-            balanceAfter: balance,
-            occurredAtUtc: _clock.UtcNow,
-            reasonCode: delta > 0m ? "COUNT-OVER" : "COUNT-SHORT",
-            sourceDocumentType: "Product",
-            sourceDocumentId: product.Id));
+        RecordCount(product, batch?.Id, delta, balance, why);
 
         _audit.Applied("inv.stock.adjust", "Product", product.Id,
-            $"{product.Code} on hand to {balance.ToString(CultureInfo.InvariantCulture)}");
+            StockAudit(product, before, balance, why));
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();

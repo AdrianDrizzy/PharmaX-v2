@@ -142,6 +142,20 @@ public sealed class SaleService : ISaleService
     {
         _permissions.Demand(PermissionCode.SaleCreate);
 
+        // Someone who does not take the money - the pharmacist assistant -
+        // makes a basket up for the cashier. It is in no till session,
+        // whatever is open on this computer, until a till recalls it.
+        if (!_permissions.Has(PermissionCode.SaleTakePayment))
+        {
+            var basket = Sale.Prepare(_sales.CurrentBranchId,
+                _sales.CurrentWorkstationId, _user.Id, _clock.UtcNow);
+
+            await _sales.AddAsync(basket, ct);
+            await _uow.SaveChangesAsync(ct);
+
+            return Result<SaleDto>.Ok(SaleDto.From(basket));
+        }
+
         if (_user.TillSessionId is null)
             return Result<SaleDto>.Fail("POS-013",
                 "Open a till session before selling.");
@@ -599,6 +613,7 @@ public sealed class SaleService : ISaleService
         ArgumentNullException.ThrowIfNull(payments);
 
         _permissions.Demand(PermissionCode.SaleCreate);
+        _permissions.Demand(PermissionCode.SaleTakePayment);
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
@@ -729,7 +744,11 @@ public sealed class SaleService : ISaleService
     {
         _permissions.Demand(PermissionCode.SaleCreate);
 
-        if (_user.TillSessionId is not Guid session)
+        // Into this till's session where the money is taken here; the
+        // assistant takes a basket back up in none, to add to it.
+        var takesPayment = _permissions.Has(PermissionCode.SaleTakePayment);
+
+        if (takesPayment && _user.TillSessionId is null)
             return Result<SaleDto>.Fail("POS-013",
                 "Open a till session before recalling a sale.");
 
@@ -750,7 +769,8 @@ public sealed class SaleService : ISaleService
             && !empty.Lines.Any(l => !l.IsVoided))
             empty.Abandon("Replaced by a recalled held sale.");
 
-        sale.Resume(session, _user.Id);
+        sale.Resume(takesPayment ? _user.TillSessionId : null,
+                    _sales.CurrentWorkstationId, _user.Id);
 
         _audit.Applied("pos.sale.recall", "Sale", sale.Id);
 

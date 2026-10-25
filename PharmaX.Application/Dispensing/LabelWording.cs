@@ -24,11 +24,14 @@ namespace PharmaX.Application.Dispensing;
 /// </remarks>
 public static class LabelWording
 {
-    /// Printed on every trailer label.
-    public const string KeepOutOfReach = "Keep out of reach of children.";
-
     /// For a medicine none of the rules below speaks to.
-    public const string General = "Use only as directed. Do not share this medicine.";
+    public const string General = "Use only as directed.";
+
+    // The pharmacy does not print this. It used to be tacked onto the
+    // general warning and came out distorted on the next line of the sticker.
+    private static readonly Regex ShareNotice = new(
+        @"\s*do not share this medicine( with anyone)?\.?",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// The most a label holds before the stock runs out of room.
     public const int MostWarnings = 3;
@@ -39,8 +42,15 @@ public static class LabelWording
     /// The directions as the label prints them: as they were typed, on one
     /// line, in capitals - the way the pharmacy's own labels read.
     /// </summary>
-    public static string Directions(string? directions) =>
-        Regex.Replace((directions ?? "").Trim(), @"\s+", " ").ToUpperInvariant();
+    public static string Directions(string? directions)
+    {
+        var text = ShareNotice.Replace(directions ?? "", " ");
+        return Regex.Replace(text.Trim(), @"\s+", " ").Trim().ToUpperInvariant();
+    }
+
+    /// The warning with the "do not share this medicine" sentence taken off.
+    public static string WithoutShareNotice(string? warning) =>
+        Regex.Replace(ShareNotice.Replace(warning ?? "", " ").Trim(), @"\s+", " ").Trim();
 
     // ---- Warnings --------------------------------------------------------
 
@@ -117,7 +127,8 @@ public static class LabelWording
             .Where(r => r.Words.Any(name.Contains))
             .Where(r => !(r.Topical && oral))
             .Where(r => !(r.SwallowedOnly && topical))
-            .Select(r => r.Warning)
+            .Select(r => WithoutShareNotice(r.Warning))
+            .Where(w => w.Length > 0)
             .Distinct()
             .Take(MostWarnings)
             .ToList();

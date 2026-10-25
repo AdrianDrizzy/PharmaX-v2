@@ -1,8 +1,10 @@
 using System.Globalization;
 using PharmaX.Application.Inventory.Dtos;
 using PharmaX.Application.Results;
+using PharmaX.Application.Security;
 using PharmaX.Domain.Batches;
 using PharmaX.Domain.Inventory;
+using PharmaX.Domain.Security;
 
 namespace PharmaX.Application.Inventory;
 
@@ -129,6 +131,16 @@ public sealed partial class ProductService
                 + (plan.Changes.FirstOrDefault(c => c.Batch.Id == b.Id)
                        ?.Delta ?? 0m) > 0m);
 
+        // A shelf figure changed with no reason is a loss or a gain
+        // nobody can explain at the next stocktake.
+        plan.Reason = (edit.StockReason ?? "").Trim();
+
+        if (plan.MovesStock && plan.Reason.Length == 0)
+            return Refuse("INV-033", NoReason);
+
+        if (plan.Reason.Length > ReasonLength)
+            plan.Reason = plan.Reason[..ReasonLength];
+
         return Result<StockPlan>.Ok(plan);
 
         static Result<StockPlan>? Check(ProductBatchEditDto row)
@@ -167,6 +179,7 @@ public sealed partial class ProductService
     {
         var invariant = CultureInfo.InvariantCulture;
         var balance = product.QuantityOnHand;
+        var before = balance;
 
         foreach (var change in plan.Changes)
         {
@@ -191,7 +204,7 @@ public sealed partial class ProductService
 
             batch.AdjustBy(change.Delta);
             balance += change.Delta;
-            RecordCount(product, batch.Id, change.Delta, balance);
+            RecordCount(product, batch.Id, change.Delta, balance, plan.Reason);
         }
 
         foreach (var opening in plan.Openings)
@@ -207,7 +220,7 @@ public sealed partial class ProductService
             if (opening.Counted == 0m) continue;
 
             balance += opening.Counted;
-            RecordCount(product, batch.Id, opening.Counted, balance);
+            RecordCount(product, batch.Id, opening.Counted, balance, plan.Reason);
         }
 
         // Stock on a batch has to be picked by batch at the till.
@@ -218,7 +231,7 @@ public sealed partial class ProductService
             if (delta == 0m) continue;
 
             balance += delta;
-            RecordCount(product, null, delta, balance);
+            RecordCount(product, null, delta, balance, plan.Reason);
         }
 
         if (balance == product.QuantityOnHand) return;
@@ -226,11 +239,29 @@ public sealed partial class ProductService
         product.SetQuantityOnHand(balance);
 
         _audit.Applied("inv.stock.adjust", "Product", product.Id,
-            $"{product.Code} on hand to {balance.ToString(invariant)}");
+            StockAudit(product, before, balance, plan.Reason));
+    }
+
+    /// The most a stock reason keeps; the prompt takes no more.
+    private const int ReasonLength = 200;
+
+    private const string NoReason =
+        "Say why the stock on hand changed - counted, damaged, found, "
+        + "or a mistake put right.";
+
+    /// <summary>
+    /// A count from the product itself - the editor or the list - is the
+    /// pharmacist's and the assistant's own correction, and whoever posts
+    /// stocktakes may make it too.
+    /// </summary>
+    private void DemandStockCorrection()
+    {
+        if (!_permissions.Has(PermissionCode.StockCorrect))
+            _permissions.Demand(PermissionCode.StockTakePost);
     }
 
     private void RecordCount(Product product, Guid? batchId, decimal delta,
-        decimal balance) =>
+        decimal balance, string reason) =>
         _movements.Add(StockMovement.Record(
             productId: product.Id,
             batchId: batchId,
@@ -238,14 +269,40 @@ public sealed partial class ProductService
             quantity: delta,
             balanceAfter: balance,
             occurredAtUtc: _clock.UtcNow,
-            reasonCode: delta > 0m ? "COUNT-OVER" : "COUNT-SHORT",
+            reasonCode: CountReason(delta, reason),
             sourceDocumentType: "Product",
             sourceDocumentId: product.Id));
+
+    /// <summary>
+    /// What the movement reports print in their Reason column: over or
+    /// short, as a stocktake's count says it, then why.
+    /// </summary>
+    /// <remarks>
+    /// The column holds thirty; the whole reason is on the audit entry.
+    /// </remarks>
+    internal static string CountReason(decimal delta, string reason)
+    {
+        var why = (reason ?? "").Trim();
+        var code = delta > 0m ? "COUNT-OVER" : "COUNT-SHORT";
+
+        if (why.Length > 0) code += ": " + why;
+
+        return code.Length <= 30 ? code : code[..30];
+    }
+
+    private static string StockAudit(Product product, decimal before,
+        decimal after, string reason) =>
+        string.Format(CultureInfo.InvariantCulture,
+            "{0} on hand {1:0.###} to {2:0.###}. {3}", product.Code, before,
+            after, reason).Trim();
 
     private sealed class StockPlan
     {
         public List<BatchChange> Changes { get; } = new();
         public List<BatchOpening> Openings { get; } = new();
+
+        /// Why the stock changed, as the operator gave it.
+        public string Reason { get; set; } = "";
 
         /// Loose stock the new batches did not account for, as a
         /// negative count. Zero when no batch was added.
