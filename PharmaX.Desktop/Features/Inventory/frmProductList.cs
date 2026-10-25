@@ -57,6 +57,8 @@ public partial class frmProductList : PhxFormBase, IProductListView
 
         btnAdd.Click += (_, _) => AddRequested?.Invoke(this, EventArgs.Empty);
         btnEdit.Click += (_, _) => EditRequested?.Invoke(this, EventArgs.Empty);
+        btnDeactivate.Click += (_, _) =>
+            DeactivateRequested?.Invoke(this, EventArgs.Empty);
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnChoose.Click += (_, _) =>
@@ -83,6 +85,9 @@ public partial class frmProductList : PhxFormBase, IProductListView
             grid.CellValueChanged += (_, e) =>
                 OnCellValueChanged(grid, e.RowIndex, e.ColumnIndex);
         }
+
+        chkShowInactive.CheckedChanged += (_, _) =>
+            SearchChanged?.Invoke(this, EventArgs.Empty);
 
         chkBatches.CheckedChanged += (_, _) =>
         {
@@ -148,10 +153,21 @@ public partial class frmProductList : PhxFormBase, IProductListView
     /// </summary>
     private void ApplyPermissions()
     {
-        if (_permissions is null || IsPickerMode) return;
+        if (_permissions is null || IsPickerMode)
+        {
+            btnDeactivate.Visible = false;
+            return;
+        }
 
-        var maintains = Application.Security.PermissionServiceExtensions.Has(
-            _permissions, Domain.Security.PermissionCode.ProductMaintain);
+        bool Holds(string code) =>
+            Application.Security.PermissionServiceExtensions.Has(_permissions, code);
+
+        // Admin, pharmacist and assistant, and whoever already maintains
+        // the catalogue. A cashier looks products up and does not retire them.
+        btnDeactivate.Visible = Holds(Domain.Security.PermissionCode.ProductMaintain)
+            || Holds(Domain.Security.PermissionCode.ProductDispensary);
+
+        var maintains = Holds(Domain.Security.PermissionCode.ProductMaintain);
 
         if (!maintains)
         {
@@ -169,7 +185,8 @@ public partial class frmProductList : PhxFormBase, IProductListView
                 _permissions, code);
 
         var price = Has(Domain.Security.PermissionCode.PriceChange);
-        var stock = Has(Domain.Security.PermissionCode.StockTakePost);
+        var stock = Has(Domain.Security.PermissionCode.StockCorrect)
+                    || Has(Domain.Security.PermissionCode.StockTakePost);
 
         Enable(grdProducts);
         Enable(grdBatches);
@@ -177,9 +194,9 @@ public partial class frmProductList : PhxFormBase, IProductListView
         Lock(grdProducts, "RetailPrice", !price,
             "Changing the selling price needs the price permission.");
         Lock(grdProducts, "QuantityOnHand", !stock,
-            "Changing the quantity on hand needs the stocktake permission.");
+            "Changing the quantity on hand needs the stock permission.");
         Lock(grdBatches, "QuantityOnHand", !stock,
-            "Changing the quantity on hand needs the stocktake permission.");
+            "Changing the quantity on hand needs the stock permission.");
     }
 
     private static void Enable(DataGridView grid)
@@ -235,6 +252,7 @@ public partial class frmProductList : PhxFormBase, IProductListView
         // find something to sell.
         btnAdd.Visible = false;
         btnEdit.Visible = false;
+        btnDeactivate.Visible = false;
         btnExport.Visible = false;
 
         if (!string.IsNullOrWhiteSpace(term)) txtSearch.Text = term.Trim();
@@ -262,6 +280,8 @@ public partial class frmProductList : PhxFormBase, IProductListView
     }
 
     public string SearchText => txtSearch.Text.Trim();
+
+    public bool IncludeInactive => chkShowInactive.Checked;
 
     public bool BatchView => chkBatches.Checked;
 
@@ -425,6 +445,7 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public event EventHandler? SearchChanged;
     public event EventHandler? AddRequested;
     public event EventHandler? EditRequested;
+    public event EventHandler? DeactivateRequested;
     public event EventHandler? RefreshRequested;
     public event EventHandler? ChooseRequested;
     public event EventHandler? ViewModeChanged;
@@ -476,7 +497,7 @@ public partial class frmProductList : PhxFormBase, IProductListView
                 return;
             }
 
-            Raise(edit);
+            if (WithStockReason(grid, rowIndex, edit) is { } reasoned) Raise(reasoned);
             return;
         }
 
@@ -500,7 +521,28 @@ public partial class frmProductList : PhxFormBase, IProductListView
             return;
         }
 
-        Raise(change);
+        if (WithStockReason(grid, rowIndex, change) is { } counted) Raise(counted);
+    }
+
+    /// <summary>
+    /// A changed quantity is posted as a stock adjustment, and one with no
+    /// reason is refused: the reason is asked for here, and without one
+    /// the cell goes back to what it was.
+    /// </summary>
+    private ProductCellEditDto? WithStockReason(DataGridView grid, int rowIndex,
+        ProductCellEditDto edit)
+    {
+        if (edit.Column != ProductCell.QuantityOnHand) return edit;
+
+        var reason = frmTextPrompt.Ask(this, "Stock on hand",
+            "Why has the stock on hand changed? The change is posted as a stock "
+            + "adjustment with this reason.",
+            hint: "e.g. Counted on the shelf, two found broken");
+
+        if (!string.IsNullOrWhiteSpace(reason)) return edit with { Extra = reason };
+
+        Revert(grid, rowIndex);
+        return null;
     }
 
     /// <summary>

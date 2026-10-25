@@ -61,6 +61,13 @@ public interface IJournalPoster
                          CancellationToken ct = default);
 
     /// <summary>
+    /// Money taken out of a till's drawer: the owner's drawings, or an
+    /// expense paid in cash. For one voided, the same entry backwards.
+    /// </summary>
+    Task PostPayoutAsync(TillSession session, TillPayout payout,
+                         bool voided = false, CancellationToken ct = default);
+
+    /// <summary>
     /// A scheme's share of a dispensing, recognised the moment the
     /// medicine leaves.
     /// </summary>
@@ -261,6 +268,36 @@ public sealed class JournalPoster : IJournalPoster
             batch.AddLine(LedgerCode.CashShortOrOver, amount,
                           isDebit: false);
         }
+
+        await PostAsync(batch, ct);
+    }
+
+    public async Task PostPayoutAsync(TillSession session, TillPayout payout,
+        bool voided = false, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(payout);
+
+        if (!Enabled || payout.Amount.IsZero) return;
+
+        var narration = string.Format(CultureInfo.CurrentCulture,
+            "Till {0} paid out, {1}: {2}{3}", session.TillNumber,
+            payout.Kind.DisplayName(), payout.Note, voided ? " (voided)" : "");
+
+        var batch = await OpenAsync("PAYOUT",
+            narration.Length <= 500 ? narration : narration[..500], ct);
+
+        // Out of the drawer the cash-up counts, so the books' cash comes
+        // down with it: the owner's equity for drawings, an expense for
+        // the rest. Unposted, the cash account would sit above the drawer
+        // by every payout while the cash-up, expecting less, balanced.
+        var spent = payout.Kind == PayoutKind.Drawings
+            ? LedgerCode.Drawings
+            : LedgerCode.TillExpenses;
+        var drawer = _options.Accounting.CodeFor(Domain.Sales.TenderType.Cash);
+
+        batch.AddLine(spent, payout.Amount, isDebit: !voided);
+        batch.AddLine(drawer, payout.Amount, isDebit: voided);
 
         await PostAsync(batch, ct);
     }

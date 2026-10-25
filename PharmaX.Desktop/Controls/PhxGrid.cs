@@ -14,7 +14,12 @@ public sealed class PhxGrid : CellTabGrid
         AllowUserToDeleteRows = false;
         AllowUserToResizeRows = false;
         SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        MultiSelect = false;
+
+        // Ctrl+click and Shift+click pick several rows, and Ctrl+A all of
+        // them, as in any Windows list. A button that acts on one row
+        // still acts on the row with the focus; one that can act on many
+        // reads SelectedInOrder.
+        MultiSelect = true;
         RowHeadersVisible = false;
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         StandardTab = true;
@@ -53,6 +58,24 @@ public sealed class PhxGrid : CellTabGrid
 
         Columns.Add(column);
         return column;
+    }
+
+    /// <summary>
+    /// Every selected row, top to bottom as the list shows them - not in
+    /// the order they were clicked - or the focused row where nothing is
+    /// selected.
+    /// </summary>
+    public IReadOnlyList<DataGridViewRow> SelectedInOrder()
+    {
+        var rows = SelectedRows.Cast<DataGridViewRow>()
+            .Where(r => !r.IsNewRow)
+            .OrderBy(r => r.Index)
+            .ToList();
+
+        if (rows.Count == 0 && CurrentRow is { IsNewRow: false } current)
+            rows.Add(current);
+
+        return rows;
     }
 
     /// <summary>

@@ -146,7 +146,17 @@ public sealed class ReferenceDataSeeder
 
     /// The first administrator's sign-in, as installed.
     public const string AdministratorUsername = "admin";
+
+#if PHARMAX_TEST_BUILD
+    // A test build only (installer\build.ps1 -TestBuild): a password as
+    // easy to type at every PC being tried out, and no change forced at
+    // the first sign-in. The pharmacy's own installer is built without it.
+    private const string AdministratorPassword = "changeme#1";
+    private const bool AdministratorMustChangePassword = false;
+#else
     private const string AdministratorPassword = "ChangeMe#1";
+    private const bool AdministratorMustChangePassword = true;
+#endif
 
     private async Task SeedAdministratorAsync(CancellationToken ct)
     {
@@ -161,7 +171,7 @@ public sealed class ReferenceDataSeeder
             username: AdministratorUsername,
             displayName: "Initial Administrator",
             credential: _hasher.Hash(AdministratorPassword),
-            mustChangePassword: true);      // enforced at first login
+            mustChangePassword: AdministratorMustChangePassword); // enforced at first login
 
         admin.AssignRole(Role.Standard.Administrator);
         admin.SetDiscountLimit(100m);
@@ -190,7 +200,9 @@ public sealed class ReferenceDataSeeder
         {
             admin.ChangeCredential(_hasher.Hash(AdministratorPassword),
                                    DateTime.UtcNow);
+#if !PHARMAX_TEST_BUILD
             admin.RequirePasswordChange();
+#endif
             admin.Unlock();
             admin.Reactivate();
             admin.AssignRole(Role.Standard.Administrator);

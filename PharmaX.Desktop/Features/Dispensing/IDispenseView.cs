@@ -10,6 +10,19 @@ public interface IDispenseView : Mvp.IView
     void ShowWarnings(IReadOnlyList<ClinicalWarningDto> warnings);
     void ShowCoPayment(decimal tariff, decimal contribution, decimal coPayment);
 
+    /// <summary>
+    /// Says what to do next and offers only the buttons that can be used
+    /// now: nothing to issue before a script, nothing to change before an
+    /// item.
+    /// </summary>
+    void ShowStage(DispenseStage stage);
+
+    /// Whether issuing prints the item labels. Off still issues the script.
+    bool PrintLabels { get; set; }
+
+    /// Whether a trailer label follows the item labels at the issue.
+    bool PrintTrailer { get; set; }
+
     /// The item the pharmacist has selected in the grid, if any.
     int? SelectedLineNo { get; }
 
@@ -37,6 +50,10 @@ public interface IDispenseView : Mvp.IView
     /// Returns the pharmacist who authenticated, or null if cancelled.
     Guid? PromptPharmacistAuthorisation(string reasonShown);
 
+    /// Returns whoever authorised changing the charge - someone holding
+    /// dsp.charge.adjust - or null if cancelled.
+    Guid? PromptChargeAuthorisation(string reasonShown);
+
     /// Returns the reason given, or null if the pharmacist declined to
     /// override a hard-stop warning.
     string? PromptWarningOverride(ClinicalWarningDto warning);
@@ -60,7 +77,26 @@ public interface IDispenseView : Mvp.IView
     event EventHandler? CloseRequested;
     event EventHandler? SuspendedRequested;
 
+    /// The operator ticked or cleared "Print labels".
+    event EventHandler? PrintLabelsChanged;
+
+    /// The operator ticked or cleared "Print trailer label".
+    event EventHandler? PrintTrailerChanged;
+
     /// One of the scripts kept to finish later; null to cancel.
     (Guid PatientId, Guid ScriptId)? PromptSuspended(
         IReadOnlyList<SuspendedDispensingDto> kept);
+}
+
+/// <summary>Where a dispensing has got to, for what the screen offers.</summary>
+public enum DispenseStage
+{
+    /// Nothing loaded: find the patient and the script.
+    NoScript,
+
+    /// A script with nothing on it yet: scan or type the first item.
+    NoItems,
+
+    /// Items on: check them and issue.
+    Ready
 }

@@ -20,6 +20,54 @@ public class SaleServiceTests
     }
 
     [Fact]
+    public async Task An_assistant_who_can_sell_cannot_take_payment()
+    {
+        var sut = new SaleServiceBuilder()
+            .WithPermissions(granted: new[] { PermissionCode.SaleCreate })
+            .Build();
+
+        var act = () => sut.FinaliseAsync(Guid.NewGuid(),
+            Array.Empty<PaymentDto>());
+
+        await act.Should().ThrowAsync<PermissionDeniedException>();
+    }
+
+    /// <remarks>
+    /// The assistant makes the basket up at the dispensary computer and
+    /// holds it; it is in no till session, even with one open there. It
+    /// becomes the till's when the cashier recalls it there and takes the
+    /// money, so the cash goes in that till's drawer.
+    /// </remarks>
+    [Fact]
+    public async Task An_assistants_basket_is_in_no_session_until_the_cashier_recalls_it()
+    {
+        var builder = new SaleServiceBuilder()
+            .WithPermissions(granted: new[] { PermissionCode.SaleCreate });
+        var assistant = builder.Build();
+
+        var basket = (await assistant.OpenAsync()).Value;
+        await assistant.AddLineAsync(basket.Id, "PAR0500", 1m);
+        (await assistant.HoldAsync(basket.Id)).IsSuccess.Should().BeTrue();
+
+        (await builder.Sales.GetAsync(basket.Id))!.TillSessionId
+            .Should().Be(Guid.Empty, "it is in neither till session");
+
+        var till = new FakeCurrentUser { Username = "cashier" };
+        var cashier = builder.WithPermissions().WithUser(till).Build();
+
+        var recalled = await cashier.RecallAsync(basket.Id);
+        recalled.IsSuccess.Should().BeTrue();
+
+        var paid = await cashier.FinaliseAsync(basket.Id,
+            new[] { new PaymentDto("Cash", 24m, null) });
+        paid.IsSuccess.Should().BeTrue();
+
+        var sale = (await builder.Sales.GetAsync(basket.Id))!;
+        sale.TillSessionId.Should().Be(till.TillSessionId!.Value);
+        sale.OperatorId.Should().Be(till.Id);
+    }
+
+    [Fact]
     public async Task Cannot_open_a_sale_without_the_permission()
     {
         var sut = new SaleServiceBuilder()

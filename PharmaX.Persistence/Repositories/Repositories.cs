@@ -44,6 +44,7 @@ public sealed class SaleRepository : ISaleRepository
     public async Task<IReadOnlyList<Sale>> ForSessionAsync(
         Guid tillSessionId, CancellationToken ct = default) =>
         await _db.Sales
+            .Include(s => s.Lines)
             .Include(s => s.Payments)
             .Where(s => s.TillSessionId == tillSessionId)
             .OrderBy(s => s.OccurredAtUtc)
@@ -64,6 +65,17 @@ public sealed class SaleRepository : ISaleRepository
             .Include(s => s.Lines)
             .Include(s => s.Payments)
             .FirstOrDefaultAsync(s => s.DocumentNumber == documentNumber, ct);
+
+    public async Task<IReadOnlyList<Sale>> FinalisedBetweenAsync(DateTime fromUtc,
+        DateTime toUtc, CancellationToken ct = default) =>
+        await _db.Sales
+            .AsNoTracking()
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .Where(s => s.Status == SaleStatus.Finalised
+                        && s.OccurredAtUtc >= fromUtc && s.OccurredAtUtc < toUtc)
+            .OrderByDescending(s => s.OccurredAtUtc)
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Sale>> HeldAsync(
         CancellationToken ct = default)
@@ -133,6 +145,7 @@ public sealed class ProductRepository : IProductRepository
     /// </remarks>
     public async Task<IReadOnlyList<Product>> SearchAsync(string term,
         int take = 200, ProductScope scope = ProductScope.All, int skip = 0,
+        bool includeInactive = true,
         CancellationToken ct = default)
     {
         var words = SearchTerms.Words(term);
@@ -140,6 +153,7 @@ public sealed class ProductRepository : IProductRepository
         var start = words.Count > 0 ? $"{words[0]}%" : null;
 
         return await Matching(term, scope)
+            .Where(p => includeInactive || p.IsActive)
             .OrderBy(p => code != null && p.Code == code ? 0 : 1)
             .ThenBy(p => start != null
                          && EF.Functions.Like(p.Description, start) ? 0 : 1)
@@ -155,8 +169,11 @@ public sealed class ProductRepository : IProductRepository
 
     public async Task<int> CountAsync(string term,
         ProductScope scope = ProductScope.All,
+        bool includeInactive = true,
         CancellationToken ct = default) =>
-        await Matching(term, scope).CountAsync(ct);
+        await Matching(term, scope)
+            .Where(p => includeInactive || p.IsActive)
+            .CountAsync(ct);
 
     /// <summary>
     /// Narrows a product query to what this caller may see.
@@ -185,6 +202,16 @@ public sealed class ProductRepository : IProductRepository
             .Where(p => p.IsActive)
             .Where(p => p.ReorderLevel > 0m)
             .Where(p => p.QuantityOnHand <= p.ReorderLevel)
+            .OrderBy(p => p.Description)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Product>> NothingOnHandAsync(
+        CancellationToken ct = default) =>
+        await _db.Products
+            .AsNoTracking()
+            .Where(p => p.IsActive)
+            .Where(p => p.ReorderLevel <= 0m)
+            .Where(p => p.QuantityOnHand <= 0m)
             .OrderBy(p => p.Description)
             .ToListAsync(ct);
 
@@ -292,9 +319,10 @@ public sealed class PatientRepository : IPatientRepository
     /// lives there.
     /// </remarks>
     public async Task<IReadOnlyList<Patient>> SearchAsync(string term,
-        int take = 100, int skip = 0, CancellationToken ct = default)
+        int take = 100, int skip = 0, bool includeInactive = false,
+        CancellationToken ct = default)
     {
-        var (query, number) = Matching(term);
+        var (query, number) = Matching(term, includeInactive);
 
         // The counter types the surname first and the first name after
         // it, so a patient whose surname starts with the first word - and
@@ -319,15 +347,17 @@ public sealed class PatientRepository : IPatientRepository
             .ToListAsync(ct);
     }
 
-    public async Task<int> CountAsync(string term,
+    public async Task<int> CountAsync(string term, bool includeInactive = false,
         CancellationToken ct = default) =>
-        await Matching(term).Query.CountAsync(ct);
+        await Matching(term, includeInactive).Query.CountAsync(ct);
 
     /// The active patients the search matches, and the telephone or ID
     /// number it was read as, where it was read as one.
-    private (IQueryable<Patient> Query, string? Number) Matching(string term)
+    private (IQueryable<Patient> Query, string? Number) Matching(string term,
+        bool includeInactive = false)
     {
-        var query = _db.Patients.AsNoTracking().Where(p => p.IsActive);
+        var query = _db.Patients.AsNoTracking()
+            .Where(p => includeInactive || p.IsActive);
 
         // A number is typed with spaces as often as without, so one made
         // of nothing but digits is read whole first: "0771 234 567" is
@@ -561,6 +591,41 @@ public sealed class TillSessionRepository : ITillSessionRepository
             .Where(d => d.TillSessionId == tillSessionId)
             .OrderByDescending(d => d.DeclaredAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    /// <remarks>
+    /// Read afresh, not tracked: the money-out window saves through a
+    /// scope of its own, and the till window that opened it must see a
+    /// void made there, not the copy it read first.
+    /// </remarks>
+    public async Task<IReadOnlyList<TillPayout>> PayoutsAsync(
+        Guid tillSessionId, CancellationToken ct = default) =>
+        await _db.TillPayouts
+            .AsNoTracking()
+            .Where(p => p.TillSessionId == tillSessionId)
+            .OrderBy(p => p.PaidAtUtc)
+            .ToListAsync(ct);
+
+    public async Task<TillPayout?> GetPayoutAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.TillPayouts.FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    public async Task AddPayoutAsync(TillPayout payout,
+        CancellationToken ct = default) =>
+        await _db.TillPayouts.AddAsync(payout, ct);
+
+    /// <remarks>
+    /// Any session still open counts, however long ago it was opened: a
+    /// till left open overnight is still owed a cash-up.
+    /// </remarks>
+    public async Task<IReadOnlyList<TillSession>> ActiveBetweenAsync(
+        DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) =>
+        await _db.TillSessions
+            .AsNoTracking()
+            .Where(s => s.OpenedAtUtc < toUtc
+                        && (s.Status != TillSessionStatus.Closed
+                            || s.ClosedAtUtc >= fromUtc))
+            .OrderBy(s => s.OpenedAtUtc)
+            .ToListAsync(ct);
 }
 
 public sealed class DispensingRepository : IDispensingRepository
@@ -592,6 +657,17 @@ public sealed class DispensingRepository : IDispensingRepository
             .OrderByDescending(d => d.IssuedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Domain.Dispensing.Dispensing>>
+        IssuedBetweenAsync(DateTime fromUtc, DateTime toUtc,
+            CancellationToken ct = default) =>
+        await _db.Dispensings
+            .Include(d => d.Lines).ThenInclude(l => l.Batches)
+            .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Issued
+                        && d.IssuedAtUtc >= fromUtc
+                        && d.IssuedAtUtc < toUtc)
+            .OrderByDescending(d => d.IssuedAtUtc)
+            .ToListAsync(ct);
+
     /// <inheritdoc />
     /// <remarks>
     /// Filtered in the database rather than in memory: this runs on
@@ -607,7 +683,7 @@ public sealed class DispensingRepository : IDispensingRepository
         var issued = await _db.Dispensings
             .Include(d => d.Lines).ThenInclude(l => l.Batches)
             .Where(d => d.Status == Domain.Dispensing.DispensingStatus.Issued)
-            .Where(d => d.SaleId == null)
+            .Where(d => d.SaleId == null && d.CollectedAtUtc == null)
             .OrderBy(d => d.IssuedAtUtc)
             .ToListAsync(ct);
 
@@ -674,7 +750,8 @@ public sealed class PermissionRepository : IPermissionRepository
         Domain.Security.PermissionCode.SaleDiscountAboveLimit,
         Domain.Security.PermissionCode.ReturnAuthorise,
         Domain.Security.PermissionCode.SessionCloseOtherUser,
-        Domain.Security.PermissionCode.PriceChange
+        Domain.Security.PermissionCode.PriceChange,
+        Domain.Security.PermissionCode.DispensingChargeAdjust
     };
 
     public PermissionRepository(PharmaXDbContext db) => _db = db;
@@ -937,6 +1014,7 @@ public sealed class ReturnRepository : IReturnRepository
         Guid tillSessionId, CancellationToken ct = default) =>
         await _db.SaleReturns
             .AsNoTracking()
+            .Include(r => r.Lines)
             .Include(r => r.Refunds)
             .Where(r => r.TillSessionId == tillSessionId)
             .OrderBy(r => r.OccurredAtUtc)

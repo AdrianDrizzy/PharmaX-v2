@@ -2964,6 +2964,78 @@ namespace PharmaX.Persistence.Migrations
                     b.ToTable("TillDeclaration", (string)null);
                 });
 
+            modelBuilder.Entity("PharmaX.Domain.Tills.TillPayout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("PaidAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PaidBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<Guid>("TillSessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("VoidedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("VoidedBy")
+                        .HasColumnType("TEXT");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Amount", "PharmaX.Domain.Tills.TillPayout.Amount#Money", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Currency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TillSessionId", "PaidAtUtc");
+
+                    b.ToTable("TillPayout", (string)null);
+                });
+
             modelBuilder.Entity("PharmaX.Domain.Tills.TillSession", b =>
                 {
                     b.Property<Guid>("Id")

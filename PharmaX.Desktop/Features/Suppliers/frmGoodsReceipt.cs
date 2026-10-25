@@ -148,6 +148,7 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
         AddCaptureRow();
 
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        txtSupplier.Focus();
     }
 
     public GoodsReceiptEditDto Collect() => new(

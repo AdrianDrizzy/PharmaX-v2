@@ -11,6 +11,9 @@ public partial class frmLogin : PhxFormBase, ILoginView
     private readonly Branding? _branding;
     private readonly PharmacyProfile? _pharmacy;
 
+    /// Nobody has signed in yet, so Ask PharmaX is not on offer.
+    protected override bool OffersAssistant => false;
+
     /// Designer only. Never called at runtime.
     public frmLogin()
     {

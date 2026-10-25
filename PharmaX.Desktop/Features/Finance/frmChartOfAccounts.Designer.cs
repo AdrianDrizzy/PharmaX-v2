@@ -73,7 +73,7 @@ partial class frmChartOfAccounts
         foreach (var (button, text) in new[]
         {
             (btnAdd, "&Add"), (btnRename, "Re&name"),
-            (btnDeactivate, "Take Out of &Use")
+            (btnDeactivate, "Deac&tivate")
         })
         {
             button.Location = new Point(x, 8);

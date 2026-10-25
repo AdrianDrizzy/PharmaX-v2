@@ -26,4 +26,10 @@ public sealed class ReportBranding : IReportBranding
     public string? LogoPath => _branding.LogoPath;
 
     public string TradingName => _pharmacy.TradingName;
+
+    public string Address => _pharmacy.Address;
+
+    public string VatNumber => _pharmacy.VatNumber;
+
+    public string Telephone => _pharmacy.Telephone;
 }

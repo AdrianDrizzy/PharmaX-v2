@@ -11,6 +11,7 @@ partial class frmReferenceList
     private Label lblSearch = null!;
     private Label lblCount = null!;
     private TextBox txtSearch = null!;
+    private CheckBox chkInactive = null!;
     private PhxGrid grdItems = null!;
     private Button btnAdd = null!;
     private Button btnEdit = null!;
@@ -37,6 +38,7 @@ partial class frmReferenceList
         lblSearch = new Label();
         lblCount = new Label();
         txtSearch = new TextBox();
+        chkInactive = new CheckBox();
         grdItems = new PhxGrid();
         btnAdd = new Button();
         btnAdd.Name = "btnAdd";
@@ -57,8 +59,14 @@ partial class frmReferenceList
         txtSearch.Location = new Point(70, 13);
         txtSearch.Name = "txtSearch";
         txtSearch.PlaceholderText = "Code, name or details";
-        txtSearch.Size = new Size(360, 23);
+        txtSearch.Size = new Size(280, 23);
         txtSearch.TabIndex = 0;
+
+        chkInactive.AutoSize = true;
+        chkInactive.Location = new Point(360, 15);
+        chkInactive.Name = "chkInactive";
+        chkInactive.Text = "Show inactive";
+        chkInactive.TabIndex = 1;
 
         lblCount.AutoSize = false;
         lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -67,7 +75,7 @@ partial class frmReferenceList
         lblCount.TextAlign = ContentAlignment.MiddleRight;
 
         pnlTop.Controls.AddRange(new Control[]
-            { lblCount, txtSearch, lblSearch });
+            { lblCount, chkInactive, txtSearch, lblSearch });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 50;
         pnlTop.Name = "pnlTop";
@@ -96,7 +104,7 @@ partial class frmReferenceList
         btnToggle.Location = new Point(204, 8);
         btnToggle.Size = new Size(110, 30);
         btnToggle.TabIndex = 3;
-        btnToggle.Text = "&Retire";
+        btnToggle.Text = "Deac&tivate";
         btnToggle.UseVisualStyleBackColor = true;
 
         btnRefresh.Location = new Point(320, 8);

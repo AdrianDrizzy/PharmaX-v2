@@ -10,6 +10,8 @@ partial class frmLabels
     private Label lblPatient = null!;
     private TextBox txtPatient = null!;
     private Button btnChoosePatient = null!;
+    private Button btnToday = null!;
+    private Button btnStickers = null!;
     private PhxGrid grdDispensings = null!;
     private Button btnPreview = null!;
     private Button btnReprint = null!;
@@ -18,6 +20,13 @@ partial class frmLabels
     private Button btnChangeItem = null!;
     private Button btnUseAgain = null!;
     private Button btnClose = null!;
+    private TabControl tabLabels = null!;
+    private TabPage pageDispensed = null!;
+    private TabPage pagePrepacks = null!;
+    private PhxGrid grdPrepacks = null!;
+    private TabPage pageTemplates = null!;
+    private PhxGrid grdTemplates = null!;
+    private Button btnDeactivate = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -33,6 +42,8 @@ partial class frmLabels
         lblPatient = new Label();
         txtPatient = new TextBox();
         btnChoosePatient = new Button();
+        btnToday = new Button();
+        btnStickers = new Button();
         grdDispensings = new PhxGrid();
         btnPreview = new Button();
         btnPreview.Name = "btnPreview";
@@ -48,6 +59,14 @@ partial class frmLabels
         btnUseAgain.Name = "btnUseAgain";
         btnClose = new Button();
         btnClose.Name = "btnClose";
+        tabLabels = new TabControl();
+        pageDispensed = new TabPage();
+        pagePrepacks = new TabPage();
+        grdPrepacks = new PhxGrid();
+        pageTemplates = new TabPage();
+        grdTemplates = new PhxGrid();
+        btnDeactivate = new Button();
+        btnDeactivate.Name = "btnDeactivate";
         SuspendLayout();
 
         lblPatient.AutoSize = true;
@@ -56,19 +75,35 @@ partial class frmLabels
 
         txtPatient.Location = new Point(70, 13);
         txtPatient.Name = "txtPatient";
-        txtPatient.PlaceholderText = "Choose a patient to see what was dispensed";
+        txtPatient.PlaceholderText = "Today's labels are listed. Find a patient for older ones";
         txtPatient.ReadOnly = true;
-        txtPatient.Size = new Size(420, 23);
+        txtPatient.Size = new Size(330, 23);
+        txtPatient.TabStop = false;
 
-        btnChoosePatient.Location = new Point(500, 12);
+        btnChoosePatient.Location = new Point(408, 12);
         btnChoosePatient.Name = "btnChoosePatient";
-        btnChoosePatient.Size = new Size(90, 26);
+        btnChoosePatient.Size = new Size(110, 26);
         btnChoosePatient.TabIndex = 0;
-        btnChoosePatient.Text = "F&ind...";
+        btnChoosePatient.Text = "F&ind patient";
         btnChoosePatient.UseVisualStyleBackColor = true;
 
+        btnToday.Location = new Point(524, 12);
+        btnToday.Name = "btnToday";
+        btnToday.Size = new Size(80, 26);
+        btnToday.TabIndex = 8;
+        btnToday.Text = "&Today";
+        btnToday.UseVisualStyleBackColor = true;
+
+        // Stickers for a run of pre-packs, typed in: no patient needed.
+        btnStickers.Location = new Point(610, 12);
+        btnStickers.Name = "btnStickers";
+        btnStickers.Size = new Size(150, 26);
+        btnStickers.TabIndex = 9;
+        btnStickers.Text = "Pre-pack stic&kers...";
+        btnStickers.UseVisualStyleBackColor = true;
+
         pnlTop.Controls.AddRange(new Control[]
-            { btnChoosePatient, txtPatient, lblPatient });
+            { btnStickers, btnToday, btnChoosePatient, txtPatient, lblPatient });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 50;
         pnlTop.Name = "pnlTop";
@@ -77,7 +112,63 @@ partial class frmLabels
         grdDispensings.Dock = DockStyle.Fill;
         grdDispensings.Name = "grdDispensings";
 
+        pageDispensed.Name = "pageDispensed";
+        pageDispensed.Text = "Dispensed";
+        pageDispensed.Padding = new Padding(0);
+        pageDispensed.Controls.Add(grdDispensings);
+
+        grdPrepacks.AutoGenerateColumns = false;
+        grdPrepacks.Dock = DockStyle.Fill;
+        grdPrepacks.Name = "grdPrepacks";
+        grdPrepacks.AddColumn("PrintedAt", "Printed", 120, "dd/MM/yyyy HH:mm");
+        grdPrepacks.AddColumn("Medicine", "Medicine", 160);
+        grdPrepacks.AddColumn("Quantity", "In pack", 70, "0.###", rightAlign: true);
+        grdPrepacks.AddColumn("Directions", "Directions", 220);
+        grdPrepacks.AddColumn("BatchNumber", "Batch", 80);
+        grdPrepacks.AddColumn("Expiry", "Expiry", 90, "dd/MM/yyyy");
+        grdPrepacks.AddColumn("Price", "Price", 60, "N2", rightAlign: true);
+        grdPrepacks.AddColumn("Copies", "Labels", 55, rightAlign: true);
+        foreach (DataGridViewColumn column in grdPrepacks.Columns)
+            column.DataPropertyName = column.Name;
+
+        grdPrepacks.AddColumn("Active", "Active", 55);
+        grdPrepacks.Columns["Active"]!.DataPropertyName = "Active";
+
+        grdPrepacks.Columns["Directions"]!.DefaultCellStyle.WrapMode =
+            DataGridViewTriState.True;
+        grdPrepacks.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
+
+        pagePrepacks.Name = "pagePrepacks";
+        pagePrepacks.Text = "Pre-packs";
+        pagePrepacks.Controls.Add(grdPrepacks);
+
+        grdTemplates.AutoGenerateColumns = false;
+        grdTemplates.Dock = DockStyle.Fill;
+        grdTemplates.Name = "grdTemplates";
+        grdTemplates.AddColumn("PrintedAt", "Printed", 120, "dd/MM/yyyy HH:mm");
+        grdTemplates.AddColumn("Medicine", "Medicine", 160);
+        grdTemplates.AddColumn("Quantity", "In pack", 70, "0.###", rightAlign: true);
+        grdTemplates.AddColumn("Directions", "Directions", 220);
+        grdTemplates.AddColumn("BatchNumber", "Batch", 80);
+        grdTemplates.AddColumn("Expiry", "Expiry", 90, "dd/MM/yyyy");
+        grdTemplates.AddColumn("Price", "Price", 60, "N2", rightAlign: true);
+        grdTemplates.AddColumn("Copies", "Labels", 55, rightAlign: true);
+        grdTemplates.AddColumn("Active", "Active", 55);
+        foreach (DataGridViewColumn column in grdTemplates.Columns)
+            column.DataPropertyName = column.Name;
+
+        pageTemplates.Name = "pageTemplates";
+        pageTemplates.Text = "Template Label";
+        pageTemplates.Controls.Add(grdTemplates);
+
+        tabLabels.Dock = DockStyle.Fill;
+        tabLabels.Name = "tabLabels";
+        tabLabels.TabPages.Add(pageDispensed);
+        tabLabels.TabPages.Add(pagePrepacks);
+        tabLabels.TabPages.Add(pageTemplates);
+
         Bind(grdDispensings, "DispensedOn", "Dispensed", 90, "dd/MM/yyyy");
+        Bind(grdDispensings, "PatientName", "Patient", 150);
         Bind(grdDispensings, "ScriptNumber", "Script", 100);
 
         // What was handed over, one medicine a line: the dispensing to
@@ -137,6 +228,13 @@ partial class frmLabels
         btnUseAgain.Text = "&Use again...";
         btnUseAgain.UseVisualStyleBackColor = true;
 
+        btnDeactivate.Location = new Point(768, 8);
+        btnDeactivate.Size = new Size(96, 30);
+        btnDeactivate.TabIndex = 8;
+        btnDeactivate.Text = "Deac&tivate";
+        btnDeactivate.UseVisualStyleBackColor = true;
+        btnDeactivate.Visible = false;
+
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(870, 8);
         btnClose.Size = new Size(90, 30);
@@ -146,8 +244,8 @@ partial class frmLabels
 
         pnlBottom.Controls.AddRange(new Control[]
         {
-            btnClose, btnUseAgain, btnChangeItem, btnClaimForm, btnReverse,
-            btnReprint, btnPreview
+            btnClose, btnDeactivate, btnUseAgain, btnChangeItem, btnClaimForm,
+            btnReverse, btnReprint, btnPreview
         });
         pnlBottom.Dock = DockStyle.Bottom;
         pnlBottom.Height = 48;
@@ -156,7 +254,7 @@ partial class frmLabels
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(980, 480);
-        Controls.Add(grdDispensings);
+        Controls.Add(tabLabels);
         Controls.Add(pnlTop);
         Controls.Add(pnlBottom);
         Name = "frmLabels";

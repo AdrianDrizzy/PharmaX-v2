@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using PharmaX.Adapters;
 using PharmaX.Application;
 using PharmaX.Application.Abstractions;
+using PharmaX.Assistant;
 using PharmaX.Desktop.Features.Login;
 using PharmaX.Desktop.Mvp;
 using PharmaX.Desktop.Setup;
@@ -23,6 +24,15 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // A second PharmaX, started by the reports screen to run the
+        // assistant's model and nothing else: no window, no database, no
+        // log. First, so none of that is even begun. See AssistantHost.
+        if (AssistantHost.IsRequested(args))
+        {
+            Environment.ExitCode = AssistantHost.Run();
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
 
         // First, before any window: Windows Forms refuses to change this
@@ -45,6 +55,7 @@ internal static class Program
         // wizard - the nightly backup runs where no window can be seen - so
         // on a machine not yet set up it stops rather than waiting forever.
         if (args is ["--backup", ..] or ["--import", ..] or ["--reset-admin"]
+                or ["--clear-waiting"]
             && !WorkstationProvisioning.Exists)
         {
             Environment.ExitCode = 2;
@@ -78,7 +89,22 @@ internal static class Program
             return;
         }
 
-        if (!PrepareLocalDatabase(host)) return;
+        if (!PrepareLocalDatabase(host))
+        {
+            // The installer is waiting on this. A zero would look like
+            // the old queue had been cleared.
+            if (args is ["--clear-waiting"]) Environment.ExitCode = 1;
+            return;
+        }
+
+        // installer\PharmaX.iss runs this on an upgrade, then stops.
+        // PrepareLocalDatabase has already taken the old queue off.
+        if (args is ["--clear-waiting"])
+        {
+            host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            Log.CloseAndFlush();
+            return;
+        }
 
         // The change-over, from the installer or a technician:
         //   PharmaX.Desktop.exe --import "D:\Exports" [more files or folders] [--dry-run]
@@ -229,6 +255,7 @@ internal static class Program
         builder.Services.AddPharmaXPersistence(options);
         builder.Services.AddPharmaXAdapters();
         builder.Services.AddPharmaXReporting();
+        builder.Services.AddPharmaXAssistant();
         builder.Services.AddPharmaXSync(options);
         builder.Services.AddPharmaXApplication();
         builder.Services.AddPharmaXDesktop();
@@ -480,6 +507,18 @@ internal static class Program
         services.GetRequiredService<CurrencyNormaliser>()
                 .NormaliseAsync(Money.DefaultCurrency)
                 .GetAwaiter().GetResult();
+
+        // Scripts the previous system left on Scripts to Collect. Once,
+        // including when the installer starts this with --clear-waiting.
+        var cleared = PharmaX.Persistence.Import.ImportedWaitingScripts
+            .ClearOnceAsync(db, services.GetRequiredService<IPharmacySettings>())
+            .GetAwaiter().GetResult();
+
+        if (cleared > 0)
+            Log.Information(
+                "Took {Count} script(s) left waiting by the previous system "
+                + "off the collect queue. The dispensings stay on file.",
+                cleared);
 
         return true;
     }

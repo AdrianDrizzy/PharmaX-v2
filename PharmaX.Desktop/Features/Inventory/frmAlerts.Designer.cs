@@ -15,6 +15,7 @@ partial class frmAlerts
     private PhxGrid grdAlerts = null!;
     private Button btnProduct = null!;
     private Button btnRefresh = null!;
+    private Button btnDelete = null!;
     private Button btnClose = null!;
 
     protected override void Dispose(bool disposing)
@@ -41,6 +42,8 @@ partial class frmAlerts
         btnProduct.Name = "btnProduct";
         btnRefresh = new Button();
         btnRefresh.Name = "btnRefresh";
+        btnDelete = new Button();
+        btnDelete.Name = "btnDelete";
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -83,7 +86,8 @@ partial class frmAlerts
 
         grdAlerts.AutoGenerateColumns = false;
         grdAlerts.Dock = DockStyle.Fill;
-        grdAlerts.MultiSelect = false;
+        // Several at once, so a run of expired lines is deleted together.
+        grdAlerts.MultiSelect = true;
         grdAlerts.Name = "grdAlerts";
         grdAlerts.RowTemplate.Height = 28;
 
@@ -106,6 +110,14 @@ partial class frmAlerts
         btnRefresh.Text = "&Refresh";
         btnRefresh.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnRefresh);
+
+        // Offered only to those who may clear dead stock (AllowDelete).
+        btnDelete.Location = new Point(288, 8);
+        btnDelete.Size = new Size(110, 34);
+        btnDelete.Text = "&Delete";
+        btnDelete.UseVisualStyleBackColor = true;
+        btnDelete.Visible = false;
+        pnlBottom.Controls.Add(btnDelete);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(760, 8);

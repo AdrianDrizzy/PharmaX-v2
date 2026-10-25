@@ -48,8 +48,12 @@ public sealed class TariffListPresenter : PresenterBase<ITariffListView>
             return;
         }
 
-        View.ShowTariffs(result.Value);
-        View.ShowCount(result.Value.Count);
+        var rows = View.IncludeInactive
+            ? result.Value
+            : result.Value.Where(t => t.IsActive).ToList();
+
+        View.ShowTariffs(rows);
+        View.ShowCount(rows.Count);
     });
 
     private Task OpenEditorAsync(Guid? id) => GuardAsync(async () =>
@@ -68,8 +72,8 @@ public sealed class TariffListPresenter : PresenterBase<ITariffListView>
         var active = View.SelectedIsActive;
 
         var question = active
-            ? "Retire this tariff? It stays on past claims but will not "
-              + "price anything from now on."
+            ? "Deactivate this tariff? It stays on past claims, and leaves "
+              + "this list."
             : "Bring this tariff back into use?";
 
         if (!View.Confirm(question)) return;

@@ -96,10 +96,24 @@ public static class DependencyInjection
         // Tills
         s.AddTransient<frmTillSession>();
         s.AddTransient<TillSessionPresenter>();
+        s.AddTransient<frmCashUp>();
+        s.AddTransient<CashUpPresenter>();
+        s.AddTransient<frmEndOfDay>();
+        s.AddTransient<EndOfDayPresenter>();
+        s.AddTransient<frmPayouts>();
+        s.AddTransient<PayoutsPresenter>();
 
         // Reports
         s.AddTransient<frmReports>();
         s.AddTransient<ReportsPresenter>();
+
+        // The day's receipts (everyone) and what a receipt prints (admin)
+        s.AddTransient<frmReceipts>();
+        s.AddTransient<frmReceiptTemplate>();
+
+        // Ask PharmaX, open from every screen (PhxFormBase.AssistantKey)
+        s.AddTransient<Features.Assistant.frmAssistant>();
+        s.AddTransient<Features.Assistant.AssistantPresenter>();
 
         // Patients
         s.AddTransient<frmPatientList>();

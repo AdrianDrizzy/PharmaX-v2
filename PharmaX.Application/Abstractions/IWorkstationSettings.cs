@@ -33,6 +33,16 @@ public static class WorkstationSettingKey
     /// form - which a receipt roll cannot print.
     public const string DocumentPrinter = "printer.document";
 
+    /// "off" where this computer prints no labels when a script is
+    /// issued; anything else, or nothing, prints them. Reprint still
+    /// prints (DispensePresenter).
+    public const string PrintLabels = "label.print";
+
+    /// "off" where this computer prints no trailer label after a
+    /// script's own labels; anything else, or nothing, prints one
+    /// (TrailerLabels.WantedAsync).
+    public const string TrailerLabel = "label.trailer";
+
     /// <summary>
     /// The trading currency, as an ISO 4217 code.
     /// </summary>
@@ -97,4 +107,11 @@ public static class PharmacySettingKey
 
     /// The step every worked-out price is rounded up to, e.g. 0.05.
     public const string Rounding = "pricing.rounding";
+
+    /// Pre-pack stickers already printed, newest first, so any till can
+    /// print an old one again.
+    public const string PrepackLabels = "labels.prepacks";
+
+    /// Template labels an administrator has printed, newest first.
+    public const string TemplateLabels = "labels.templates";
 }

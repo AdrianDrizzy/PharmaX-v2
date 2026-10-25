@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Import;
 using PharmaX.Domain.Dispensing;
 using PharmaX.Domain.Inventory;
@@ -148,6 +149,40 @@ public sealed class DataImporterTests : IDisposable
         report.Text.Should().NotContain("RSI");
     }
 
+    /// <remarks>
+    /// The files carry no pharmacy's own address, so the import records
+    /// the one it was run with - the installer build's - for every till to
+    /// print on its receipts and labels. One already set is the pharmacy's
+    /// and is kept.
+    /// </remarks>
+    [Fact]
+    public async Task The_pharmacy_it_was_run_for_goes_into_the_database()
+    {
+        using var fixture = PharmaXFixture.ForPharmacy(new PharmacyOptions
+        {
+            TradingName = "Bethrapha Pharmacy",
+            Address = "28 Woodstock Road\nThorngrove\nBulawayo"
+        });
+
+        using (var scope = fixture.NewScope())
+        {
+            await PharmaXFixture.Resolve<IPharmacySettings>(scope)
+                .SetAsync(PharmacySettingKey.TradingName, "BethRapha");
+
+            (await PharmaXFixture.Resolve<IDataImporter>(scope)
+                    .ImportAsync(new[] { _folder }, dryRun: false))
+                .Succeeded.Should().BeTrue();
+        }
+
+        using var check = fixture.NewScope();
+        var settings = PharmaXFixture.Resolve<IPharmacySettings>(check);
+
+        (await settings.GetAsync(PharmacySettingKey.Address))
+            .Should().Be("28 Woodstock Road\nThorngrove\nBulawayo");
+        (await settings.GetAsync(PharmacySettingKey.TradingName))
+            .Should().Be("BethRapha", "the name was already set");
+    }
+
     [Fact]
     public async Task The_history_lands_in_PharmaX_own_tables_linked_up()
     {
@@ -220,6 +255,47 @@ public sealed class DataImporterTests : IDisposable
         var staff = await db.Users.AsNoTracking().Where(u => u.Username != "admin").ToListAsync();
         staff.Select(u => u.Username).Should().Contain(new[] { "megan", "test", "fabrice" });
         staff.Should().OnlyContain(u => !u.IsActive);
+    }
+
+    /// <remarks>
+    /// A till that takes rands and Zimbabwe gold writes their cash-up in
+    /// rands and gold, with how many of each make a dollar. PharmaX holds
+    /// the drawer in dollars; the files' own total of the column still
+    /// reads as the files wrote it.
+    /// </remarks>
+    [Fact]
+    public async Task A_cash_up_in_another_currency_comes_in_as_dollars()
+    {
+        File.WriteAllLines(Path.Combine(_folder, "Day_End_Totals.csv"), new[]
+        {
+            "FORDAY,ZREADID,TENDER,SYSTEMTOTAL,ACTUALTOTAL,VARIANCE,OPERATOR,TENDEREXCHANGE",
+            "01/10/2026 00:00:00,27,Cash USD,3.00,3.00,0,megan,1",
+            "01/10/2026 00:00:00,27,Rands,60.00,80.00,20,megan,20",
+            "01/10/2026 00:00:00,27,EcoCash ZWG,68822.00,0,-68822,megan,36"
+        });
+        File.AppendAllLines(Path.Combine(_folder, "Sales_Controls.csv"),
+            new[] { "\"Day_End_Totals ACTUALTOTAL\",\"83\",\"2026-10-06 12:26:53\"" });
+
+        var report = await ImportAsync();
+
+        report.Succeeded.Should().BeTrue(report.Text);
+        report.Text.Should().Contain("Day_End_Totals: ACTUALTOTAL read");
+        report.Text.Should().MatchRegex(@"Cash-ups: expected by the till\s+1,917\.72");
+        report.Text.Should().MatchRegex(@"Cash-ups: counted\s+7\.00");
+
+        using var scope = _fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+        var declaration = await db.TillDeclarations.AsNoTracking().SingleAsync();
+
+        var cash = declaration.Lines.Single(l => l.Tender == TenderType.Cash);
+        cash.Expected.Amount.Should().Be(6.00m, "3 dollars and 60 rands at 20 to the dollar");
+        cash.Declared.Amount.Should().Be(7.00m);
+
+        var ecoCash = declaration.Lines.Single(l => l.Tender == TenderType.EcoCash);
+        ecoCash.Expected.Amount.Should().Be(1911.72m, "68,822 at 36 to the dollar");
+        ecoCash.Declared.Amount.Should().Be(0m);
+
+        (await db.TillSessions.AsNoTracking().SingleAsync()).ClosingDeclared!.Value.Amount.Should().Be(7.00m);
     }
 
     [Fact]

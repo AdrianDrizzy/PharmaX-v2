@@ -9,6 +9,9 @@ public interface IProductListView : IView
     string SearchText { get; }
     Guid? SelectedId { get; }
 
+    /// The "Show deactivated" box: deactivated products hidden until ticked.
+    bool IncludeInactive { get; }
+
     /// The batch of the selected row in the batch view; null otherwise.
     Guid? SelectedBatchId { get; }
 
@@ -37,6 +40,7 @@ public interface IProductListView : IView
     event EventHandler? SearchChanged;
     event EventHandler? AddRequested;
     event EventHandler? EditRequested;
+    event EventHandler? DeactivateRequested;
     event EventHandler? RefreshRequested;
     event EventHandler? ChooseRequested;
     event EventHandler? ViewModeChanged;

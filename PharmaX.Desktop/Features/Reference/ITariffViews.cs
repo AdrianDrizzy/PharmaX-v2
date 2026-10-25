@@ -6,6 +6,7 @@ namespace PharmaX.Desktop.Features.Reference;
 public interface ITariffListView : IView
 {
     string SearchText { get; }
+    bool IncludeInactive { get; }
 
     /// Null means every society.
     Guid? SchemeFilter { get; }

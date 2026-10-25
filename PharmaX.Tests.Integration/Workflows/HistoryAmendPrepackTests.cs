@@ -102,9 +102,13 @@ public class HistoryAmendPrepackTests : IClassFixture<PharmaXFixture>
         item.Quantity.Should().Be(30m);
         item.Tariff.Should().Be(60m, "priced for thirty as a new item would be");
 
-        var cheaper = await dispensing.AmendItemAsync(dispensingId, item.LineNo,
-            30m, 50m, null);
+        (await dispensing.AmendItemAsync(dispensingId, item.LineNo, 30m, 50m, null))
+            .Error.Code.Should().Be("DSP-055", "a charge by hand needs a reason");
 
+        var cheaper = await dispensing.AmendItemAsync(dispensingId, item.LineNo,
+            30m, 50m, "Price match");
+
+        cheaper.IsSuccess.Should().BeTrue(cheaper.Error.Message);
         cheaper.Value.State.Items.Single().Tariff.Should().Be(50m);
         cheaper.Value.State.CoPaymentTotal.Should().Be(50m);
     }

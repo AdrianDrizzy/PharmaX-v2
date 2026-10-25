@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The reports assistant's engine: LLamaSharp, llama.cpp and the model.
+
+       PharmaX never references this. It is copied beside PharmaX into an
+       "assistant" folder and loaded, in a second PharmaX process started
+       for the purpose, into an assembly load context of its own (see
+       PharmaX.Assistant.AssistantHost). So:
+
+       - LLamaSharp's dependencies (Microsoft.Extensions.*.Abstractions and
+         System.Text.Json at 10.x) stay out of PharmaX, which keeps 8.x;
+       - native code that crashes, or a model that eats memory, takes down
+         only that second process, never the till;
+       - and no second copy of the .NET runtime is needed, which a
+         self-contained helper executable would have meant.
+
+       EnableDynamicLoading gives the build a deps.json and copies every
+       dependency into the output, which is what a load context needs to
+       resolve them. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PharmaX.Assistant.Engine</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LLamaSharp" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" />
+  </ItemGroup>
+
+  <!-- llama.cpp itself. The backend package adds it as content, and
+       content travels to any project that references this one - which put
+       llama.cpp beside PharmaX. So it is taken out of Content here and
+       copied into this project's own output instead, where the copy into
+       "assistant" picks it up.
+
+       Only the 64-bit Windows builds: PharmaX ships for nothing else
+       (installer\build.ps1 publishes win-x64), and the package falls back
+       to every platform - 77 MB of Linux, macOS and ARM - when the project
+       has no runtime identifier, which this one never has. Matched on the
+       platform's name because the package's links come out as
+       runtimes\\win-x64\..., with the separator doubled. -->
+  <Target Name="TakeLlamaOutOfContent" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_LlamaRuntime Include="@(Content)"
+          Condition="$([System.String]::Copy('%(Content.Link)').StartsWith('runtimes'))" />
+      <Content Remove="@(_LlamaRuntime)" />
+      <_LlamaWindowsRuntime Include="@(_LlamaRuntime)"
+          Condition="$([System.String]::Copy('%(_LlamaRuntime.Link)').Contains('\win-x64\'))" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CopyLlamaIntoOwnOutput" AfterTargets="CopyFilesToOutputDirectory">
+    <Copy SourceFiles="@(_LlamaWindowsRuntime)"
+          DestinationFiles="@(_LlamaWindowsRuntime->'$(OutDir)%(Link)')"
+          SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <FileWrites Include="@(_LlamaWindowsRuntime->'$(OutDir)%(Link)')" />
+    </ItemGroup>
+  </Target>
+
+  <!-- llama.cpp is built against the Visual C++ 2015-2022 runtime, which a
+       pharmacy PC need not have: the build machine has it because Visual
+       Studio installed it, and on a till without it every request failed
+       with "The type initializer for LLama.Native.NativeApi threw". The
+       .NET runtime PharmaX carries does not include it. So the three DLLs
+       go beside each build of llama.cpp - Windows looks in a DLL's own
+       folder for what it needs - copied from this machine, as Microsoft
+       allows these files to be deployed with an application. -->
+  <Target Name="CopyVisualCppRuntime" AfterTargets="CopyLlamaIntoOwnOutput">
+    <ItemGroup>
+      <_VcRuntime Include="$(SystemRoot)\System32\msvcp140.dll;$(SystemRoot)\System32\vcruntime140.dll;$(SystemRoot)\System32\vcruntime140_1.dll" />
+      <_LlamaFolder Include="@(_LlamaWindowsRuntime->'$(OutDir)%(Link)'->DirectoryName()->Distinct())" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(SystemRoot)\System32\vcruntime140_1.dll')"
+           Text="The Visual C++ 2015-2022 runtime (x64) is not installed on this build machine, and the assistant's engine needs to ship it." />
+    <Copy SourceFiles="@(_VcRuntime)" DestinationFolder="%(_LlamaFolder.Identity)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

@@ -70,6 +70,39 @@ public class ProductGridEditTests : IClassFixture<PharmaXFixture>
         movement.MovementType.Should().Be(MovementType.Adjustment);
         movement.Quantity.Should().Be(6m);
         movement.BalanceAfter.Should().Be(6m);
+        movement.ReasonCode.Should().Be("COUNT-OVER: Counted on the she",
+            "over or short, then why, to the thirty the column holds");
+
+        var audit = await db.AuditEntries
+            .Where(a => a.EntityId == id && a.Action == "inv.stock.adjust")
+            .SingleAsync();
+
+        audit.Reason.Should().Be("PGE-QTY on hand 0 to 6. Counted on the shelf");
+    }
+
+    [Fact]
+    public async Task A_quantity_with_no_reason_is_refused_and_moves_nothing()
+    {
+        await SignInAsync();
+
+        var id = await CreateAsync("PGE-WHY", "Needs a reason", 5m);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var products = PharmaXFixture.Resolve<IProductService>(scope);
+
+            var refused = await products.ApplyCellEditAsync(
+                new ProductCellEditDto(id, null, ProductCell.QuantityOnHand, "6", "  "));
+
+            refused.IsFailure.Should().BeTrue();
+            refused.Error.Code.Should().Be("INV-033");
+        }
+
+        (await FetchAsync(id)).QuantityOnHand.Should().Be(0m);
+
+        using var check = _fixture.NewScope();
+        (await PharmaXFixture.Resolve<PharmaXDbContext>(check).StockMovements
+            .AnyAsync(m => m.ProductId == id)).Should().BeFalse();
     }
 
     [Fact]
@@ -234,11 +267,17 @@ public class ProductGridEditTests : IClassFixture<PharmaXFixture>
             new ProductCellEditDto(id, null, column, value));
     }
 
+    /// <remarks>
+    /// A quantity is sent with the reason the list asks for, as the list
+    /// sends it; a refusal for having none is tested on its own.
+    /// </remarks>
     private async Task ApplyAsync(Guid id, ProductCell column, string value,
         Guid? batchId, string? extra, bool expectSuccess)
     {
         using var scope = _fixture.NewScope();
         var products = PharmaXFixture.Resolve<IProductService>(scope);
+
+        if (column == ProductCell.QuantityOnHand) extra ??= "Counted on the shelf";
 
         var result = await products.ApplyCellEditAsync(
             new ProductCellEditDto(id, batchId, column, value, extra));

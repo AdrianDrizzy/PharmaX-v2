@@ -102,6 +102,7 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
     {
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        txtSurname.Focus();
     }
 
     public void ShowPatient(PatientDto patient)

@@ -12,6 +12,45 @@ public sealed class PharmaXOptions
     public AccountingOptions Accounting { get; init; } = new();
     public LoggingOptions Logging { get; init; } = new();
     public DevelopmentOptions Development { get; init; } = new();
+    public AssistantOptions Assistant { get; init; } = new();
+}
+
+/// <summary>
+/// The offline assistant on the reports screen: a small language model,
+/// run on this computer, that turns a request in plain words into a
+/// report with its dates and filters filled in.
+/// </summary>
+/// <remarks>
+/// Optional. Where the model file is not on this computer the reports
+/// screen simply has no Ask box. The model is a separate download of
+/// about 1.2 GB, so it is not part of the installer.
+/// </remarks>
+public sealed class AssistantOptions
+{
+    public bool Enabled { get; init; } = true;
+
+    /// <summary>
+    /// A Qwen3.5 model in GGUF form. The prompt is written in Qwen's chat
+    /// format, so another family of model would need its own.
+    /// </summary>
+    public string ModelPath { get; init; } =
+        @"%PROGRAMDATA%\PharmaX\assistant\Qwen3.5-2B-Q4_K_M.gguf";
+
+    /// <summary>
+    /// Where the model's reading of the report list is kept between runs,
+    /// so it reads it once rather than every time the screen opens.
+    /// </summary>
+    public string CacheDirectory { get; init; } =
+        @"%PROGRAMDATA%\PharmaX\assistant\cache";
+
+    /// <summary>Processor threads to use; 0 means half the logical processors.</summary>
+    public int Threads { get; init; }
+
+    public string ResolvedModelPath =>
+        Environment.ExpandEnvironmentVariables(ModelPath);
+
+    public string ResolvedCacheDirectory =>
+        Environment.ExpandEnvironmentVariables(CacheDirectory);
 }
 
 /// <summary>

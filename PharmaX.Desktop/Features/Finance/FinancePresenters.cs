@@ -76,8 +76,8 @@ public sealed class ChartPresenter : PresenterBase<IChartView>
     {
         if (Selected() is not LedgerAccountDto account) return;
 
-        if (!View.Confirm($"Take {account.Code} {account.Name} out of use? "
-                          + "Its history stays in the books."))
+        if (!View.Confirm($"Deactivate {account.Code} {account.Name}? "
+                          + "It stays in the books, and leaves this list."))
             return;
 
         var result = await _ledger.DeactivateAccountAsync(account.Id);

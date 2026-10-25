@@ -16,6 +16,9 @@ public partial class frmReports : PhxFormBase, IReportsView
     private readonly Dictionary<string, Control> _slicerInputs =
         new(StringComparer.Ordinal);
 
+    /// True while the assistant, not the operator, is choosing a report.
+    private bool _selectingQuietly;
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ReportOperational;
 
@@ -34,14 +37,38 @@ public partial class frmReports : PhxFormBase, IReportsView
         InitializeComponent();
 
         trePresets.AfterSelect += (_, _) =>
-            PresetChanged?.Invoke(this, EventArgs.Empty);
+        {
+            ApplyClock();
+            if (!_selectingQuietly) PresetChanged?.Invoke(this, EventArgs.Empty);
+        };
 
         btnPreview.Click += (_, _) =>
             PreviewRequested?.Invoke(this, EventArgs.Empty);
         btnExport.Click += (_, _) =>
             ExportRequested?.Invoke(this, EventArgs.Empty);
+        btnExportPdf.Click += (_, _) =>
+            ExportPdfRequested?.Invoke(this, EventArgs.Empty);
+        chkGraph.CheckedChanged += (_, _) => ShowGraphPanel();
+        splGraph.SplitterMoved += (_, _) => _graphWidened = true;
+        btnEnlargeGraph.Click += (_, _) =>
+            EnlargeGraphRequested?.Invoke(this, EventArgs.Empty);
+        picGraph.DoubleClick += (_, _) =>
+            EnlargeGraphRequested?.Invoke(this, EventArgs.Empty);
         btnClose.Click += (_, _) =>
             CloseRequested?.Invoke(this, EventArgs.Empty);
+
+        btnAsk.Click += (_, _) =>
+            AskRequested?.Invoke(this, EventArgs.Empty);
+        txtAsk.TextChanged += (_, _) =>
+            AskStarted?.Invoke(this, EventArgs.Empty);
+        txtAsk.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter) return;
+
+            // No ding: Enter in a single-line box is a request here.
+            e.SuppressKeyPress = true;
+            AskRequested?.Invoke(this, EventArgs.Empty);
+        };
     }
 
     /// Runtime. Resolved by the container.
@@ -83,6 +110,39 @@ public partial class frmReports : PhxFormBase, IReportsView
     public DateTime FromDate => dtpFrom.Value.Date;
     public DateTime ToDate => dtpTo.Value.Date;
 
+    public bool UsesClock =>
+        string.Equals(SelectedPresetKey,
+                      PharmaX.Reporting.Definitions.SalesSummaryReport.PresetKey,
+                      StringComparison.Ordinal);
+
+    public DateTime FromMoment => UsesClock ? dtpFrom.Value : dtpFrom.Value.Date;
+    public DateTime ToMoment => UsesClock ? dtpTo.Value : dtpTo.Value.Date;
+
+    /// <summary>
+    /// Sales summary takes a day, a month, a year, an hour and a minute.
+    /// The other reports stay as a date. Turning the clock on for a pair
+    /// of midnights takes the end through 23:59, so "today" is the whole day
+    /// until the time is changed.
+    /// </summary>
+    private void ApplyClock()
+    {
+        var clock = UsesClock;
+
+        dtpFrom.Format = clock
+            ? DateTimePickerFormat.Custom
+            : DateTimePickerFormat.Short;
+        dtpTo.Format = dtpFrom.Format;
+        dtpFrom.CustomFormat = "dd/MM/yyyy HH:mm";
+        dtpTo.CustomFormat = dtpFrom.CustomFormat;
+        dtpFrom.ShowUpDown = clock;
+        dtpTo.ShowUpDown = clock;
+
+        if (clock
+            && dtpFrom.Value.TimeOfDay == TimeSpan.Zero
+            && dtpTo.Value.TimeOfDay == TimeSpan.Zero)
+            dtpTo.Value = dtpTo.Value.Date.AddHours(23).AddMinutes(59);
+    }
+
     public string? SelectedPresetKey =>
         trePresets.SelectedNode?.Tag as string;
 
@@ -105,6 +165,10 @@ public partial class frmReports : PhxFormBase, IReportsView
         trePresets.BeginUpdate();
         trePresets.Nodes.Clear();
 
+        // What each report shows, on hover: the same description the
+        // assistant reads.
+        trePresets.ShowNodeToolTips = true;
+
         foreach (var group in presets.GroupBy(p => p.Group)
                                      .OrderBy(g => g.Key))
         {
@@ -113,7 +177,8 @@ public partial class frmReports : PhxFormBase, IReportsView
             foreach (var preset in group.OrderBy(p => p.DisplayName))
                 parent.Nodes.Add(new TreeNode(preset.DisplayName)
                 {
-                    Tag = preset.Key
+                    Tag = preset.Key,
+                    ToolTipText = preset.Description
                 });
         }
 
@@ -137,17 +202,86 @@ public partial class frmReports : PhxFormBase, IReportsView
     {
         if (string.IsNullOrWhiteSpace(OpenOnPreset)) return;
 
+        if (FindPreset(OpenOnPreset) is not TreeNode node) return;
+
+        trePresets.SelectedNode = node;
+        node.EnsureVisible();
+    }
+
+    private TreeNode? FindPreset(string presetKey)
+    {
         foreach (TreeNode group in trePresets.Nodes)
         {
             foreach (TreeNode node in group.Nodes)
             {
-                if (node.Tag is not string key
-                    || !string.Equals(key, OpenOnPreset,
-                                      StringComparison.Ordinal)) continue;
+                if (node.Tag is string key
+                    && string.Equals(key, presetKey, StringComparison.Ordinal))
+                    return node;
+            }
+        }
 
-                trePresets.SelectedNode = node;
-                node.EnsureVisible();
-                return;
+        return null;
+    }
+
+    public string AskText => txtAsk.Text;
+
+    public void ShowAsk(bool available) => pnlAsk.Visible = available;
+
+    public void ShowAskResult(string message) => lblAskResult.Text = message;
+
+    public void SelectPreset(string presetKey)
+    {
+        if (FindPreset(presetKey) is not TreeNode node) return;
+
+        _selectingQuietly = true;
+
+        try
+        {
+            trePresets.SelectedNode = node;
+        }
+        finally
+        {
+            _selectingQuietly = false;
+        }
+
+        node.EnsureVisible();
+    }
+
+    /// <summary>
+    /// The pickers set to whole days. For Sales Summary, which runs by
+    /// the minute, the last day runs to 23:59.
+    /// </summary>
+    public void SetPeriod(DateOnly from, DateOnly to)
+    {
+        dtpFrom.Value = from.ToDateTime(TimeOnly.MinValue);
+        dtpTo.Value = UsesClock
+            ? to.ToDateTime(new TimeOnly(23, 59))
+            : to.ToDateTime(TimeOnly.MinValue);
+    }
+
+    public void ApplySlicerValues(IReadOnlyDictionary<string, string> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        foreach (var (key, value) in values)
+        {
+            if (!_slicerInputs.TryGetValue(key, out var input)) continue;
+
+            switch (input)
+            {
+                case CheckBox check:
+                    check.Checked = value == "true";
+                    break;
+
+                case ComboBox combo:
+                    var choice = combo.Items.OfType<Choice>().FirstOrDefault(c =>
+                        string.Equals(c.Value, value, StringComparison.OrdinalIgnoreCase));
+                    if (choice is not null) combo.SelectedItem = choice;
+                    break;
+
+                default:
+                    input.Text = value;
+                    break;
             }
         }
     }
@@ -388,20 +522,52 @@ public partial class frmReports : PhxFormBase, IReportsView
         grdPreview.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
     }
 
+    public bool IncludeGraph => chkGraph.Checked;
+
+    public void ShowChart(byte[]? png)
+    {
+        var old = picGraph.Image;
+        picGraph.Image = png is null ? null : Image.FromStream(new MemoryStream(png));
+        old?.Dispose();
+
+        // A third of the width beside the rows at first. Once somebody
+        // has dragged the divider, their width stays for the next report.
+        if (!_graphWidened)
+            pnlGraph.Width = Math.Clamp(splMain.Panel2.Width / 3, 240, 420);
+
+        ShowGraphPanel();
+    }
+
+    private bool _graphWidened;
+
+    private void ShowGraphPanel()
+    {
+        var shown = chkGraph.Checked && picGraph.Image is not null;
+        pnlGraph.Visible = shown;
+        splGraph.Visible = shown;
+    }
+
+    public void ShowGraphWindow(string title, byte[] png)
+    {
+        using var window = new frmGraph(title, png);
+        window.ShowDialog(this);
+    }
+
     public void ClearPreview(string caption)
     {
+        ShowChart(null);
         GridPager.Attach(grdPreview).ShowRows(Array.Empty<object?[]>());
         grdPreview.Columns.Clear();
         lblProvenance.Text = caption;
     }
 
-    public string? PromptExportPath(string suggestedName)
+    public string? PromptExportPath(string suggestedName, bool pdf)
     {
         using var save = new SaveFileDialog
         {
-            DefaultExt = "xlsx",
+            DefaultExt = pdf ? "pdf" : "xlsx",
             FileName = suggestedName,
-            Filter = "Excel workbook (*.xlsx)|*.xlsx",
+            Filter = pdf ? "PDF document (*.pdf)|*.pdf" : "Excel workbook (*.xlsx)|*.xlsx",
             OverwritePrompt = true,
             Title = "Export report",
             InitialDirectory = GridExport.Downloads
@@ -413,7 +579,11 @@ public partial class frmReports : PhxFormBase, IReportsView
     public event EventHandler? PresetChanged;
     public event EventHandler? PreviewRequested;
     public event EventHandler? ExportRequested;
+    public event EventHandler? ExportPdfRequested;
+    public event EventHandler? EnlargeGraphRequested;
     public event EventHandler? CloseRequested;
+    public event EventHandler? AskStarted;
+    public event EventHandler? AskRequested;
 
     /// <summary>
     /// Sets the split the designer asked for, once the window is its

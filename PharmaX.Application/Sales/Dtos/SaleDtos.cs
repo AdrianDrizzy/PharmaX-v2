@@ -16,7 +16,7 @@ public sealed record SaleLineDto(
     decimal UnitPrice, decimal Discount, string TaxCode,
     decimal LineTotal, string? BatchNumber, DateOnly? Expiry,
     bool IsRated, bool IsVoided, decimal VatRatePercent = 0m,
-    string? ProductCode = null)
+    string? ProductCode = null, bool IsScript = false)
 {
     public static SaleLineDto From(SaleLine l)
     {
@@ -26,7 +26,7 @@ public sealed record SaleLineDto(
             l.LineNo, l.ProductId, l.Description, l.Quantity,
             l.UnitPrice.Amount, l.DiscountAmount.Amount, l.TaxCode,
             l.LineTotal.Amount, l.BatchNumber, l.BatchExpiry, l.IsRated,
-            l.IsVoided, l.VatRatePercent);
+            l.IsVoided, l.VatRatePercent, IsScript: l.IsScript);
     }
 }
 

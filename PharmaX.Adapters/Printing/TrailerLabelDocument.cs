@@ -1,38 +1,38 @@
 using System.Drawing.Printing;
 using System.Globalization;
 using PharmaX.Application.Dispensing;
+using PharmaX.Application.Sales;
 
 namespace PharmaX.Adapters.Printing;
 
 /// <summary>
-/// The trailer label, on the same 50 by 70 millimetre stock as the item
-/// labels and printed straight after them: the script number and the
+/// The trailer label, on the same page as the item labels and printed
+/// straight after them: the script number and the
 /// patient, every medicine on the script with how many were dispensed,
-/// the prescriber, and the pharmacy with the date.
+/// the prescriber and the date, and the pharmacy.
 /// </summary>
 /// <remarks>
-/// Laid out as the pharmacy's existing trailer labels are:
+/// Laid out as the pharmacy's existing trailer labels are, on the same
+/// page and the same columns as the item labels:
 /// <code>
 /// RX#: 13049 JOSEPHAT NYAKUNHUWA (001)
 /// ENALAPRIL +5 10MG TAB (15)
 /// SPIRONOLACTONE ALDAC 25MG TAB (5)
-/// DR: madondoro D
-/// ----------------------------------------
-/// Bethrapha Pharmacy, 28 Woodstock Road  08/09/2026
+/// DR: madondoro D                       08/09/2026
+/// Bethrapha Pharmacy, 28 Woodstock Road, Thorngrove, Bulawayo
 /// </code>
+/// No "Keep out of reach of children": the bag the labels go on prints it.
 /// A script with more medicines than one label holds carries on to a
 /// second, headed the same way, so nothing on the script is left off.
+/// Whether a trailer prints at all is the dispensing screen's choice
+/// (TrailerLabels.WantedAsync).
 /// </remarks>
 public sealed class TrailerLabelDocument : PrintDocument
 {
-    private readonly TrailerLabelDto _trailer;
-    private readonly string? _dispensedBy;
-    private readonly string? _telephone;
-    private readonly Font _body = new("Consolas", 7f);
+    private const int Columns = LabelDocument.Columns;
 
-    /// For the pharmacy's line when it will not fit beside the date.
-    private readonly Font _small = new("Consolas", 6f);
-    private readonly Pen _rule = new(Color.Black, 1f);
+    private readonly TrailerLabelDto _trailer;
+    private readonly IReadOnlyList<string> _foot;
     private int _next;
     private int _page;
 
@@ -45,19 +45,22 @@ public sealed class TrailerLabelDocument : PrintDocument
                                 string? telephone = null)
     {
         _trailer = trailer;
-        _dispensedBy = string.IsNullOrWhiteSpace(dispensedBy)
-            ? null
-            : dispensedBy.Trim();
-        _telephone = Telephone(telephone);
+        _foot = Foot(trailer, dispensedBy, telephone);
 
-        // The item labels' stock, so the trailer comes off the same roll.
-        DefaultPageSettings.PaperSize = new PaperSize("Label", 276, 197);
-        DefaultPageSettings.Margins = new Margins(8, 8, 8, 8);
+        // The item labels' page, so the trailer comes off the same roll.
+        LabelDocument.ApplyStock(DefaultPageSettings);
+    }
+
+    protected override void OnQueryPageSettings(QueryPageSettingsEventArgs e)
+    {
+        base.OnQueryPageSettings(e);
+        LabelDocument.ApplyStock(e.PageSettings);
     }
 
     protected override void OnBeginPrint(PrintEventArgs e)
     {
         base.OnBeginPrint(e);
+        LabelDocument.ApplyStock(DefaultPageSettings);
         _next = 0;
         _page = 0;
     }
@@ -67,7 +70,7 @@ public sealed class TrailerLabelDocument : PrintDocument
         base.OnPrintPage(e);
         ArgumentNullException.ThrowIfNull(e);
 
-        e.HasMorePages = RenderPage(e.Graphics!, e.MarginBounds);
+        e.HasMorePages = RenderPage(e.Graphics!, FixedPitch.Area(e));
     }
 
     /// <summary>
@@ -80,23 +83,32 @@ public sealed class TrailerLabelDocument : PrintDocument
     {
         ArgumentNullException.ThrowIfNull(trailer);
 
-        var lines = new List<string> { Heading(trailer, continued: false) };
-
-        lines.AddRange(trailer.Items.Select(Item));
-        lines.Add(Doctor(trailer));
-        lines.Add(new string('-', 40));
-        lines.Add(string.IsNullOrWhiteSpace(dispensedBy)
-            ? Dated(trailer)
-            : $"{dispensedBy.Trim()}  {Dated(trailer)}");
-
-        if (Telephone(telephone) is string tel) lines.Add(tel);
-        lines.Add(LabelWording.KeepOutOfReach);
-
-        return lines;
+        return HeadingLines(trailer, continued: false)
+            .Concat(trailer.Items.SelectMany(ItemLines))
+            .Concat(Foot(trailer, dispensedBy, telephone))
+            .ToList();
     }
 
-    private static string? Telephone(string? telephone) =>
-        string.IsNullOrWhiteSpace(telephone) ? null : $"Tel: {telephone.Trim()}";
+    /// <summary>
+    /// What closes every trailer label: the prescriber and the date, the
+    /// pharmacy with its address, and its telephone.
+    /// </summary>
+    private static List<string> Foot(TrailerLabelDto trailer,
+        string? dispensedBy, string? telephone)
+    {
+        var foot = new List<string> { Spread(Doctor(trailer), Dated(trailer)) };
+
+        // The pharmacy and its address whole, over two lines where it
+        // takes them, as the item labels carry it.
+        if (!string.IsNullOrWhiteSpace(dispensedBy))
+            foot.AddRange(SlipLayout.Wrap(dispensedBy.Trim(), Columns, Columns)
+                                    .Where(piece => piece.Length > 0));
+
+        if (!string.IsNullOrWhiteSpace(telephone))
+            foot.Add(Fit($"Tel: {telephone.Trim()}", Columns));
+
+        return foot;
+    }
 
     /// <summary>
     /// Draws one label and says whether the script carries on to another.
@@ -106,75 +118,73 @@ public sealed class TrailerLabelDocument : PrintDocument
     {
         ArgumentNullException.ThrowIfNull(g);
 
-        var height = _body.GetHeight(g) + 1f;
-        float y = bounds.Top;
+        // The heading and the foot on every label; the medicines between,
+        // printed as the item labels are. In the smaller face: in the full
+        // one the date against the right edge lost the last digit of its
+        // year to the edge of what the printer reaches.
+        var rows = TakePage();
 
-        void Line(string text)
-        {
-            g.DrawString(Fit(g, text, bounds.Width), _body, Brushes.Black,
-                         bounds.Left, y);
-            y += height;
-        }
+        LabelPrint.Draw(g, bounds,
+            rows.Select(row => new LabelRow(row, LabelStyle.Detail, Compact: true)).ToList(),
+            Columns, Math.Max(LabelDocument.LineCount, rows.Count));
 
-        Line(Heading(_trailer, continued: _page > 0));
-
-        // What is left under the medicines: the prescriber, the rule, the
-        // pharmacy's line, its telephone and "Keep out of reach of
-        // children", which every label carries.
-        var foot = height * (_telephone is null ? 3 : 4) + 6f;
-        var room = Math.Max(1, (int)((bounds.Bottom - foot - y) / height));
-
-        var items = _trailer.Items;
-        var last = Math.Min(items.Count, _next + room);
-
-        for (; _next < last; _next++)
-            Line(ItemFitted(g, items[_next], bounds.Width));
-
-        Line(Doctor(_trailer));
-
-        y += 2f;
-        g.DrawLine(_rule, bounds.Left, y, bounds.Right, y);
-        y += 4f;
-
-        // The pharmacy on the left and the date on the right. The line
-        // steps down a size before it loses any of the address, and is
-        // shortened only if it still will not fit.
-        var date = Dated(_trailer);
-        var font = _body;
-
-        if (_dispensedBy is not null
-            && g.MeasureString(_dispensedBy, _body).Width
-               + g.MeasureString(date, _body).Width + 6 > bounds.Width)
-            font = _small;
-
-        var dateWidth = g.MeasureString(date, font).Width;
-
-        if (_dispensedBy is not null)
-            g.DrawString(Fit(g, _dispensedBy, bounds.Width - dateWidth - 6,
-                             font),
-                         font, Brushes.Black, bounds.Left, y);
-
-        g.DrawString(date, font, Brushes.Black, bounds.Right - dateWidth, y);
-        y += height;
-
-        if (_telephone is not null) Line(_telephone);
-        Line(LabelWording.KeepOutOfReach);
-
-        _page++;
-
-        return _next < items.Count;
+        return _next < _trailer.Items.Count;
     }
 
-    private static string Heading(TrailerLabelDto trailer, bool continued) =>
-        string.Format(CultureInfo.CurrentCulture, "RX#: {0} {1} ({2:000}){3}",
-            trailer.ScriptNumber, trailer.PatientName, trailer.FillNumber,
-            continued ? " cont." : "").Trim();
+    /// <summary>
+    /// The next sticker's rows, and advances the count of medicines used.
+    /// </summary>
+    private List<string> TakePage()
+    {
+        var room = Math.Max(1, LabelDocument.LineCount - 1 - _foot.Count);
+        var items = _trailer.Items;
+        var rows = new List<string>();
+        rows.AddRange(HeadingLines(_trailer, continued: _page > 0));
+        var used = 0;
 
-    private static string Item(TrailerItemDto item) =>
-        $"{item.Description.Trim()} ({Quantity(item)})";
+        while (_next < items.Count)
+        {
+            var lines = ItemLines(items[_next]).ToList();
+            if (used > 0 && used + lines.Count > room)
+                break;
 
-    private static string Quantity(TrailerItemDto item) =>
-        item.Quantity.ToString("0.##", CultureInfo.CurrentCulture);
+            rows.AddRange(lines);
+            used += Math.Max(1, lines.Count);
+            _next++;
+        }
+
+        rows.AddRange(_foot);
+        _page++;
+
+        return rows;
+    }
+
+    /// <summary>
+    /// "RX#:", the script, the patient and which issue it is. A long
+    /// name wraps; the issue number is not dropped.
+    /// </summary>
+    private static IEnumerable<string> HeadingLines(TrailerLabelDto trailer, bool continued)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        var text = string.Format(culture, "RX#: {0} {1} ({2:000}){3}",
+            trailer.ScriptNumber, trailer.PatientName.Trim(), trailer.FillNumber,
+            continued ? " cont." : "");
+
+        return SlipLayout.Wrap(text.Trim(), Columns, Columns)
+                         .Where(piece => piece.Length > 0);
+    }
+
+    /// <summary>
+    /// A medicine and how many, wrapping the name onto the next line
+    /// rather than dropping characters. The quantity stays with the name.
+    /// </summary>
+    private static IEnumerable<string> ItemLines(TrailerItemDto item)
+    {
+        var quantity = $" ({item.Quantity.ToString("0.##", CultureInfo.CurrentCulture)})";
+
+        return SlipLayout.Wrap(item.Description.Trim() + quantity, Columns, Columns)
+                         .Where(piece => piece.Length > 0);
+    }
 
     /// <summary>
     /// "DR:" and the prescriber, without a second "Dr" where the name was
@@ -199,50 +209,19 @@ public sealed class TrailerLabelDocument : PrintDocument
     private static string Dated(TrailerLabelDto trailer) =>
         trailer.DispensedOn.ToString("dd/MM/yyyy", CultureInfo.CurrentCulture);
 
-    /// <summary>
-    /// A medicine that fits the label, shortening the name rather than
-    /// the quantity: the quantity is what the bag is checked against.
-    /// </summary>
-    private string ItemFitted(Graphics g, TrailerItemDto item, float width)
+    /// The left text and the right one at the far edge of the line.
+    private static string Spread(string left, string right)
     {
-        var quantity = $" ({Quantity(item)})";
-        var name = item.Description.Trim();
+        var room = Columns - right.Length - 1;
 
-        if (g.MeasureString(name + quantity, _body).Width <= width)
-            return name + quantity;
-
-        while (name.Length > 1
-               && g.MeasureString(name + "…" + quantity, _body).Width > width)
-            name = name[..^1];
-
-        return name.TrimEnd() + "…" + quantity;
+        return Fit(left, room).PadRight(room + 1) + right;
     }
 
-    private string Fit(Graphics g, string text, float width,
-                       Font? font = null)
+    /// Text cut to a width, with an ellipsis where it was cut.
+    private static string Fit(string text, int width)
     {
-        font ??= _body;
+        if (width < 1) return "";
 
-        if (g.MeasureString(text, font).Width <= width) return text;
-
-        var cut = text;
-
-        while (cut.Length > 1
-               && g.MeasureString(cut + "…", font).Width > width)
-            cut = cut[..^1];
-
-        return cut.TrimEnd() + "…";
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _body.Dispose();
-            _small.Dispose();
-            _rule.Dispose();
-        }
-
-        base.Dispose(disposing);
+        return text.Length <= width ? text : text[..(width - 1)].TrimEnd() + "…";
     }
 }

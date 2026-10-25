@@ -241,7 +241,7 @@ public partial class frmPOS : PhxFormBase, IPosView
     public string? PromptReceiptNumber(string? last) =>
         frmTextPrompt.Ask(this, "Reprint receipt",
             last is null
-                ? "Receipt number to print again (Inv RefNo on the receipt)"
+                ? "Receipt number to print again (Trans No on the receipt)"
                 : "Receipt number to print again - Enter for the last one",
             last, hint: "e.g. S-001-000001");
 
@@ -297,11 +297,22 @@ public partial class frmPOS : PhxFormBase, IPosView
         // The script's lines are not editable here - the till refuses
         // them - but whatever else the patient picks up at the counter
         // goes on the same sale and is paid for in one go.
-        foreach (var button in pnlFunctions.Controls.OfType<Button>())
+        // Every key's control, wherever it sits: the bar, the header, the
+        // customer link and the line's menu.
+        foreach (var control in pnlFunctions.Controls.OfType<Control>()
+                     .Concat(pnlHeaderKeys.Controls.OfType<Control>())
+                     .Append(lnkCustomer))
         {
-            if (button.Tag is not Keys key) continue;
+            if (control.Tag is not Keys key) continue;
 
-            button.Enabled = OnCollection(key);
+            control.Enabled = OnCollection(key);
+        }
+
+        foreach (var item in mnuLine.Items.OfType<ToolStripMenuItem>())
+        {
+            if (item.Tag is not Keys key) continue;
+
+            item.Enabled = OnCollection(key);
         }
 
         // Whether the co-payment rests on a tariff is the lines' to say,

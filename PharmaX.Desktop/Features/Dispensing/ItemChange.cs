@@ -6,8 +6,8 @@ namespace PharmaX.Desktop.Features.Dispensing;
 
 /// <summary>
 /// The questions changing one item asks - which item, how many, how much,
-/// and after the issue why - the same on the dispensing screen and on the
-/// labels screen.
+/// and why, after the issue or for a charge other than the price - the
+/// same on the dispensing screen and on the labels screen.
 /// </summary>
 public static class ItemChange
 {
@@ -19,8 +19,13 @@ public static class ItemChange
                                 string? Reason);
 
     /// <param name="lineNo">The item the operator is on, if any.</param>
+    /// <param name="chargeOnly">
+    /// Straight to the amount, the quantity left as it is: the charge
+    /// double-clicked rather than the item.
+    /// </param>
     public static Answer? Ask(IWin32Window owner,
-        IReadOnlyList<DispensingLineDto> items, int? lineNo, bool issued)
+        IReadOnlyList<DispensingLineDto> items, int? lineNo, bool issued,
+        bool chargeOnly = false)
     {
         ArgumentNullException.ThrowIfNull(items);
 
@@ -39,7 +44,24 @@ public static class ItemChange
             item = items.First(i => i.LineNo == picked);
         }
 
-        if (frmNumberPrompt.Ask(owner, "Change item",
+        var title = chargeOnly ? "Change the charge" : "Change item";
+
+        if (chargeOnly)
+        {
+            if (frmNumberPrompt.Ask(owner, title,
+                    string.Create(CultureInfo.CurrentCulture,
+                        $"{item.Description} x{item.Quantity:0.###}: the amount "
+                        + $"to charge. It is {item.Tariff:N2} now."),
+                    item.Tariff, 2) is not decimal charge
+                || charge == item.Tariff)
+                return null;
+
+            return Why(owner, item, item.Tariff, charge) is { } because
+                ? new Answer(item.LineNo, item.Quantity, charge, because)
+                : null;
+        }
+
+        if (frmNumberPrompt.Ask(owner, title,
                 $"{item.Description}: how many "
                 + (issued ? "were handed over?" : "to hand over?"),
                 item.Quantity, 3) is not decimal quantity || quantity <= 0m)
@@ -48,7 +70,7 @@ public static class ItemChange
         var suggested = Math.Round(item.Tariff * quantity / item.Quantity, 2,
                                    MidpointRounding.AwayFromZero);
 
-        if (frmNumberPrompt.Ask(owner, "Change item",
+        if (frmNumberPrompt.Ask(owner, title,
                 string.Create(CultureInfo.CurrentCulture,
                     $"{item.Description} x{quantity:0.###}: the amount to charge. "
                     + $"It was {item.Tariff:N2} for {item.Quantity:0.###}.")
@@ -56,9 +78,14 @@ public static class ItemChange
                 suggested, 2) is not decimal amount)
             return null;
 
+        // Another amount is a charge adjustment, kept on the record with
+        // its reason. After the issue the change's own reason covers it.
         if (!issued)
-            return new Answer(item.LineNo, quantity,
-                amount == suggested ? null : amount, null);
+            return amount == suggested
+                ? new Answer(item.LineNo, quantity, null, null)
+                : Why(owner, item, suggested, amount) is { } because
+                    ? new Answer(item.LineNo, quantity, amount, because)
+                    : null;
 
         var reason = frmTextPrompt.Ask(owner, "Change item",
             "Why is the issued item being changed? This is kept on the record.",
@@ -67,6 +94,19 @@ public static class ItemChange
         return string.IsNullOrWhiteSpace(reason)
             ? null
             : new Answer(item.LineNo, quantity, amount, reason);
+    }
+
+    /// Why the item is charged other than its price; null if not said.
+    private static string? Why(IWin32Window owner, DispensingLineDto item,
+                               decimal priced, decimal charged)
+    {
+        var reason = frmTextPrompt.Ask(owner, "Change the charge",
+            string.Create(CultureInfo.CurrentCulture,
+                $"Why is {item.Description} charged {charged:N2} rather than "
+                + $"{priced:N2}? This is kept on the record."),
+            hint: "e.g. Rounded up to 1.00");
+
+        return string.IsNullOrWhiteSpace(reason) ? null : reason;
     }
 
     /// <summary>

@@ -10,9 +10,29 @@ namespace PharmaX.Domain.Security;
 public static class PermissionCode
 {
     public const string SaleCreate = "pos.sale.create";
+
+    /// Taking the money for a sale. Every selling role except the
+    /// pharmacist assistant, who holds the basket for the cashier.
+    public const string SaleTakePayment = "pos.sale.take-payment";
+
     public const string SaleDiscountAboveLimit = "pos.sale.discount.above-limit";
     public const string ReturnAuthorise = "pos.return.authorise";
     public const string SessionCloseOtherUser = "pos.session.close.other-user";
+
+    /// End-of-day cash-up and close, on this till's own computer.
+    /// A cashier or an administrator.
+    public const string SessionCashUp = "pos.session.cash-up";
+
+    /// <summary>
+    /// Recording money taken out of the drawer during a shift - drawings,
+    /// lunch, another expense - with the amount and a note, so the cash-up
+    /// expects that much less and the Z-read says where it went.
+    /// </summary>
+    /// <remarks>
+    /// Every role with a till (23 October 2026). Its own permission so a
+    /// pharmacy can take it off a role without taking the till with it.
+    /// </remarks>
+    public const string SessionPayOut = "pos.session.pay-out";
 
     /// <summary>
     /// A pharmacist's own clinical authority: overriding a hard-stop
@@ -51,6 +71,19 @@ public static class PermissionCode
     /// still being dispensed is part of dispensing it.
     /// </remarks>
     public const string DispensingAmend = "dsp.dispensing.amend";
+
+    /// <summary>
+    /// Charging an item at something other than what it is priced at -
+    /// 1.00 for fourteen tablets priced at 0.93 - while it is being
+    /// dispensed or after the issue, with a reason kept on the record.
+    /// </summary>
+    /// <remarks>
+    /// The pharmacist, the assistant, the manager and the administrator
+    /// (24 October 2026). A supervisor may authorise it on the spot for
+    /// someone dispensing who does not hold it, which is how a manager,
+    /// who does not dispense, adjusts a charge at the dispensing screen.
+    /// </remarks>
+    public const string DispensingChargeAdjust = "dsp.charge.adjust";
 
     /// <summary>
     /// Finding, adding and editing patient files.
@@ -98,6 +131,33 @@ public static class PermissionCode
     /// stocktake is not.
     /// </remarks>
     public const string StockPrepack = "inv.stock.prepack";
+
+    /// <summary>
+    /// Deleting what Stock alerts lists as expired or out of stock: an
+    /// expired batch is written off in full, an out-of-stock product is
+    /// discontinued.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission, apart from inv.stocktake.post and
+    /// inv.product.maintain, so the pharmacist and the assistant can clear
+    /// the dead stock the dispensary finds without being handed stock
+    /// counts or the catalogue (18 October 2026).
+    /// </remarks>
+    public const string StockRemove = "inv.stock.remove";
+
+    /// <summary>
+    /// Correcting a product's quantity on hand from the product editor or
+    /// the product list, with a reason: posted as a stock adjustment, so
+    /// the movement report and the audit trail say what changed and why.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission, apart from inv.stocktake.post, so the
+    /// pharmacist and the assistant can put a product's stock right
+    /// without being handed stocktakes, write-offs and transfers (23
+    /// October 2026). Whoever posts stocktakes may correct it too.
+    /// </remarks>
+    public const string StockCorrect = "inv.stock.correct";
+
     public const string SupplierMaintain = "inv.supplier.maintain";
 
     /// <summary>
@@ -129,15 +189,16 @@ public static class PermissionCode
 
     public static IReadOnlyList<string> All { get; } = new[]
     {
-        SaleCreate, SaleDiscountAboveLimit, ReturnAuthorise,
-        SessionCloseOtherUser, ScriptAuthorise, ScriptReverse,
+        SaleCreate, SaleTakePayment, SaleDiscountAboveLimit, ReturnAuthorise,
+        SessionCloseOtherUser, SessionCashUp, ScriptAuthorise, ScriptReverse,
         ScriptCapture, ScriptDispense, PatientMaintain,
         ProductRead, ProductDispensary, ProductMaintain, PriceChange,
         StockTakeCapture, StockTakePost, SupplierMaintain,
         ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,
-        UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack
+        UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack,
+        StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust
     };
 }
 

@@ -12,6 +12,12 @@ public interface IAlertView : Mvp.IView
 
     Guid? SelectedProductId { get; }
 
+    /// The keys of every row chosen, for deleting several at once.
+    IReadOnlyList<string> SelectedKeys { get; }
+
+    /// Whether every row on the page in view is chosen (Ctrl+A).
+    bool WholePageChosen { get; }
+
     void ShowAlerts(IReadOnlyList<StockAlertDto> alerts);
 
     /// The line above the grid: how many, and how many are urgent.
@@ -20,7 +26,11 @@ public interface IAlertView : Mvp.IView
     /// Opens the product behind the selected row.
     void OpenProduct(Guid productId);
 
+    /// Offers Delete, to those who may clear expired and out-of-stock lines.
+    void AllowDelete(bool allowed);
+
     event EventHandler? RefreshRequested;
     event EventHandler? FilterChanged;
     event EventHandler? OpenProductRequested;
+    event EventHandler? DeleteRequested;
 }

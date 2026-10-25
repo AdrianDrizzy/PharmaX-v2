@@ -65,6 +65,43 @@ public static class DosageShorthand
     }
 
     /// <summary>
+    /// The standard codes, with a pharmacy's own meanings over them.
+    /// A code the pharmacy has redefined uses its meaning; one it has not
+    /// listed yet still expands, so a till whose list has not been seeded
+    /// does not print the cipher.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Catalogue(
+        IEnumerable<(string Code, string Meaning)>? extra = null)
+    {
+        var codes = Standard.ToDictionary(c => c.Code, c => c.Meaning,
+            StringComparer.OrdinalIgnoreCase);
+
+        if (extra is null) return codes;
+
+        foreach (var (code, meaning) in extra)
+        {
+            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(meaning))
+                continue;
+
+            codes[code.Trim()] = meaning.Trim();
+        }
+
+        return codes;
+    }
+
+    /// <summary>The catalogue as the Dosage Codes list stands now.</summary>
+    public static async Task<IReadOnlyDictionary<string, string>> CatalogueAsync(
+        this IReferenceRepository reference, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        var listed = await reference.ListAsync(ReferenceKind.DosageCode, "",
+            includeInactive: false, ct);
+
+        return Catalogue(listed.Select(c => (c.Code, c.Name)));
+    }
+
+    /// <summary>
     /// The shorthand every dispensary uses the same way, seeded so the
     /// list is never empty. A pharmacy's own codes - the previous system's "AF", "UF" - are
     /// added under Dispensary > Dosage Codes; the import report lists the

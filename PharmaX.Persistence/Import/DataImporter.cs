@@ -160,6 +160,8 @@ public sealed partial class DataImporter : IDataImporter
             if (!traded)
                 await HistoryAsync(run, Rows, Step, ct);
 
+            await PharmacyAsync(run, ct);
+
             if (dryRun)
             {
                 await tx.RollbackAsync(ct);
@@ -226,6 +228,37 @@ public sealed partial class DataImporter : IDataImporter
     /// <summary>A product as the history needs it.</summary>
     private sealed record ProductRef(Guid Id, string Code, string Description,
         decimal Vat, string TaxCode, decimal UnitsInPack, decimal OnHand);
+
+    /// <summary>
+    /// The pharmacy's own name and address, as this import was run with
+    /// them, for every till that opens this database to print on its
+    /// receipts and labels. Only where nobody has set them: what was
+    /// typed in at System Setup is the pharmacy's to keep. The files carry
+    /// the patients' and prescribers' addresses, never the pharmacy's.
+    /// </summary>
+    private async Task PharmacyAsync(Run run, CancellationToken ct)
+    {
+        var settings = new PharmacySettingStore(_db, _clock);
+        var details = PharmacyDetails.From(_options.Pharmacy);
+
+        foreach (var (key, what, value) in new[]
+                 {
+                     (PharmacySettingKey.TradingName, "name",
+                      details.HasOwnName ? details.TradingName : ""),
+                     (PharmacySettingKey.Address, "address", details.Address)
+                 })
+        {
+            var text = string.Join("\n", (value ?? "").Split('\n')
+                .Select(line => line.Trim()).Where(line => line.Length > 0));
+
+            if (text.Length == 0 || await settings.GetAsync(key, ct) is not null)
+                continue;
+
+            await settings.SetAsync(key, text, ct);
+            run.Report.Note($"The pharmacy's {what}, for every till: "
+                            + text.Replace("\n", ", ", StringComparison.Ordinal));
+        }
+    }
 
     private async Task<bool> HasTradedAsync(CancellationToken ct) =>
         await _db.Sales.AnyAsync(ct) || await _db.Dispensings.AnyAsync(ct)

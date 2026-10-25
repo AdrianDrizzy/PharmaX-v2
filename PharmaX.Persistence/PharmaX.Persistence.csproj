@@ -5,6 +5,12 @@
     <RootNamespace>PharmaX.Persistence</RootNamespace>
   </PropertyGroup>
 
+  <!-- installer\build.ps1 -TestBuild: an installer for trying PharmaX out,
+       with an easier first administrator sign-in (ReferenceDataSeeder). -->
+  <PropertyGroup Condition="'$(PharmaXTestBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);PHARMAX_TEST_BUILD</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\PharmaX.Domain\PharmaX.Domain.csproj" />
     <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />

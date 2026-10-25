@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using PharmaX.Adapters;
 using PharmaX.Application;
 using PharmaX.Application.Abstractions;
+using PharmaX.Assistant;
 using PharmaX.Desktop;
 using PharmaX.Desktop.Mvp;
 using PharmaX.Persistence;
@@ -35,7 +36,12 @@ public class ContainerTests
         typeof(Desktop.Features.Inventory.frmProductList),
         typeof(Desktop.Features.Inventory.frmProductEdit),
         typeof(Desktop.Features.Tills.frmTillSession),
+        typeof(Desktop.Features.Tills.frmCashUp),
+        typeof(Desktop.Features.Tills.frmEndOfDay),
         typeof(Desktop.Features.Reports.frmReports),
+        typeof(Desktop.Features.Assistant.frmAssistant),
+        typeof(Desktop.Features.Sales.frmReceipts),
+        typeof(Desktop.Features.Admin.frmReceiptTemplate),
         typeof(Desktop.Features.Admin.frmUserList),
         typeof(Desktop.Features.Admin.frmUserEdit),
         typeof(Desktop.Features.Patients.frmPatientList),
@@ -135,6 +141,7 @@ public class ContainerTests
         services.AddPharmaXPersistence(options);
         services.AddPharmaXAdapters();
         services.AddPharmaXReporting();
+        services.AddPharmaXAssistant();
         services.AddPharmaXSync(options);
         services.AddPharmaXApplication();
         services.AddPharmaXDesktop();

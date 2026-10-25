@@ -96,6 +96,15 @@ public interface IStockAdjustmentService
     /// </summary>
     Task<Result<StockAdjustmentResultDto>> PrepackAsync(PrepackEditDto edit,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes what Stock alerts lists as expired or out of stock: each
+    /// expired batch is written off in full, and each out-of-stock product
+    /// is discontinued. Says what was done.
+    /// </summary>
+    Task<Result<string>> ClearAsync(IReadOnlyCollection<Guid> expiredBatchIds,
+        IReadOnlyCollection<Guid> outOfStockProductIds,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -234,6 +243,81 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
         return result;
     }
 
+    public async Task<Result<string>> ClearAsync(
+        IReadOnlyCollection<Guid> expiredBatchIds,
+        IReadOnlyCollection<Guid> outOfStockProductIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(expiredBatchIds);
+        ArgumentNullException.ThrowIfNull(outOfStockProductIds);
+
+        _permissions.Demand(PermissionCode.StockRemove);
+
+        var writtenOff = 0;
+        var discontinued = 0;
+
+        foreach (var id in expiredBatchIds.Distinct())
+        {
+            var batch = await _batches.GetAsync(id, ct);
+
+            // Checked again rather than taken on the screen's word: the
+            // list can be a minute old, and a batch sold or written off
+            // since has nothing left to clear.
+            if (batch is null || batch.QuantityOnHand <= 0m
+                || !batch.IsExpiredOn(_clock.Today))
+                continue;
+
+            var product = await _products.GetAsync(batch.ProductId, ct);
+            if (product is null) continue;
+
+            var edit = new StockAdjustmentEditDto(
+                StockAdjustmentKind.ExpiredWriteOff, product.Code,
+                batch.QuantityOnHand, "Deleted from Stock alerts", batch.Id);
+
+            if (await TakeOutAsync(product, edit, ct) is Error error)
+            {
+                _uow.Forget();
+                return Result<string>.Fail(error.Code, error.Message);
+            }
+
+            _audit.Applied("inv.stock.adjust", "Product", product.Id,
+                           Summarise(product, edit));
+            writtenOff++;
+        }
+
+        foreach (var id in outOfStockProductIds.Distinct())
+        {
+            var product = await _products.GetAsync(id, ct);
+
+            // Discontinued, never deleted: a deleted product would take
+            // its sales history off every report already printed.
+            if (product is null || !product.IsActive
+                || product.QuantityOnHand > 0m)
+                continue;
+
+            product.Deactivate();
+            _audit.Applied("inv.product.deactivate", "Product", product.Id,
+                           "Out of stock: deleted from Stock alerts");
+            discontinued++;
+        }
+
+        await _uow.SaveChangesAsync(ct);
+
+        var done = new List<string>();
+
+        if (writtenOff > 0)
+            done.Add($"{writtenOff} expired batch(es) written off");
+
+        if (discontinued > 0)
+            done.Add($"{discontinued} out-of-stock product(s) deleted");
+
+        return Result<string>.Ok(done.Count == 0
+            ? "Nothing was deleted: what was chosen has been sold, written "
+              + "off or restocked since the list was read."
+            : string.Join(" and ", done) + ". Their history stays on the "
+              + "reports.");
+    }
+
     /// <summary>
     /// The item the pre-packs go on the shelf as: the bulk item's
     /// description, schedule, VAT, filing and batch tracking, in packs of
@@ -363,14 +447,14 @@ public sealed class StockAdjustmentService : IStockAdjustmentService
                 product.Description, product.QuantityOnHand, summary));
 
         // Each new pack labelled as a pre-pack: what it is, how many are
-        // in it, and the batch it was counted out of.
+        // in it, the batch it was counted out of, and what it sells for.
         var batch = edit.BatchId is Guid id ? await _batches.GetAsync(id, ct) : null;
 
         return Result<StockAdjustmentResultDto>.Ok(new StockAdjustmentResultDto(
             product.Description, product.QuantityOnHand, summary,
             new LabelDto("", into.Description, into.UnitsInPack, "",
                 batch?.BatchNumber, batch?.ExpiryDate, _user.Username, "Pre-pack",
-                _clock.Today, Array.Empty<string>()),
+                _clock.Today, Array.Empty<string>(), Price: into.RetailPrice.Amount),
             (int)Math.Floor(intoQuantity ?? Moved(product, into, edit.Quantity))));
     }
 

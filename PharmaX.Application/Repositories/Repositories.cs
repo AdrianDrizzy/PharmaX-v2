@@ -44,6 +44,13 @@ public interface ISaleRepository
                                       CancellationToken ct = default);
 
     /// <summary>
+    /// Completed sales between two moments, newest first, with their
+    /// payments: the day's receipts, for reprinting.
+    /// </summary>
+    Task<IReadOnlyList<Sale>> FinalisedBetweenAsync(DateTime fromUtc, DateTime toUtc,
+                                                    CancellationToken ct = default);
+
+    /// <summary>
     /// Baskets parked at this branch's tills, oldest first, so a held sale
     /// can be recalled from any till - the customer comes back to
     /// whichever one is free.
@@ -106,13 +113,16 @@ public interface IProductRepository
         CancellationToken ct = default);
 
     /// <param name="skip">Matches passed over first, for a later page.</param>
+    /// <param name="includeInactive">False hides deactivated products (the list's toggle).</param>
     Task<IReadOnlyList<Product>> SearchAsync(string term, int take = 200,
         ProductScope scope = ProductScope.All, int skip = 0,
+        bool includeInactive = true,
         CancellationToken ct = default);
 
     /// How many the same term matches altogether, so a list screen can
     /// say how much it is not showing.
     Task<int> CountAsync(string term, ProductScope scope = ProductScope.All,
+                         bool includeInactive = true,
                          CancellationToken ct = default);
 
     /// <summary>
@@ -127,6 +137,14 @@ public interface IProductRepository
     /// there is nothing here to breach.
     /// </remarks>
     Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Active products with nothing on hand and no reorder level: the
+    /// lines the rule above leaves out, which Stock alerts offers under
+    /// "Out of stock" alone so that they can be deleted. Read-only.
+    /// </summary>
+    Task<IReadOnlyList<Product>> NothingOnHandAsync(
         CancellationToken ct = default);
 
     Task AddAsync(Product product, CancellationToken ct = default);
@@ -170,12 +188,15 @@ public interface IPatientRepository
     /// file number, ID number, membership number or telephone.
     /// </summary>
     /// <param name="skip">Matches passed over first, for a later page.</param>
+    /// <param name="includeInactive">Deactivated files too, for the list's toggle.</param>
     Task<IReadOnlyList<Patient>> SearchAsync(string term, int take = 100,
                                              int skip = 0,
+                                             bool includeInactive = false,
                                              CancellationToken ct = default);
 
     /// How many active patients the same search matches, across pages.
-    Task<int> CountAsync(string term, CancellationToken ct = default);
+    Task<int> CountAsync(string term, bool includeInactive = false,
+                         CancellationToken ct = default);
 
     /// <summary>
     /// Files that may be the same person: the same ID number, or the
@@ -250,6 +271,25 @@ public interface ITillSessionRepository
     /// </summary>
     Task<TillDeclaration?> LatestDeclarationAsync(Guid tillSessionId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The money taken out of a session's drawer, voided entries included,
+    /// oldest first.
+    /// </summary>
+    Task<IReadOnlyList<TillPayout>> PayoutsAsync(Guid tillSessionId,
+        CancellationToken ct = default);
+
+    Task<TillPayout?> GetPayoutAsync(Guid id, CancellationToken ct = default);
+
+    Task AddPayoutAsync(TillPayout payout, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every session at this branch, on any till, that was running at some
+    /// moment between the two: opened before the end and not closed before
+    /// the start. The end-of-day cash-up and the cash-up picker.
+    /// </summary>
+    Task<IReadOnlyList<TillSession>> ActiveBetweenAsync(DateTime fromUtc,
+        DateTime toUtc, CancellationToken ct = default);
 }
 
 public interface IStocktakeRepository

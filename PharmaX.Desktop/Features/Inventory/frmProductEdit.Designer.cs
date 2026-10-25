@@ -23,6 +23,8 @@ partial class frmProductEdit
     private CheckBox chkBatchTracked = null!;
     private CheckBox chkActive = null!;
     private MoneyTextBox txtOnHand = null!;
+    private Label lblStockReason = null!;
+    private ComboBox cboStockReason = null!;
     private Label lblOnHandNote = null!;
     private Label lblBatches = null!;
     private PhxGrid grdBatches = null!;
@@ -89,6 +91,9 @@ partial class frmProductEdit
         txtOnHand = new MoneyTextBox();
         txtOnHand.Name = "txtOnHand";
         txtOnHand.PlaceholderText = "e.g. 30";
+        lblStockReason = new Label();
+        cboStockReason = new ComboBox();
+        cboStockReason.Name = "cboStockReason";
         lblOnHandNote = new Label();
         lblBatches = new Label();
         grdBatches = new PhxGrid();
@@ -198,11 +203,34 @@ partial class frmProductEdit
         // counting is done a batch at a time on the right.
         Field("&On hand", txtOnHand, 16, 140);
 
+        // Beside the count: why it changed. A change of stock with no
+        // reason is refused, and the reason goes on the adjustment and
+        // the audit trail. Chosen or typed.
+        lblStockReason.AutoSize = true;
+        lblStockReason.Location = new Point(300, 24 + 16 * Pitch);
+        lblStockReason.Name = "lblStockReason";
+        lblStockReason.TabIndex = 16 * 2;
+        lblStockReason.Text = "Rea&son";
+
+        cboStockReason.AccessibleName = "Reason for the stock change";
+        cboStockReason.DropDownStyle = ComboBoxStyle.DropDown;
+        cboStockReason.Items.AddRange(new object[]
+        {
+            "Counted on the shelf", "Damaged or broken", "Expired",
+            "Found", "Correcting a mistake", "Opening stock"
+        });
+        cboStockReason.Location = new Point(360, 20 + 16 * Pitch);
+        cboStockReason.MaxLength = 200;
+        cboStockReason.Size = new Size(190, 23);
+        cboStockReason.TabIndex = 16 * 2;
+
+        // Under the count rather than beside it, where the reason now is:
+        // what the box holds once the stock is on batches.
         lblOnHandNote.AutoSize = false;
         lblOnHandNote.ForeColor = SystemColors.GrayText;
-        lblOnHandNote.Location = new Point(300, 24 + 16 * Pitch);
+        lblOnHandNote.Location = new Point(150, 20 + 16 * Pitch + 28);
         lblOnHandNote.Name = "lblOnHandNote";
-        lblOnHandNote.Size = new Size(250, 20);
+        lblOnHandNote.Size = new Size(400, 20);
 
         // The same shelf a batch at a time, as the list's batch view
         // shows it, and corrected the same way: the number on the pack,
@@ -261,6 +289,8 @@ partial class frmProductEdit
 
         pnlFields.Controls.Add(chkBatchTracked);
         pnlFields.Controls.Add(chkActive);
+        pnlFields.Controls.Add(lblStockReason);
+        pnlFields.Controls.Add(cboStockReason);
         pnlFields.Controls.Add(lblOnHandNote);
         pnlFields.Controls.Add(lblBatches);
         pnlFields.Controls.Add(grdBatches);
@@ -281,7 +311,9 @@ partial class frmProductEdit
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(980, 20 + 16 * Pitch + 40 + 48);
+        // The note's line under the last row as well: 644 high, 966 at
+        // 150 per cent, inside the 1020 a 1080-line screen leaves.
+        ClientSize = new Size(980, 20 + 16 * Pitch + 40 + 48 + 24);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

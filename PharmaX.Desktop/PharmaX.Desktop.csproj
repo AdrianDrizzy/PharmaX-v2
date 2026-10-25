@@ -27,7 +27,8 @@
          at the first query rather than at build time - which is the
          worst possible place to find out. -->
 
-    <Version>1.0.1</Version>
+    <Version>1.0.18</Version>
+    <FileVersion>1.0.18.0</FileVersion>
     <Company>PharmaX</Company>
     <Product>PharmaX</Product>
 
@@ -58,7 +59,61 @@
     <ProjectReference Include="..\PharmaX.Adapters\PharmaX.Adapters.csproj" />
     <ProjectReference Include="..\PharmaX.Reporting\PharmaX.Reporting.csproj" />
     <ProjectReference Include="..\PharmaX.Sync\PharmaX.Sync.csproj" />
+    <ProjectReference Include="..\PharmaX.Assistant\PharmaX.Assistant.csproj" />
   </ItemGroup>
+
+  <!-- The reports assistant's engine (LLamaSharp and llama.cpp). Built with
+       PharmaX and copied beside it into "assistant", but never referenced:
+       it runs in a second PharmaX process, in a load context of its own,
+       so none of its packages reach this project. Hence no output
+       assembly, no assets and nothing passed on; and not this project's
+       OutDir either, or a build into a shared folder would put the
+       engine's own System.Text.Json beside PharmaX's. -->
+  <ItemGroup>
+    <ProjectReference Include="..\PharmaX.Assistant.Engine\PharmaX.Assistant.Engine.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all"
+                      ExcludeAssets="all"
+                      GlobalPropertiesToRemove="OutDir" />
+  </ItemGroup>
+
+  <!-- Copied, not added as items: an item added inside a target with
+       %(RecursiveDir) in its metadata relabels every existing item of that
+       type, which once sent PharmaX's own fonts into "assistant". -->
+  <Target Name="FindAssistantEngine">
+    <MSBuild Projects="..\PharmaX.Assistant.Engine\PharmaX.Assistant.Engine.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="OutDir;TargetFramework;RuntimeIdentifier;SelfContained;PublishDir">
+      <Output TaskParameter="TargetOutputs" ItemName="_AssistantEngine" />
+    </MSBuild>
+
+    <PropertyGroup>
+      <_AssistantEngineDir>@(_AssistantEngine->'%(RootDir)%(Directory)')</_AssistantEngineDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_AssistantEngineFile Include="$(_AssistantEngineDir)**\*.*"
+                            Exclude="$(_AssistantEngineDir)**\*.pdb" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CopyAssistantEngine" AfterTargets="CopyFilesToOutputDirectory"
+          DependsOnTargets="FindAssistantEngine">
+    <Copy SourceFiles="@(_AssistantEngineFile)"
+          DestinationFiles="@(_AssistantEngineFile->'$(OutDir)assistant\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <FileWrites Include="@(_AssistantEngineFile->'$(OutDir)assistant\%(RecursiveDir)%(Filename)%(Extension)')" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="PublishAssistantEngine" AfterTargets="Publish"
+          DependsOnTargets="FindAssistantEngine">
+    <Copy SourceFiles="@(_AssistantEngineFile)"
+          DestinationFiles="@(_AssistantEngineFile->'$(PublishDir)assistant\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />

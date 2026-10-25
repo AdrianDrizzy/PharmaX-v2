@@ -19,8 +19,13 @@ public static class TillReads
     /// An interim read: what the session should hold so far, by tender.
     /// The session stays open.
     /// </summary>
+    /// <param name="payouts">
+    /// Money taken out of the drawer so far, which the cash expected is
+    /// already net of.
+    /// </param>
     public static PrintableDocument XRead(TillSessionDto session,
-                                          XReadDto read)
+                                          XReadDto read,
+                                          IReadOnlyList<PayoutDto>? payouts = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(read);
@@ -41,6 +46,9 @@ public static class TillReads
         lines.Add(new string('-', 42));
         lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Total",
             read.GrandTotal));
+
+        PaidOut(lines, payouts);
+
         lines.Add("");
         lines.Add("Interim read. The session is still open.");
 
@@ -51,9 +59,13 @@ public static class TillReads
     /// The closing read: expected against declared, tender by tender, and
     /// why any variance happened.
     /// </summary>
+    /// <param name="payouts">
+    /// Money taken out of the drawer during the shift, which the cash
+    /// expected is already net of.
+    /// </param>
     public static PrintableDocument ZRead(TillSessionDto session,
         DeclarationDto declaration, string? varianceReason,
-        DateTime closedAtLocal)
+        DateTime closedAtLocal, IReadOnlyList<PayoutDto>? payouts = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(declaration);
@@ -80,6 +92,8 @@ public static class TillReads
         lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Variance",
             declaration.TotalVariance));
 
+        PaidOut(lines, payouts);
+
         if (!string.IsNullOrWhiteSpace(varianceReason))
         {
             lines.Add("");
@@ -90,6 +104,37 @@ public static class TillReads
         lines.Add("Session closed.");
 
         return new PrintableDocument("Z-read", lines);
+    }
+
+    /// <summary>
+    /// The money taken out of the drawer, each with what it was for, and
+    /// the total the cash expected is short of the takings by.
+    /// </summary>
+    private static void PaidOut(List<string> lines, IReadOnlyList<PayoutDto>? payouts)
+    {
+        var paid = (payouts ?? Array.Empty<PayoutDto>()).Where(p => !p.IsVoided).ToList();
+        if (paid.Count == 0) return;
+
+        var culture = CultureInfo.CurrentCulture;
+        const int amount = 12;
+        const int room = 42 - amount;
+
+        lines.Add("");
+        lines.Add("Paid out of the drawer");
+
+        foreach (var p in paid)
+        {
+            var pieces = SlipLayout.Wrap(string.Format(culture, "{0:HH:mm} {1}: {2}",
+                p.PaidAtLocal, p.KindName, p.Note), room, room);
+
+            lines.AddRange(pieces.SkipLast(1));
+            lines.Add(pieces[^1].PadRight(room)
+                      + (-p.Amount).ToString("N2", culture).PadLeft(amount));
+        }
+
+        lines.Add(new string('-', 42));
+        lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Paid out", -PayoutDto.Total(paid)));
+        lines.Add("Cash expected is after the money paid out.");
     }
 
     private static List<string> Header(TillSessionDto session) => new()

@@ -69,6 +69,8 @@ partial class frmMain
             Menu("&File", null,
                 Item("Printer Setup", "printer-setup"),
                 Item("Till Session", "till", Keys.Control | Keys.T),
+                Item("Cash Up", "cash-up", Keys.Control | Keys.U),
+                Item("End-of-Day Cash-Up", "end-of-day"),
                 Item("Log Off", "logoff"),
                 Item("Change Password", "change-password"),
                 Separator(),
@@ -94,6 +96,7 @@ partial class frmMain
                 Item("Sell", "pos", Keys.F3),
                 Item("Scripts to Collect", "collect", Keys.F11),
                 Item("Returns and Credit Notes", "returns", Keys.F5),
+                Item("Receipts (Reprint)", "receipts"),
 
                 // A priced list for a customer at the counter is till
                 // work, and under Dispensary it opened that whole heading
@@ -109,14 +112,14 @@ partial class frmMain
                 Item("Goods Receipt", "goods-receipt", Keys.F8),
                 Item("Manufacturers", "manufacturers"),
                 Item("Products", "products", Keys.F6),
-                Item("Stock", "stock"),
+                Item("Stock on hand", "stock"),
                 Item("Stock Adjustments", "stock-adjust"),
                 Item("Return to Supplier", "supplier-return"),
                 Item("Move Stock and Pre-packs", "move-stock"),
-                Item("Transfers", "transfers"),
-                Item("Breakages", "breakages"),
-                Item("Expired Stock", "expired-stock"),
-                Item("Price Changes", "price-changes"),
+                Item("Transfers report", "transfers"),
+                Item("Breakages report", "breakages"),
+                Item("Expired stock report", "expired-stock"),
+                Item("Price changes report", "price-changes"),
                 Item("Mass Price Change", "mass-price")),
 
             // The pharmacy's own books. Its own heading rather than a
@@ -154,12 +157,15 @@ partial class frmMain
                 Item("Branches", "branches"),
                 Item("Stock Transactions", "transaction-types"),
                 Item("System Setup", "system-setup"),
+                Item("Receipt Template", "receipt-template"),
                 Item("Import Data", "data-import"),
                 Item("Back Up Now", "backup"),
                 Item("System Console", "system-console"),
                 Item("Control Variables", "control-variables")),
 
+            // Also Ctrl+Shift+A on every screen; listed here so it can be found.
             Menu("&Help", null,
+                Item("Ask PharmaX", "assistant", Mvp.PhxFormBase.AssistantKey),
                 Item("About", "about"))
         });
 

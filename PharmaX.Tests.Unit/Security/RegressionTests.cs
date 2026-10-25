@@ -240,10 +240,37 @@ public class PrintingTests
     [Fact]
     public void With_nothing_chosen_the_windows_default_is_used()
     {
-        var choice = PrinterResolver.Resolve(null, "label",
-            new[] { "Zebra", "Office Laser" }, "Zebra", Healthy);
+        var choice = PrinterResolver.Resolve(null, "receipt",
+            new[] { "Till Roll", "Office Laser" }, "Till Roll", Healthy);
 
-        choice.Printer.Should().Be("Zebra");
+        choice.Printer.Should().Be("Till Roll");
+    }
+
+    /// <remarks>
+    /// At a till the Windows default is the receipt printer, and labels
+    /// sent to it came out on the receipt roll. A label goes only to the
+    /// printer chosen for labels, or nowhere, and says why.
+    /// </remarks>
+    [Fact]
+    public void A_label_never_goes_to_the_windows_default()
+    {
+        var none = PrinterResolver.Resolve(null, "label",
+            new[] { "Till Roll", "LX-350" }, "Till Roll", Healthy, orDefault: false);
+
+        none.CanPrint.Should().BeFalse();
+        none.Problem.Should().Be("No label printer is chosen for this computer, "
+            + "so the label was not printed. Choose the label printer in "
+            + "File > Printer Setup.");
+
+        var gone = PrinterResolver.Resolve("LX-350", "label",
+            new[] { "Till Roll" }, "Till Roll", Healthy, orDefault: false);
+
+        gone.CanPrint.Should().BeFalse();
+        gone.Printer.Should().BeNull();
+        gone.Problem.Should().Contain("'LX-350', is not installed any more");
+
+        PrinterResolver.Resolve("LX-350", "label", new[] { "Till Roll", "LX-350" },
+            "Till Roll", Healthy, orDefault: false).Printer.Should().Be("LX-350");
     }
 
     [Fact]
@@ -285,21 +312,18 @@ public class PrintingTests
     {
         using var label = new LabelDocument(new LabelDto("Priya Naidoo",
             "Amoxicillin 500mg capsules 21s", 21m,
-            "One capsule three times a day", "AMOX50-A x4, AMOX50-B x17",
+            "One capsule three times a day", "AMOX50-A",
             new DateOnly(2027, 1, 31), "Test Pharmacist", "SC-001-000003",
-            new DateOnly(2026, 9, 23), Array.Empty<string>()));
+            new DateOnly(2026, 9, 23), new[] { "Keep in the fridge." }));
 
         var lines = label.Lines();
 
-        lines.Should().Contain("Priya Naidoo");
-        lines.Should().Contain("Amoxicillin 500mg capsules 21s");
-        lines.Should().Contain(l => l.StartsWith("Qty: 21", StringComparison.Ordinal));
-        lines.Should().Contain("Take ONE capsule THREE times a day");
-        lines.Should().Contain(l => l.Contains("AMOX50-A x4, AMOX50-B x17",
-                                               StringComparison.Ordinal)
-                                    && l.Contains("01/2027", StringComparison.Ordinal));
-        lines.Should().Contain(l => l.StartsWith("RxNo: SC-001-000003",
-                                                 StringComparison.Ordinal));
+        lines[0].Should().StartWith("AMOXICILLIN 500MG CAPSULES 21S").And.EndWith("(21)");
+        lines.Should().Contain(line => line.StartsWith("PRIYA NAIDOO", StringComparison.Ordinal));
+        string.Join(" ", lines).Should()
+            .Contain("ONE CAPSULE THREE TIMES A DAY KEEP IN THE FRIDGE.");
+        string.Join(" ", lines).Should().Contain("EXP:31/01/2027");
+        string.Join(" ", lines).Should().Contain("BN:AMOX50-A");
     }
 
     [Fact]
@@ -349,6 +373,48 @@ public class PrintingTests
             pages++;
 
         pages.Should().BeLessThan(20, "every page prints at least one line");
+    }
+
+    /// <summary>
+    /// On a till printer on Windows' Generic / Text Only driver a till-roll
+    /// document goes as text, like the receipt: its columns kept as they
+    /// were laid out, its title once, a long line wrapped, and every line
+    /// ended so the last one prints.
+    /// </summary>
+    [Fact]
+    public void A_plain_document_as_text_keeps_its_columns_and_wraps_long_lines()
+    {
+        var header = new ReceiptHeaderDto("E2E Test Pharmacy", "", "", "",
+            "", "Branch 1 Till 1", "test.cashier", new DateTime(2026, 9, 24));
+        var document = new PrintableDocument("Z-Read", new[]
+        {
+            "Z-Read",
+            "Cash".PadRight(34) + "1,480.00",
+            "A note far longer than the roll is wide, which used to be "
+            + "drawn straight off the edge of the paper and lost."
+        });
+
+        using var roll = new PlainDocument(document, header);
+        var bytes = roll.AsText();
+
+        bytes.TakeLast(6).Should().Equal(new byte[] { 0x1B, 0x64, 0x04, 0x1D, 0x56, 0x01 },
+            "the document is fed past the tear bar and cut");
+
+        var lines = System.Text.Encoding.ASCII.GetString(bytes[5..^6])
+            .Replace("\u001BE\u0001", "", StringComparison.Ordinal)
+            .Replace("\u001BE\u0000", "", StringComparison.Ordinal)
+            .Split('\n');
+
+        lines[^1].Should().BeEmpty("every line ends in a line feed");
+        lines[..^1].Should().OnlyContain(line => line.Length <= SlipLayout.Width);
+
+        var texts = lines[..^1].Select(line => line.TrimEnd()).ToList();
+
+        texts.Count(line => line == "Z-Read").Should().Be(1);
+        texts.Should().ContainInOrder(
+            "Cash".PadRight(34) + "1,480.00",
+            "A note far longer than the roll is wide,");
+        texts[^1].Should().EndWith("paper and lost.");
     }
 
     [Theory]
@@ -472,13 +538,42 @@ public class TillRuleTests
         act.Should().Throw<DomainException>("a held sale is parked");
 
         var session = Guid.NewGuid();
+        var till = Guid.NewGuid();
         var cashier = Guid.NewGuid();
-        sale.Resume(session, cashier);
+        sale.Resume(session, till, cashier);
 
         sale.Status.Should().Be(SaleStatus.Open);
         sale.TillSessionId.Should().Be(session);
+        sale.WorkstationId.Should().Be(till);
         sale.OperatorId.Should().Be(cashier);
         sale.Total.Amount.Should().Be(95m);
+    }
+
+    /// <remarks>
+    /// The assistant at the dispensary computer makes the basket up and
+    /// holds it. It is in no till session, and no money can be taken on
+    /// it, until a cashier recalls it at the till with the drawer.
+    /// </remarks>
+    [Fact]
+    public void A_basket_made_up_for_the_cashier_takes_no_money_until_a_till_recalls_it()
+    {
+        var sale = Sale.Prepare(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+                                DateTime.UtcNow);
+        sale.AddLine(Line(10m, 1m));
+
+        sale.TillSessionId.Should().Be(Guid.Empty, "it is in neither till's session");
+
+        var pay = () => sale.TakePayments(new[]
+            { SalePayment.Create(TenderType.Cash, Money.Of(10m)) });
+        pay.Should().Throw<DomainException>().WithMessage("*cashier*");
+
+        sale.Hold();
+
+        var session = Guid.NewGuid();
+        sale.Resume(session, Guid.NewGuid(), Guid.NewGuid());
+
+        sale.TillSessionId.Should().Be(session);
+        pay.Should().NotThrow();
     }
 
     [Fact]

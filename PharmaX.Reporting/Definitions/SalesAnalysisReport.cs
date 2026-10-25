@@ -81,6 +81,23 @@ public sealed class SalesAnalysisReport : IReportDefinition
 
         var costs = products.ToDictionary(p => p.Id, p => p.Cost);
 
+        // Where each product is filed, by name, for the department and
+        // category groupings. Inactive lists too: last year's sales were
+        // filed under them.
+        var departmentNames = await _db.Departments.AsNoTracking()
+            .ToDictionaryAsync(d => d.Id, d => d.Name, ct).ConfigureAwait(false);
+        var categoryNames = await _db.Categories.AsNoTracking()
+            .ToDictionaryAsync(c => c.Id, c => c.Name, ct).ConfigureAwait(false);
+        var filedUnder = products.ToDictionary(p => p.Id, p => (p.DepartmentId, p.CategoryId));
+
+        string Filed(Guid productId, bool byDepartment)
+        {
+            if (!filedUnder.TryGetValue(productId, out var filed)) return Unfiled;
+            var id = byDepartment ? filed.DepartmentId : filed.CategoryId;
+            var names = byDepartment ? departmentNames : categoryNames;
+            return id is Guid g && names.TryGetValue(g, out var name) ? name : Unfiled;
+        }
+
         // The presets have offered a department and a category since they
         // were written, and this report never read either: a manager who
         // asked for one department's daily takings was shown the whole
@@ -103,6 +120,7 @@ public sealed class SalesAnalysisReport : IReportDefinition
                 .Select(l => new SoldLine(
                     s.OperatorId,
                     DateOnly.FromDateTime(s.OccurredAtUtc.ToLocalTime()),
+                    s.OccurredAtUtc.ToLocalTime(),
                     l.ProductId,
                     l.Description,
                     l.Quantity,
@@ -130,6 +148,7 @@ public sealed class SalesAnalysisReport : IReportDefinition
                     return new SoldLine(
                         x.OperatorId,
                         DateOnly.FromDateTime(x.OccurredAtUtc.ToLocalTime()),
+                        x.OccurredAtUtc.ToLocalTime(),
                         l.ProductId,
                         l.Description,
                         -l.Quantity,
@@ -188,10 +207,35 @@ public sealed class SalesAnalysisReport : IReportDefinition
                     CultureInfo.InvariantCulture), g))
                 .ToList(),
 
+            // Profit by Product lists the most profitable first, as its
+            // graph does; the plain product list, the best sellers.
             "product" => lines
                 .GroupBy(l => l.Description)
                 .Select(g => Of(g.Key, g))
+                .OrderByDescending(row => (decimal)row[
+                    r.String("chart") == "profit" ? "Margin" : "Sales"]!)
+                .ToList(),
+
+            "department" or "category" => lines
+                .GroupBy(l => Filed(l.ProductId, groupBy == "department"))
+                .Select(g => Of(g.Key, g))
                 .OrderByDescending(row => (decimal)row["Sales"]!)
+                .ToList(),
+
+            // Which days of the week and hours of the day are busy, in
+            // the order of the week and the clock rather than by size.
+            "weekday" => lines
+                .GroupBy(l => ((int)l.Day.DayOfWeek + 6) % 7)
+                .OrderBy(g => g.Key)
+                .Select(g => Of(CultureInfo.CurrentCulture.DateTimeFormat
+                    .GetDayName((DayOfWeek)((g.Key + 1) % 7)), g))
+                .ToList(),
+
+            "hour" => lines
+                .GroupBy(l => l.At.Hour)
+                .OrderBy(g => g.Key)
+                .Select(g => Of(string.Format(CultureInfo.InvariantCulture,
+                    "{0:00}:00", g.Key), g))
                 .ToList(),
 
             _ => lines
@@ -206,14 +250,23 @@ public sealed class SalesAnalysisReport : IReportDefinition
             "markupBand" => "Sales Summary (By Markup %)",
             "day" => "Daily Sales",
             "month" => "Monthly Sales",
+            "product" => "Sales and Profit by Product",
+            "department" => "Sales and Profit by Department",
+            "category" => "Sales and Profit by Category",
+            "weekday" => "Sales by Day of the Week",
+            "hour" => "Sales by Hour of the Day",
             _ => "Sales Analysis"
         };
 
-        return ReportBuilder
+        var result = ReportBuilder
             .For(title)
             .Column("Group", GroupHeader(groupBy))
             .Column("Quantity", "Units", "N3", rightAlign: true)
             .Column("Sales", "Sales", "N2", rightAlign: true)
+
+            // What was sold over the counter: the sales less the script
+            // co-payments.
+            .Column("Counter", "Over the counter", "N2", rightAlign: true)
 
             // Named on the report rather than quietly netted off, so a
             // manager can see why the margin is struck on less than the
@@ -221,15 +274,23 @@ public sealed class SalesAnalysisReport : IReportDefinition
             // dispensing that issued it.
             .Column("Scripts", "Script co-pay", "N2", rightAlign: true)
             .Column("Cost", "Cost", "N2", rightAlign: true)
-            .Column("Margin", "Margin", "N2", rightAlign: true)
-            .Column("MarginPercent", "Margin %", "N1", rightAlign: true)
+            // Profit is the selling price less the cost price, on what
+            // the pharmacy can cost (the co-payments are left out).
+            .Column("Margin", "Profit", "N2", rightAlign: true)
+            .Column("MarginPercent", "Profit %", "N1", rightAlign: true)
             .Rows(rows)
             .Total("Sales", rows.Sum(x => (decimal)x["Sales"]!))
+            .Total("Counter", rows.Sum(x => (decimal)x["Counter"]!))
             .Total("Scripts", rows.Sum(x => (decimal)x["Scripts"]!))
             .Total("Cost", rows.Sum(x => (decimal)x["Cost"]!))
             .Total("Margin", rows.Sum(x => (decimal)x["Margin"]!))
             .Total("Count", rows.Count)
             .Build(r.Provenance);
+
+        // A profit report graphs the profit; the others the sales.
+        return string.Equals(r.String("chart"), "profit", StringComparison.Ordinal)
+            ? result with { Chart = Exporters.ReportCharts.Suggest(result, "Margin") }
+            : result;
     }
 
     private static decimal Cost(IReadOnlyDictionary<Guid, decimal> costs,
@@ -255,6 +316,7 @@ public sealed class SalesAnalysisReport : IReportDefinition
             ["Group"] = group,
             ["Quantity"] = quantity,
             ["Sales"] = sales,
+            ["Counter"] = costed,
             ["Scripts"] = scripts,
             ["Cost"] = cost,
             ["Margin"] = margin,
@@ -290,6 +352,10 @@ public sealed class SalesAnalysisReport : IReportDefinition
         "product" => "Product",
         "day" => "Day",
         "month" => "Month",
+        "department" => "Department",
+        "category" => "Category",
+        "weekday" => "Day of week",
+        "hour" => "Hour",
         _ => "Operator"
     };
 
@@ -298,6 +364,9 @@ public sealed class SalesAnalysisReport : IReportDefinition
 
     /// Sorted last, after the bands of the trade it gives back.
     private const string RefundBand = "7. Refunds and credit notes";
+
+    /// A product filed under no department or category, or one since removed.
+    private const string Unfiled = "(not filed)";
 
     /// The sales, of those given, that collected a script.
     private async Task<HashSet<Guid>> CollectionsAsync(
@@ -328,7 +397,7 @@ public sealed class SalesAnalysisReport : IReportDefinition
     /// True for a line of a refund or credit note, whose quantity and
     /// amount are negative.
     /// </param>
-    private sealed record SoldLine(Guid OperatorId, DateOnly Day,
+    private sealed record SoldLine(Guid OperatorId, DateOnly Day, DateTime At,
         Guid ProductId, string Description, decimal Quantity, decimal Gross,
         bool IsCoPayment, decimal Cost, bool IsRefund);
 }
@@ -365,11 +434,24 @@ public sealed class CashUpReport : IReportDefinition
             .ToListAsync(ct)
             .ConfigureAwait(false);
 
+        // Who opened each session. A session stays open on its till until
+        // somebody cashes it up, and that is not always who opened it.
+        var sessionIds = declarations.Select(d => d.TillSessionId).Distinct().ToList();
+
+        var openedBy = await _db.TillSessions
+            .AsNoTracking()
+            .Where(s => sessionIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.OpenedBy, ct)
+            .ConfigureAwait(false);
+
         var rows = new List<Dictionary<string, object?>>();
 
         foreach (var declaration in declarations)
         {
             var declaredAtLocal = declaration.DeclaredAtUtc.ToLocalTime();
+            var opener = openedBy.TryGetValue(declaration.TillSessionId, out var id)
+                ? r.OperatorName(id)
+                : "";
 
             // The counted notes first, then the tender lines. One flat
             // table, because the printed form is one page and the
@@ -378,6 +460,7 @@ public sealed class CashUpReport : IReportDefinition
                 rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["DeclaredAt"] = declaredAtLocal,
+                    ["OpenedBy"] = opener,
                     ["Kind"] = "Denomination",
                     ["Detail"] = count.Key,
                     ["Count"] = count.Count,
@@ -390,6 +473,7 @@ public sealed class CashUpReport : IReportDefinition
                 rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["DeclaredAt"] = declaredAtLocal,
+                    ["OpenedBy"] = opener,
                     ["Kind"] = "Tender",
                     ["Detail"] = line.Tender.ToString(),
                     ["Count"] = null,
@@ -402,6 +486,7 @@ public sealed class CashUpReport : IReportDefinition
         return ReportBuilder
             .For("Cash Declaration Form")
             .Column("DeclaredAt", "Declared at", "dd/MM/yyyy HH:mm")
+            .Column("OpenedBy", "Session opened by")
             .Column("Kind", "Kind")
             .Column("Detail", "Detail")
             .Column("Count", "Count", rightAlign: true)

@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkbookWriter, Exporters.ExcelExporter>();
 
         services.AddScoped<IReportDefinition, TransactionsReport>();
+        services.AddScoped<IReportDefinition, SalesSummaryReport>();
         services.AddScoped<IReportDefinition, SalesAnalysisReport>();
         services.AddScoped<IReportDefinition, SalesLinesReport>();
         services.AddScoped<IReportDefinition, VatReport>();
@@ -35,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IReportDefinition, PriceChangesReport>();
         services.AddScoped<IReportDefinition, CostCheckReport>();
         services.AddScoped<IReportDefinition, HistoryReport>();
+        services.AddScoped<IReportDefinition, EndOfDayCashUpReport>();
 
         // A default the desktop layer overrides with the real logo.
         // Registered here so that a host without a UI - the test
@@ -42,6 +44,8 @@ public static class DependencyInjection
         services.TryAddSingleton<IReportBranding, NoReportBranding>();
 
         services.AddSingleton<IReportExporter, PdfExporter>();
+        services.AddScoped<IPdfWriter, PdfExporter>();
+        services.AddSingleton<IChartRenderer, ReportCharts>();
         services.AddSingleton<IReportExporter, ExcelExporter>();
         services.AddSingleton<IReportExporter, CsvExporter>();
 

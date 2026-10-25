@@ -6,6 +6,7 @@ partial class frmPatientList
 {
     private System.ComponentModel.IContainer components = null!;
     private Panel pnlTop = null!;
+    private CheckBox chkShowInactive = null!;
     private Panel pnlBottom = null!;
     private Label lblSearch = null!;
     private TextBox txtSearch = null!;
@@ -33,6 +34,7 @@ partial class frmPatientList
     {
         components = new System.ComponentModel.Container();
         pnlTop = new Panel();
+        chkShowInactive = new CheckBox();
         pnlBottom = new Panel();
         lblSearch = new Label();
         txtSearch = new TextBox();
@@ -64,7 +66,13 @@ partial class frmPatientList
         txtSearch.Size = new Size(320, 23);
         txtSearch.TabIndex = 0;
 
-        pnlTop.Controls.AddRange(new Control[] { txtSearch, lblSearch });
+        // Deactivated files are hidden from the search until asked for.
+        chkShowInactive.AutoSize = true;
+        chkShowInactive.Location = new Point(410, 15);
+        chkShowInactive.Name = "chkShowInactive";
+        chkShowInactive.Text = "Show &deactivated";
+
+        pnlTop.Controls.AddRange(new Control[] { txtSearch, lblSearch, chkShowInactive });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 48;
         pnlTop.Name = "pnlTop";

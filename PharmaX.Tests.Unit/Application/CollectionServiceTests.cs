@@ -121,6 +121,28 @@ public class CollectionServiceTests
         result.Error.Code.Should().Be("POS-013");
     }
 
+    /// <remarks>
+    /// The assistant at the dispensary computer does not take the money:
+    /// the co-payment goes in the drawer of the till it is counted at.
+    /// The script stays in the queue for the cashier.
+    /// </remarks>
+    [Fact]
+    public async Task An_assistant_does_not_take_a_co_payment()
+    {
+        var builder = new CollectionServiceBuilder
+        {
+            Permissions = new FakePermissionRepository(granted: new[]
+                { PharmaX.Domain.Security.PermissionCode.SaleCreate })
+        };
+        var dispensing = builder.Waiting(tariff: 90m, scheme: 60m);
+
+        var result = await builder.Build().StartAsync(dispensing.Id);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("POS-028");
+        dispensing.AwaitsCollection.Should().BeTrue();
+    }
+
     /// <summary>
     /// A cashier who opens a script and is called away must not lock the
     /// patient out of paying.
@@ -306,9 +328,13 @@ internal sealed class CollectionServiceBuilder
     public FakeClock Clock { get; } = new(Noon);
     public FakeCurrentUser User { get; } = new();
 
-    public FakePermissionRepository Permissions { get; } =
+    /// A cashier's: sells and takes the money.
+    public FakePermissionRepository Permissions { get; set; } =
         new(granted: new[]
-            { PharmaX.Domain.Security.PermissionCode.SaleCreate });
+        {
+            PharmaX.Domain.Security.PermissionCode.SaleCreate,
+            PharmaX.Domain.Security.PermissionCode.SaleTakePayment
+        });
 
     /// <summary>
     /// An issued script sitting in the queue, and the patient, script

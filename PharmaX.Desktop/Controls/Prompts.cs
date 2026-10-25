@@ -205,12 +205,13 @@ public sealed class frmTextPrompt : Form
         Name = "frmTextPrompt";
 
         // Grows to the prompt, which can be a clinical warning of two or
-        // three lines rather than a one-line question.
+        // three lines rather than a one-line question. No MaximumSize: its
+        // height of 0 ("no limit") was scaled into a limit at 150%, and the
+        // question shrank to nothing above an empty box (23 October 2026).
         var label = new Label
         {
             AutoSize = false,
             Location = new Point(16, 16),
-            MaximumSize = new Size(400, 0),
             Name = "lblPrompt",
             Size = new Size(400, 20),
             Text = prompt
@@ -586,6 +587,40 @@ public sealed class frmChoicePrompt : Form
 
         Controls.AddRange(new Control[] { label, _list, ok, cancel });
 
+        // Several at once: Ctrl+A for the lot, and buttons for those who
+        // do not know it. A list box has no Ctrl+A of its own.
+        if (many)
+        {
+            var all = new Button
+            {
+                Location = new Point(16, height + 56),
+                Name = "btnSelectAll",
+                Size = new Size(110, 28),
+                Text = "Select &all"
+            };
+            all.Click += (_, _) => SelectAll(true);
+
+            var none = new Button
+            {
+                Location = new Point(132, height + 56),
+                Name = "btnSelectNone",
+                Size = new Size(90, 28),
+                Text = "C&lear"
+            };
+            none.Click += (_, _) => SelectAll(false);
+
+            _list.KeyDown += (_, e) =>
+            {
+                if (e.Control && e.KeyCode == Keys.A)
+                {
+                    SelectAll(true);
+                    e.SuppressKeyPress = true;
+                }
+            };
+
+            Controls.AddRange(new Control[] { all, none });
+        }
+
         // Double-clicking a row is how everybody expects a list like
         // this to be answered.
         _list.DoubleClick += (_, _) =>
@@ -602,6 +637,14 @@ public sealed class frmChoicePrompt : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
         Text = WindowTitles.Brand(title);
+    }
+
+    private void SelectAll(bool on)
+    {
+        _list.BeginUpdate();
+        for (var i = 0; i < _list.Items.Count; i++) _list.SetSelected(i, on);
+        _list.EndUpdate();
+        _list.Focus();
     }
 
     /// The ones picked, in list order; empty if cancelled.

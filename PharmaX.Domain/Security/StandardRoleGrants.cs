@@ -28,13 +28,24 @@ public static class StandardRoleGrants
         Role.Standard.Manager => new[]
         {
             PermissionCode.SaleCreate,
+            PermissionCode.SaleTakePayment,
             PermissionCode.SaleDiscountAboveLimit,
             PermissionCode.ReturnAuthorise,
             PermissionCode.SessionCloseOtherUser,
 
+            // Money out of the drawer, as every role with a till records
+            // it (23 October 2026).
+            PermissionCode.SessionPayOut,
+
             // The branch manager looks patients up for account queries
             // and complaints, but does not capture or dispense scripts.
             PermissionCode.PatientMaintain,
+
+            // Charging a dispensed item at something other than its
+            // price, as the pharmacist and the assistant do (24 October
+            // 2026). Not dispensing, the manager authorises it at the
+            // dispensing screen for whoever is.
+            PermissionCode.DispensingChargeAdjust,
 
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
@@ -42,6 +53,10 @@ public static class StandardRoleGrants
             PermissionCode.PriceChange,
             PermissionCode.StockTakeCapture,
             PermissionCode.StockTakePost,
+
+            // Clearing expired and out-of-stock lines from Stock alerts,
+            // as the pharmacist and the assistant do (18 October 2026).
+            PermissionCode.StockRemove,
             PermissionCode.SupplierMaintain,
             PermissionCode.ReferenceMaintain,
             PermissionCode.PurchaseOrderRaise,
@@ -65,6 +80,7 @@ public static class StandardRoleGrants
         Role.Standard.Pharmacist => new[]
         {
             PermissionCode.SaleCreate,
+            PermissionCode.SaleTakePayment,
             PermissionCode.PatientMaintain,
 
             // The authorisations a till asks for - a refund, a discount
@@ -75,6 +91,7 @@ public static class StandardRoleGrants
             PermissionCode.ReturnAuthorise,
             PermissionCode.SaleDiscountAboveLimit,
             PermissionCode.SessionCloseOtherUser,
+            PermissionCode.SessionPayOut,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
             PermissionCode.ScriptAuthorise,
@@ -85,6 +102,14 @@ public static class StandardRoleGrants
             PermissionCode.DispensingAmend,
             PermissionCode.StockPrepack,
 
+            // Charging an item at something other than its price, with a
+            // reason (24 October 2026).
+            PermissionCode.DispensingChargeAdjust,
+
+            // And clears expired and out-of-stock lines from Stock alerts
+            // (18 October 2026).
+            PermissionCode.StockRemove,
+
             // The dispensary orders and books in its own stock (16
             // October 2026).
             PermissionCode.PurchaseOrderRaise,
@@ -92,6 +117,16 @@ public static class StandardRoleGrants
 
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
+
+            // Keeps the products up to date - prices, stock on hand and
+            // the rest of the product - as the assistant and the
+            // administrator do (23 October 2026). Stock is corrected
+            // with a reason, as an adjustment; stocktakes, write-offs
+            // and transfers stay with inv.stocktake.post.
+            PermissionCode.ProductMaintain,
+            PermissionCode.PriceChange,
+            PermissionCode.StockCorrect,
+
             PermissionCode.StockTakeCapture,
             PermissionCode.ReportOperational,
             PermissionCode.ReportClinical
@@ -111,12 +146,21 @@ public static class StandardRoleGrants
             PermissionCode.ReturnAuthorise,
             PermissionCode.SaleDiscountAboveLimit,
             PermissionCode.SessionCloseOtherUser,
+            PermissionCode.SessionPayOut,
             PermissionCode.ScriptCapture,
             PermissionCode.ScriptDispense,
             PermissionCode.DispensingAmend,
+            PermissionCode.DispensingChargeAdjust,
             PermissionCode.StockPrepack,
+            PermissionCode.StockRemove,
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
+
+            // The products, as the pharmacist keeps them.
+            PermissionCode.ProductMaintain,
+            PermissionCode.PriceChange,
+            PermissionCode.StockCorrect,
+
             PermissionCode.StockTakeCapture,
             PermissionCode.PurchaseOrderRaise,
             PermissionCode.GoodsReceive,
@@ -128,6 +172,9 @@ public static class StandardRoleGrants
         Role.Standard.Cashier => new[]
         {
             PermissionCode.SaleCreate,
+            PermissionCode.SaleTakePayment,
+            PermissionCode.SessionCashUp,
+            PermissionCode.SessionPayOut,
             PermissionCode.ProductRead
         },
 

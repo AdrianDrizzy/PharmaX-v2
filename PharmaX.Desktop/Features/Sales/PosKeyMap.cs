@@ -39,6 +39,24 @@ public static class PosKeyMap
     public const Keys VoidLine = Keys.Escape;
 
     /// <summary>
+    /// The keys with a button on the bar along the foot. The others have
+    /// theirs where they belong, so the bar's buttons stay wide enough to
+    /// read on a small till screen and nothing is hidden behind a menu:
+    /// Customer beside the customer's name, Void line on the line itself
+    /// (right-click, or Delete), and Reprint, Lock and Close in the header.
+    /// </summary>
+    public static IReadOnlySet<Keys> OnBar { get; } = new HashSet<Keys>
+    {
+        Search, Quantity, LineDiscount, Payment, Hold, Recall, Quotation, NoSale
+    };
+
+    /// The keys whose buttons sit in the header, in the order shown.
+    public static IReadOnlyList<Keys> InHeader { get; } = new[] { Reprint, Lock, Close };
+
+    /// <summary>The label for a key, as the bar and its buttons show it.</summary>
+    public static string LabelFor(Keys key) => Bar.First(b => b.Key == key).Label;
+
+    /// <summary>
     /// What the function bar shows, in the order it shows it: key order,
     /// so that the bar reads the way the keyboard is laid out.
     /// </summary>

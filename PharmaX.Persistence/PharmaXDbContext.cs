@@ -37,6 +37,10 @@ public class PharmaXDbContext : DbContext
         Set<SaleReturnLine>();
     public DbSet<TillSession> TillSessions => Set<TillSession>();
     public DbSet<TillDeclaration> TillDeclarations => Set<TillDeclaration>();
+
+    // Money taken out of a drawer during its shift: drawings, lunch,
+    // other expenses.
+    public DbSet<TillPayout> TillPayouts => Set<TillPayout>();
     public DbSet<Denomination> Denominations => Set<Denomination>();
     public DbSet<Patient> Patients => Set<Patient>();
     public DbSet<PatientAttachment> PatientAttachments =>

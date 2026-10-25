@@ -1,8 +1,12 @@
 using FluentAssertions;
 using NSubstitute;
+using PharmaX.Application.Abstractions;
+using PharmaX.Application.Finance;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Sales.Dtos;
+using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
+using PharmaX.Domain.Security;
 using PharmaX.Domain.Finance;
 using PharmaX.Domain.Patients;
 using PharmaX.Domain.Primitives;
@@ -274,6 +278,32 @@ public class EcoCashTests
         ledger.NetOf(LedgerCode.CashOnHand).Should().Be(0m);
     }
 
+    [Fact]
+    public async Task A_pharmacist_cannot_cash_up_and_close()
+    {
+        var cashUp = new CashUpService(
+            Substitute.For<ITillSessionRepository>(),
+            Substitute.For<ISaleRepository>(),
+            Substitute.For<IReturnRepository>(),
+            Substitute.For<IAccountRepository>(),
+            Substitute.For<IJournalPoster>(),
+            new FakeSessionContext(),
+            new FakeAuditWriter(),
+            Substitute.For<IOutbox>(),
+            new FakeUnitOfWork(),
+            new FakeCurrentUser(),
+            new FakeClock(Noon),
+            new PermissionService(new FakeCurrentUser(),
+                new FakePermissionRepository(granted: new[]
+                    { PermissionCode.SaleCreate }),
+                new FakeAuditWriter()));
+
+        var result = await cashUp.CloseAsync(null);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("POS-027");
+    }
+
     // ---- Helpers -----------------------------------------------------
 
     /// <summary>
@@ -334,7 +364,7 @@ public class EcoCashTests
         var cashUp = new CashUpService(sessions, builder.Sales, returns,
             builder.Accounts, builder.Journals(), new FakeSessionContext(),
             builder.Audit, builder.Outbox, builder.UnitOfWork, builder.User,
-            builder.Clock);
+            builder.Clock, builder.PermissionService());
 
         return (builder, session, cashUp);
     }

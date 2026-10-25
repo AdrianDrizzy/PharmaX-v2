@@ -16,7 +16,7 @@ namespace PharmaX.Adapters.Printing;
 /// saved the document went to the Windows default without checking there
 /// was one. This is the one place that looks: the printer chosen for this
 /// workstation if it is installed, otherwise the Windows default, and a
-/// plain sentence when there is neither.
+/// plain sentence when there is neither. Labels never go to the default.
 /// </remarks>
 public static class PrinterResolver
 {
@@ -31,7 +31,13 @@ public static class PrinterResolver
     /// The printer saved for this workstation in Printer Setup, if any.
     /// </param>
     /// <param name="purpose">"receipt" or "label", for the messages.</param>
-    public static PrinterChoice Resolve(string? chosen, string purpose)
+    /// <param name="orDefault">
+    /// Whether the Windows default will do when nothing usable is chosen.
+    /// Not for labels: at a till the default is the receipt printer, and
+    /// labels sent there came out on the receipt roll.
+    /// </param>
+    public static PrinterChoice Resolve(string? chosen, string purpose,
+                                        bool orDefault = true)
     {
         var installed = Installed();
 
@@ -43,8 +49,8 @@ public static class PrinterResolver
             && NetworkPrinters.Connect(chosen.Trim()) is null)
             installed = Installed();
 
-        return Resolve(chosen, purpose, installed, DefaultPrinter(),
-                       PrinterStatus.ProblemWith);
+        return Resolve(chosen, purpose, installed, WindowsDefault(),
+                       PrinterStatus.ProblemWith, orDefault);
     }
 
     /// <summary>
@@ -53,7 +59,7 @@ public static class PrinterResolver
     /// </summary>
     public static PrinterChoice Resolve(string? chosen, string purpose,
         IReadOnlyList<string> installed, string? windowsDefault,
-        Func<string, string?> problemWith)
+        Func<string, string?> problemWith, bool orDefault = true)
     {
         ArgumentNullException.ThrowIfNull(installed);
         ArgumentNullException.ThrowIfNull(problemWith);
@@ -84,6 +90,12 @@ public static class PrinterResolver
                   + $"{NetworkPrinters.Describe(chosen.Trim())}, could not be "
                   + $"reached - check {network} is switched on";
         }
+
+        if (!orDefault)
+            return PrinterChoice.None(
+                (note ?? $"No {purpose} printer is chosen for this computer")
+                + $", so the {purpose} was not printed. Choose the {purpose} "
+                + "printer in File > Printer Setup.");
 
         if (string.IsNullOrWhiteSpace(windowsDefault)
             || !installed.Contains(windowsDefault, StringComparer.OrdinalIgnoreCase))
@@ -117,7 +129,8 @@ public static class PrinterResolver
                   + "printer is on.");
     }
 
-    private static string? DefaultPrinter()
+    /// <summary>The Windows default printer, if one is set.</summary>
+    public static string? WindowsDefault()
     {
         try
         {
