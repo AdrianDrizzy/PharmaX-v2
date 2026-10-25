@@ -37,6 +37,10 @@ public static class StandardRoleGrants
             // it (23 October 2026).
             PermissionCode.SessionPayOut,
 
+            // Taking a printed receipt off the Receipts list, with a
+            // reason; the sale stays (25 October 2026).
+            PermissionCode.ReceiptHide,
+
             // The branch manager looks patients up for account queries
             // and complaints, but does not capture or dispense scripts.
             PermissionCode.PatientMaintain,

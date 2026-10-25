@@ -136,6 +136,7 @@ public class ReceiptDocumentTests : IDisposable
             "TOTAL-USD:               2.50",
             "--------------------------------",
             "Cash USD                 2.50",
+            "Change USD               0.00",
             "--------------------------------",
             "Thank you");
     }
@@ -316,8 +317,31 @@ public class ReceiptDocumentTests : IDisposable
         var texts = Texts(Rows(sale, Header(null)));
 
         texts.Should().Contain(ItemRow("1", "1.00", "1.00") + " NV");
-        texts.Should().NotContain(t => t.StartsWith("Change", StringComparison.Ordinal),
-            "nothing was handed back");
+    }
+
+    [Fact]
+    public void Exact_cash_still_says_no_change_was_due()
+    {
+        var sale = Sale() with
+        {
+            Totals = new SaleTotalsDto(69.90m, 0m, 9.12m, 69.90m, 69.90m, 0m),
+            Payments = new[] { new PaymentDto("Cash", 69.90m, null) }
+        };
+
+        Texts(Rows(sale, Header(null))).Should().Contain(AmountRow("Change USD", "0.00"));
+    }
+
+    [Fact]
+    public void A_sale_paid_without_cash_has_no_change_line()
+    {
+        var sale = Sale() with
+        {
+            Totals = new SaleTotalsDto(69.90m, 0m, 9.12m, 69.90m, 69.90m, 0m),
+            Payments = new[] { new PaymentDto("Card", 69.90m, "1234") }
+        };
+
+        Texts(Rows(sale, Header(null))).Should().NotContain(t => t.StartsWith("Change", StringComparison.Ordinal),
+            "only cash gives change");
     }
 
     /// <remarks>

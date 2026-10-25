@@ -46,6 +46,40 @@ public partial class frmPOS : PhxFormBase, IPosView
     {
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
+        StartRequested();
+    }
+
+    private (string Text, bool IsCode, decimal? Quantity)? _start;
+    private decimal? _presetQuantity;
+
+    /// <summary>
+    /// A sale asked of Ask PharmaX: the product rung up, at the quantity
+    /// asked for, or its name typed in for the cashier to pick from where
+    /// it matched nothing for certain. Payment stays the cashier's.
+    /// </summary>
+    public void StartWith(string? text, bool isCode, decimal? quantity)
+    {
+        if (!string.IsNullOrWhiteSpace(text)) _start = (text.Trim(), isCode, quantity);
+    }
+
+    private void StartRequested()
+    {
+        if (_start is not { } start) return;
+        _start = null;
+
+        if (!start.IsCode)
+        {
+            scanBar.Type(start.Text);
+            return;
+        }
+
+        CodeScanned?.Invoke(this, start.Text);
+
+        if (start.Quantity is decimal quantity && quantity != 1m)
+        {
+            _presetQuantity = quantity;
+            QuantityRequested?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     // Escape voids the current line here, so the screen must not also
@@ -345,9 +379,18 @@ public partial class frmPOS : PhxFormBase, IPosView
             : null;
     }
 
-    public decimal? PromptQuantity(decimal current) =>
-        frmNumberPrompt.Ask(this, "Quantity", "Quantity for this line",
-                            current, decimals: 3);
+    public decimal? PromptQuantity(decimal current)
+    {
+        // The quantity Ask PharmaX was given, once, without asking again.
+        if (_presetQuantity is decimal preset)
+        {
+            _presetQuantity = null;
+            return preset;
+        }
+
+        return frmNumberPrompt.Ask(this, "Quantity", "Quantity for this line",
+                                   current, decimals: 3);
+    }
 
     public decimal? PromptDiscount(decimal lineTotal) =>
         frmNumberPrompt.AskAmountOrPercent(this, "Discount",

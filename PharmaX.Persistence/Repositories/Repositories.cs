@@ -77,6 +77,41 @@ public sealed class SaleRepository : ISaleRepository
             .OrderByDescending(s => s.OccurredAtUtc)
             .ToListAsync(ct);
 
+    public async Task<(IReadOnlyList<Sale> Page, int Total)> ReceiptsAsync(
+        DateTime fromUtc, DateTime toUtc, string? number,
+        IReadOnlyCollection<Guid> operators, bool includeHidden, int skip,
+        int take, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(operators);
+
+        var query = _db.Sales
+            .AsNoTracking()
+            .Where(s => s.Status == SaleStatus.Finalised
+                        && s.DocumentNumber != null && s.DocumentNumber != ""
+                        && s.OccurredAtUtc >= fromUtc && s.OccurredAtUtc < toUtc)
+            .Where(s => includeHidden || s.ReceiptHiddenReason == null);
+
+        if (!string.IsNullOrWhiteSpace(number))
+        {
+            var pattern = $"%{number.Trim()}%";
+            query = query.Where(s => EF.Functions.Like(s.DocumentNumber!, pattern)
+                                     || operators.Contains(s.OperatorId));
+        }
+
+        var total = await query.CountAsync(ct);
+
+        var page = await query
+            .Include(s => s.Lines)
+            .Include(s => s.Payments)
+            .OrderByDescending(s => s.OccurredAtUtc)
+            .ThenByDescending(s => s.DocumentNumber)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return (page, total);
+    }
+
     public async Task<IReadOnlyList<Sale>> HeldAsync(
         CancellationToken ct = default)
     {
@@ -203,6 +238,13 @@ public sealed class ProductRepository : IProductRepository
             .Where(p => p.ReorderLevel > 0m)
             .Where(p => p.QuantityOnHand <= p.ReorderLevel)
             .OrderBy(p => p.Description)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<string>> CodesAsync(
+        CancellationToken ct = default) =>
+        await _db.Products
+            .AsNoTracking()
+            .Select(p => p.Code)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Product>> NothingOnHandAsync(
@@ -892,6 +934,15 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
                 g => g.Sum(l => Math.Max(l.QuantityOrdered - l.QuantityReceived, 0m)));
     }
 
+    public async Task<IReadOnlyList<PurchaseOrder>> DraftsAsync(
+        CancellationToken ct = default) =>
+        await _db.PurchaseOrders
+            .Include(o => o.Lines)
+            .Where(o => o.Status == PurchaseOrderStatus.Draft)
+            .OrderBy(o => o.OrderedOn)
+            .ThenBy(o => o.OrderNumber)
+            .ToListAsync(ct);
+
     public async Task AddAsync(PurchaseOrder order,
         CancellationToken ct = default) =>
         await _db.PurchaseOrders.AddAsync(order, ct);
@@ -918,6 +969,25 @@ public sealed class GoodsReceiptRepository : IGoodsReceiptRepository
             .ThenByDescending(r => r.CreatedAtUtc)
             .Take(take)
             .ToListAsync(ct);
+
+    public async Task<LastPurchase?> LastPurchaseAsync(Guid productId,
+        CancellationToken ct = default)
+    {
+        var receipt = await _db.GoodsReceipts
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .Where(r => r.IsPosted && r.Lines.Any(l => l.ProductId == productId))
+            .OrderByDescending(r => r.ReceivedOn)
+            .ThenByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        var line = receipt?.Lines.LastOrDefault(l => l.ProductId == productId);
+
+        return receipt is null || line is null
+            ? null
+            : new LastPurchase(receipt.SupplierId, line.UnitCost.Amount,
+                               receipt.ReceivedOn);
+    }
 
     public async Task AddAsync(GoodsReceipt receipt,
         CancellationToken ct = default) =>

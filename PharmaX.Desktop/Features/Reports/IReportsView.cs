@@ -33,6 +33,9 @@ public interface IReportsView : IView
     /// The report's graph as a picture beside the rows; null hides it.
     void ShowChart(byte[]? png);
 
+    /// What the graph shows, a sentence each, under the rows; empty hides it.
+    void ShowFindings(IReadOnlyList<string> findings);
+
     /// The graph in a window of its own, which can be maximised.
     void ShowGraphWindow(string title, byte[] png);
 

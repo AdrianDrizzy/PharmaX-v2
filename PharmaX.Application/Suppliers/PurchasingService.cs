@@ -1,4 +1,4 @@
-using PharmaX.Application.Abstractions;
+﻿using PharmaX.Application.Abstractions;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
@@ -24,11 +24,45 @@ public interface IPurchasingService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Saves an order as a draft: numbered and counted as coming, but not
+    /// sent. Nothing reaches a supplier until somebody looks it over and
+    /// sends it (SendDraftAsync).
+    /// </summary>
+    Task<Result<PurchaseOrderDto>> DraftAsync(PurchaseOrderEditDto edit,
+        CancellationToken ct = default);
+
+    /// The drafts waiting to be looked over and sent, oldest first.
+    Task<Result<IReadOnlyList<PurchaseOrderDto>>> DraftsAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a draft, with whatever quantities the buyer settled on.
+    /// </summary>
+    /// <param name="quantities">
+    /// The quantity for each line by line number; nought takes the line off.
+    /// A line not named keeps what the draft had.
+    /// </param>
+    Task<Result<PurchaseOrderDto>> SendDraftAsync(Guid id,
+        IReadOnlyDictionary<int, decimal> quantities,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// What to order, taken from the reorder levels. The first thing a
     /// stock controller wants on a Monday, and the reason the reorder
     /// level is on the product at all.
     /// </summary>
     Task<Result<IReadOnlyList<PurchaseOrderLineDto>>> SuggestAsync(
+        CancellationToken ct = default);
+
+    /// The same suggestions, only for what a supplier usually supplies.
+    Task<Result<IReadOnlyList<PurchaseOrderLineDto>>> SuggestForAsync(
+        Guid supplierId, CancellationToken ct = default);
+
+    /// <summary>
+    /// How a product is bought: on order now, its usual supplier, and the
+    /// supplier and cost of its last delivery.
+    /// </summary>
+    Task<Result<ProductBuyingDto>> BuyingAsync(Guid productId,
         CancellationToken ct = default);
 }
 
@@ -42,12 +76,15 @@ public sealed class PurchasingService : IPurchasingService
     private readonly IAuditWriter _audit;
     private readonly IUnitOfWork _uow;
     private readonly IClock _clock;
+    private readonly IGoodsReceiptRepository? _receipts;
 
     public PurchasingService(IPurchaseOrderRepository orders,
         ISupplierRepository suppliers, IProductRepository products,
         IDocumentNumbering numbering, IPermissionService permissions,
-        IAuditWriter audit, IUnitOfWork uow, IClock clock)
+        IAuditWriter audit, IUnitOfWork uow, IClock clock,
+        IGoodsReceiptRepository? receipts = null)
     {
+        _receipts = receipts;
         _orders = orders;
         _suppliers = suppliers;
         _products = products;
@@ -95,8 +132,82 @@ public sealed class PurchasingService : IPurchasingService
             supplier?.Name ?? "Unknown", await CodesAsync(order.Lines, ct)));
     }
 
-    public async Task<Result<PurchaseOrderDto>> RaiseAsync(
-        PurchaseOrderEditDto edit, CancellationToken ct = default)
+    public Task<Result<PurchaseOrderDto>> RaiseAsync(
+        PurchaseOrderEditDto edit, CancellationToken ct = default) =>
+        CreateAsync(edit, send: true, ct);
+
+    public Task<Result<PurchaseOrderDto>> DraftAsync(
+        PurchaseOrderEditDto edit, CancellationToken ct = default) =>
+        CreateAsync(edit, send: false, ct);
+
+    public async Task<Result<IReadOnlyList<PurchaseOrderDto>>> DraftsAsync(
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.PurchaseOrderRaise);
+
+        var orders = await _orders.DraftsAsync(ct);
+        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct);
+
+        var names = suppliers.ToDictionary(s => s.Id, s => s.Name);
+        var codes = await CodesAsync(orders.SelectMany(o => o.Lines), ct);
+
+        IReadOnlyList<PurchaseOrderDto> items = orders
+            .Select(o => PurchaseOrderDto.From(o,
+                names.GetValueOrDefault(o.SupplierId, "Unknown"), codes))
+            .ToList();
+
+        return Result<IReadOnlyList<PurchaseOrderDto>>.Ok(items);
+    }
+
+    public async Task<Result<PurchaseOrderDto>> SendDraftAsync(Guid id,
+        IReadOnlyDictionary<int, decimal> quantities,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(quantities);
+
+        _permissions.Demand(PermissionCode.PurchaseOrderRaise);
+
+        var order = await _orders.GetAsync(id, ct);
+        if (order is null)
+            return Result<PurchaseOrderDto>.Fail("PO-000", "Order not found.");
+
+        if (order.Status != PurchaseOrderStatus.Draft)
+            return Result<PurchaseOrderDto>.Fail("PO-006",
+                $"Order {order.OrderNumber} has already been sent.");
+
+        if (quantities.Values.Any(q => q < 0m))
+            return Result<PurchaseOrderDto>.Fail("PO-004",
+                "An order quantity cannot be negative.");
+
+        // Checked before anything changes, so a refusal leaves the draft
+        // as it was.
+        if (order.Lines.All(l => quantities.GetValueOrDefault(l.LineNo,
+                                     l.QuantityOrdered) == 0m))
+            return Result<PurchaseOrderDto>.Fail("PO-002",
+                "An order with no lines orders nothing. Discard the draft instead.");
+
+        foreach (var line in order.Lines.ToList())
+        {
+            if (quantities.TryGetValue(line.LineNo, out var quantity)
+                && line.QuantityOrdered != quantity)
+                order.ChangeQuantity(line.LineNo, quantity);
+        }
+
+        order.Send();
+
+        var supplier = await _suppliers.GetAsync(order.SupplierId, ct);
+
+        _audit.Applied("inv.purchase.order.send", "PurchaseOrder", order.Id,
+            $"{order.Lines.Count} line(s), {order.Total} to {supplier?.Name}");
+
+        await _uow.SaveChangesAsync(ct);
+
+        return Result<PurchaseOrderDto>.Ok(PurchaseOrderDto.From(order,
+            supplier?.Name ?? "Unknown", await CodesAsync(order.Lines, ct)));
+    }
+
+    private async Task<Result<PurchaseOrderDto>> CreateAsync(
+        PurchaseOrderEditDto edit, bool send, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(edit);
 
@@ -144,13 +255,15 @@ public sealed class PurchasingService : IPurchasingService
             order.AddLine(product.Id, product.Description, line.Quantity,
                           Money.Of(line.UnitCost));
 
-        // Raised and sent in one act: an order sitting in draft is an
-        // order the supplier has not seen and the shelf is waiting on.
-        order.Send();
+        // Raised and sent in one act from the order screen: an order
+        // sitting in draft is an order the supplier has not seen and the
+        // shelf is waiting on. A draft is left for a person to send.
+        if (send) order.Send();
 
         await _orders.AddAsync(order, ct);
 
-        _audit.Applied("inv.purchase.order", "PurchaseOrder", order.Id,
+        _audit.Applied(send ? "inv.purchase.order" : "inv.purchase.order.draft",
+            "PurchaseOrder", order.Id,
             $"{order.Lines.Count} line(s), {order.Total} to {supplier.Name}");
 
         await _uow.SaveChangesAsync(ct);
@@ -208,12 +321,22 @@ public sealed class PurchasingService : IPurchasingService
         return Result.Ok();
     }
 
-    public async Task<Result<IReadOnlyList<PurchaseOrderLineDto>>>
-        SuggestAsync(CancellationToken ct = default)
+    public Task<Result<IReadOnlyList<PurchaseOrderLineDto>>>
+        SuggestAsync(CancellationToken ct = default) =>
+        SuggestAsync(null, ct);
+
+    public Task<Result<IReadOnlyList<PurchaseOrderLineDto>>>
+        SuggestForAsync(Guid supplierId, CancellationToken ct = default) =>
+        SuggestAsync(supplierId, ct);
+
+    private async Task<Result<IReadOnlyList<PurchaseOrderLineDto>>>
+        SuggestAsync(Guid? supplierId, CancellationToken ct)
     {
         _permissions.Demand(PermissionCode.PurchaseOrderRaise);
 
-        var products = await _products.SearchAsync("", take: int.MaxValue, ct: ct);
+        var products = (await _products.SearchAsync("", take: int.MaxValue, ct: ct))
+            .Where(p => supplierId is null || p.DefaultSupplierId == supplierId)
+            .ToList();
         var onOrder = await _orders.OnOrderAsync(ct);
 
         // Orders up to twice the reorder level, which is the simplest
@@ -246,5 +369,27 @@ public sealed class PurchasingService : IPurchasingService
             .ToList();
 
         return Result<IReadOnlyList<PurchaseOrderLineDto>>.Ok(suggestions);
+    }
+
+    public async Task<Result<ProductBuyingDto>> BuyingAsync(Guid productId,
+        CancellationToken ct = default)
+    {
+        DemandOrderAccess();
+
+        var product = await _products.GetAsync(productId, ct);
+        if (product is null)
+            return Result<ProductBuyingDto>.Fail("PO-007", "Product not found.");
+
+        var onOrder = (await _orders.OnOrderAsync(ct)).GetValueOrDefault(productId);
+        var last = _receipts is null ? null : await _receipts.LastPurchaseAsync(productId, ct);
+
+        var usual = product.DefaultSupplierId is Guid usualId
+            ? await _suppliers.GetAsync(usualId, ct)
+            : null;
+        var lastFrom = last is null ? null : await _suppliers.GetAsync(last.SupplierId, ct);
+
+        return Result<ProductBuyingDto>.Ok(new ProductBuyingDto(productId, onOrder,
+            usual?.Id, usual?.Name, lastFrom?.Id, lastFrom?.Name, last?.UnitCost,
+            last?.ReceivedOn));
     }
 }

@@ -1,4 +1,4 @@
-using PharmaX.Application.Assistant;
+﻿using PharmaX.Application.Assistant;
 using PharmaX.Desktop.Mvp;
 
 namespace PharmaX.Desktop.Features.Assistant;
@@ -35,10 +35,25 @@ public partial class frmAssistant : PhxFormBase, IAssistantView
     }
 
     /// Runtime. Resolved by the container.
-    public frmAssistant(AssistantPresenter presenter) : this()
+    public frmAssistant(AssistantPresenter presenter,
+                        Application.Security.IAuthenticationService auth) : this()
     {
+        _auth = auth;
         _presenter = presenter;
         _presenter.Attach(this);
+    }
+
+    private readonly Application.Security.IAuthenticationService? _auth;
+
+    public Guid? PromptAuthorisation(string reason, string permissionCode)
+    {
+        if (_auth is null) return null;
+
+        using var dialog = new Login.frmSupervisorPrompt(_auth, reason, permissionCode);
+
+        return dialog.ShowDialog(this) == DialogResult.OK
+            ? dialog.AuthoriserId
+            : null;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -52,6 +67,24 @@ public partial class frmAssistant : PhxFormBase, IAssistantView
 
         txtQuestion.Focus();
         if (_presenter is not null) await _presenter.InitialiseAsync();
+    }
+
+    /// <summary>
+    /// Closed with a guided job part way - the X, or Esc: held open while
+    /// the job is stopped, then closed by the presenter.
+    /// </summary>
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_presenter?.HasWorkUnderWay == true)
+        {
+            e.Cancel = true;
+            _presenter.RequestClose();
+            return;
+        }
+
+        base.OnFormClosing(e);
     }
 
     public string QuestionText => txtQuestion.Text;

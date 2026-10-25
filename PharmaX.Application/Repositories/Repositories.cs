@@ -51,6 +51,19 @@ public interface ISaleRepository
                                                     CancellationToken ct = default);
 
     /// <summary>
+    /// One page of the receipts printed between two moments, newest
+    /// first, with how many there are in all: the Receipts history.
+    /// </summary>
+    /// <param name="number">Part of the receipt number, or null for any.</param>
+    /// <param name="operators">
+    /// Cashiers a match may be by instead, where the words named one.
+    /// </param>
+    /// <param name="includeHidden">Receipts taken off the list too.</param>
+    Task<(IReadOnlyList<Sale> Page, int Total)> ReceiptsAsync(DateTime fromUtc,
+        DateTime toUtc, string? number, IReadOnlyCollection<Guid> operators,
+        bool includeHidden, int skip, int take, CancellationToken ct = default);
+
+    /// <summary>
     /// Baskets parked at this branch's tills, oldest first, so a held sale
     /// can be recalled from any till - the customer comes back to
     /// whichever one is free.
@@ -138,6 +151,9 @@ public interface IProductRepository
     /// </remarks>
     Task<IReadOnlyList<Product>> BelowReorderLevelAsync(
         CancellationToken ct = default);
+
+    /// Every product code in use, active or not, for numbering a new one.
+    Task<IReadOnlyList<string>> CodesAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Active products with nothing on hand and no reorder level: the
@@ -334,6 +350,10 @@ public interface IPurchaseOrderRepository
     Task<IReadOnlyDictionary<Guid, decimal>> OnOrderAsync(
         CancellationToken ct = default);
 
+    /// Orders drafted and not yet sent to the supplier, oldest first.
+    Task<IReadOnlyList<PurchaseOrder>> DraftsAsync(
+        CancellationToken ct = default);
+
     Task AddAsync(PurchaseOrder order, CancellationToken ct = default);
 }
 
@@ -344,8 +364,15 @@ public interface IGoodsReceiptRepository
     Task<IReadOnlyList<GoodsReceipt>> RecentAsync(int take = int.MaxValue,
         CancellationToken ct = default);
 
+    /// The last posted delivery of a product: who from, at what cost, when.
+    Task<LastPurchase?> LastPurchaseAsync(Guid productId,
+        CancellationToken ct = default);
+
     Task AddAsync(GoodsReceipt receipt, CancellationToken ct = default);
 }
+
+public sealed record LastPurchase(Guid SupplierId, decimal UnitCost,
+                                  DateOnly ReceivedOn);
 
 public interface ILedgerRepository
 {

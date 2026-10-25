@@ -553,8 +553,17 @@ public partial class frmReports : PhxFormBase, IReportsView
         window.ShowDialog(this);
     }
 
+    public void ShowFindings(IReadOnlyList<string> findings)
+    {
+        ArgumentNullException.ThrowIfNull(findings);
+
+        txtFindings.Text = string.Join(Environment.NewLine, findings.Select(f => "• " + f));
+        txtFindings.Visible = findings.Count > 0;
+    }
+
     public void ClearPreview(string caption)
     {
+        ShowFindings(Array.Empty<string>());
         ShowChart(null);
         GridPager.Attach(grdPreview).ShowRows(Array.Empty<object?[]>());
         grdPreview.Columns.Clear();

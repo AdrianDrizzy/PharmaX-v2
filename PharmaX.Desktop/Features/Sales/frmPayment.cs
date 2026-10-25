@@ -115,6 +115,11 @@ public partial class frmPayment : Form
     {
         lblReference.Text = "&Reference";
 
+        // Cash is what the customer handed over, so the till works out
+        // the change and the receipt prints it. Accepting the amount due
+        // as it is recorded no change, however much was given back.
+        lblAmount.Text = Selected.Type == TenderType.Cash && !_isRefund ? "&Tendered" : "&Amount";
+
         txtReference.PlaceholderText = Selected.Type == TenderType.EcoCash
             ? "Optional - EcoCash transaction ID"
             : SettledElsewhere(Selected.Type)

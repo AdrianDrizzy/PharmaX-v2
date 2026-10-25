@@ -161,8 +161,11 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     /// Called before ShowDialog by a screen that wants to pick a patient
     /// rather than maintain the list.
     /// </summary>
-    public void UseAsPicker()
+    /// <param name="term">A name to start the search with.</param>
+    public void UseAsPicker(string? term = null)
     {
+        if (!string.IsNullOrWhiteSpace(term)) txtSearch.Text = term.Trim();
+
         IsPickerMode = true;
         Text = "PharmaX - Find patient";
         btnChoose.Visible = true;

@@ -84,6 +84,34 @@ public sealed class Sale : AuditableEntity
     /// </remarks>
     public Money ChangeGiven { get; private set; } = Money.Zero();
 
+    /// <summary>
+    /// Why the receipt was taken off the receipts list, where it was;
+    /// null while it is listed.
+    /// </summary>
+    /// <remarks>
+    /// Only the receipt is hidden. The sale stays exactly as it was -
+    /// the cash-up, the VAT and the stock all count it - so hiding a
+    /// receipt can never change a figure already reported.
+    /// </remarks>
+    public string? ReceiptHiddenReason { get; private set; }
+
+    public bool IsReceiptHidden => ReceiptHiddenReason is not null;
+
+    /// Takes a finalised sale's receipt off the receipts list.
+    public void HideReceipt(string reason)
+    {
+        if (Status != SaleStatus.Finalised)
+            throw new DomainException("Only a completed sale has a receipt to hide.");
+
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new DomainException("Say why the receipt is being hidden.");
+
+        ReceiptHiddenReason = reason.Trim().Length > 200 ? reason.Trim()[..200] : reason.Trim();
+    }
+
+    /// Puts a hidden receipt back on the list.
+    public void ShowReceipt() => ReceiptHiddenReason = null;
+
     /// True where this sale is collecting a dispensing's co-payment.
     public bool IsCollection => DispensingId is not null;
     public SaleStatus Status { get; private set; } = SaleStatus.Open;

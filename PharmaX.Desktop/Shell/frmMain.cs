@@ -132,6 +132,23 @@ public partial class frmMain : PhxFormBase, IMainView
         tmrWaiting.Start();
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        Opened?.Invoke(this, EventArgs.Empty);
+    }
+
+    public event EventHandler? Opened;
+
+    public event EventHandler? AssistantNoticeClicked;
+
+    /// As the alerts: shown only while drafts are waiting.
+    public void SetAssistantNotice(string notice)
+    {
+        lblAssistant.Text = notice;
+        lblAssistant.Visible = !string.IsNullOrWhiteSpace(notice);
+    }
+
     protected override void OnPaletteChanged() => ShowIcons();
 
     /// Each menu entry's icon, by the key it opens. The home tiles use the
@@ -202,6 +219,7 @@ public partial class frmMain : PhxFormBase, IMainView
         lblWaiting.Image = PhxIcons.Image(PhxIcon.Prescription, small, PhxTheme.Title);
         lblAlerts.Image = PhxIcons.Image(PhxIcon.AlertTriangle, small,
                                          PhxTheme.ProblemText);
+        lblAssistant.Image = PhxIcons.Image(PhxIcon.FileInvoice, small, PhxTheme.Title);
     }
 
     private static Bitmap? MenuIcon(ToolStripMenuItem item, int size)
@@ -372,6 +390,8 @@ public partial class frmMain : PhxFormBase, IMainView
         lblAlerts.Click += (_, _) => MenuSelected?.Invoke(this, "alerts");
         lblWaiting.ToolTipText = "Click to open Scripts to Collect";
         lblAlerts.ToolTipText = "Click to open Stock Alerts";
+        lblAssistant.Click += (_, _) => AssistantNoticeClicked?.Invoke(this, EventArgs.Empty);
+        lblAssistant.ToolTipText = "The stock assistant drafted orders for stock running out. Click to see them";
     }
 
     public void SetTileCount(string menuKey, string? count)
@@ -682,6 +702,7 @@ public partial class frmMain : PhxFormBase, IMainView
 
         lblWaiting.ForeColor = Color.FromArgb(33, 56, 134);
         lblAlerts.ForeColor = Color.FromArgb(168, 32, 32);
+        lblAssistant.LinkColor = Color.FromArgb(33, 56, 134);
 
         // A warning, so it stays this yellow whatever the theme does - the
         // light mode's attention colour, which a change of mode would swap.

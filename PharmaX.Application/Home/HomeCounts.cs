@@ -12,13 +12,16 @@ namespace PharmaX.Application.Home;
 /// The three "last" dates say when a job that comes round now and again
 /// was last done: a stock count posted, a purchase order raised, a report
 /// asked for. Null where it never has been.
+///
+/// Patients is people, with files sharing a phone number and address
+/// counted once (PatientIdentity); PatientFiles is every active file.
 /// </remarks>
 public sealed record HomeCountsDto(int Patients, int Products,
     int OpenPurchaseOrders, int SalesToday, int ScriptsToday,
     int PatientsAddedToday = 0, int ProductsAddedToday = 0,
     int ReturnsToday = 0, int DeliveriesToday = 0, int OpenStocktakes = 0,
     DateTime? LastStocktakeUtc = null, DateOnly? LastPurchaseOrderOn = null,
-    DateTime? LastReportRunUtc = null);
+    DateTime? LastReportRunUtc = null, int PatientFiles = 0);
 
 public interface IHomeCounts
 {
