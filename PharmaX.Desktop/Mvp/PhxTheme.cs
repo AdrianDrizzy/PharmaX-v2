@@ -874,6 +874,9 @@ public static class PhxTheme
 
         ScaleToDisplay(form);
         form.Font = Body;
+
+        // From the theme's font, before the colours: scaling copies none.
+        PhxZoom.Apply(form);
         Colour(form);
         SeatRightAnchoredControls(form);
     }

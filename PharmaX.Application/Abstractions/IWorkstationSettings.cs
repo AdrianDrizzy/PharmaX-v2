@@ -66,6 +66,14 @@ public static class WorkstationSettingKey
     /// Light, dark or one of the other modes, by id: chosen from the
     /// shell's Theme menu, per till. Nothing means light.
     public const string Theme = "theme.mode";
+
+    /// How large the windows are drawn, in per cent: chosen from the
+    /// shell's View menu, per till. Nothing means 100.
+    public const string Zoom = "view.zoom";
+
+    /// The shell's window: "max" or nothing for the whole screen, or a
+    /// size in pixels as "1366x768". Chosen from the View menu, per till.
+    public const string WindowSize = "view.window";
 }
 
 /// <summary>

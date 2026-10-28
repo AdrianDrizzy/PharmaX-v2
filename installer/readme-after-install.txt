@@ -97,6 +97,9 @@ WHERE THINGS ARE KEPT
   C:\ProgramData\PharmaX\logs               logs, one file per day
   C:\ProgramData\PharmaX\attachments        scanned prescriptions
   C:\ProgramData\PharmaX\branding           the pharmacy's logo
+  C:\ProgramData\PharmaX\assistant          the Ask PharmaX model,
+                                            Qwen3.5-2B-Q4_K_M.gguf, when
+                                            it was downloaded
 
   On the main computer, when the installer set up the database:
 

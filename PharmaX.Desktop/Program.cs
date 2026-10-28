@@ -56,7 +56,7 @@ internal static class Program
         // on a machine not yet set up it stops rather than waiting forever.
         if (args is ["--backup", ..] or ["--import", ..] or ["--reset-admin"]
                 or ["--clear-waiting"]
-            && !WorkstationProvisioning.Exists)
+            && !WorkstationProvisioning.Exists && !IsDeveloperMachine)
         {
             Environment.ExitCode = 2;
             return;
@@ -89,7 +89,10 @@ internal static class Program
             return;
         }
 
-        if (!PrepareLocalDatabase(host))
+        // Not before an import: a day of demonstration trading would make
+        // the database look as if it were already trading, and the
+        // importer would leave the history out.
+        if (!PrepareLocalDatabase(host, seedDemo: args is not ["--import", ..]))
         {
             // The installer is waiting on this. A zero would look like
             // the old queue had been cleared.
@@ -280,6 +283,11 @@ internal static class Program
         return builder.Build();
     }
 
+    /// appsettings.Development.json has already answered every question
+    /// the wizard asks, so a developer's machine counts as set up.
+    private static bool IsDeveloperMachine =>
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "appsettings.Development.json"));
+
     /// <summary>
     /// Runs the first-run wizard where this machine has not been set up.
     /// </summary>
@@ -293,11 +301,7 @@ internal static class Program
     /// </remarks>
     private static bool EnsureProvisioned()
     {
-        if (WorkstationProvisioning.Exists) return true;
-
-        if (File.Exists(Path.Combine(AppContext.BaseDirectory,
-                                     "appsettings.Development.json")))
-            return true;
+        if (WorkstationProvisioning.Exists || IsDeveloperMachine) return true;
 
         using var wizard = new frmFirstRun();
 
@@ -379,7 +383,7 @@ internal static class Program
 
         // On the thread pool: after the first sign-in there is a window
         // synchronisation context, and blocking on its awaits would hang.
-        var (palette, details, mode) = Task.Run(async () => (
+        var (palette, details, mode, zoom) = Task.Run(async () => (
             await branding.RefreshAsync(
                 services.GetRequiredService<IPharmacySettings>(),
                 services.GetRequiredService<IWorkstationSettings>(),
@@ -388,7 +392,12 @@ internal static class Program
                 .GetRequiredService<PharmaX.Application.Pharmacy.IPharmacyDetailsService>()
                 .LoadAsync(),
             await services.GetRequiredService<IWorkstationSettings>()
-                .GetAsync(WorkstationSettingKey.Theme))).GetAwaiter().GetResult();
+                .GetAsync(WorkstationSettingKey.Theme),
+            await services.GetRequiredService<IWorkstationSettings>()
+                .GetAsync(WorkstationSettingKey.Zoom))).GetAwaiter().GetResult();
+
+        // Before any window opens, so the first is already at this size.
+        PhxZoom.Use(PhxZoom.Resolve(zoom));
 
         // The logo's own colours unless a palette was chosen, so a
         // pharmacy that only ever sets its logo gets matching windows -
@@ -407,7 +416,7 @@ internal static class Program
     /// SQLite file, so create it and apply migrations before the login
     /// form opens.
     /// </summary>
-    private static bool PrepareLocalDatabase(IHost host)
+    private static bool PrepareLocalDatabase(IHost host, bool seedDemo)
     {
         using var scope = host.Services.CreateScope();
         var services = scope.ServiceProvider;
@@ -490,15 +499,18 @@ internal static class Program
 
         // Accounts with nothing to sell are half a test environment, so
         // the same flag puts stock on the shelf.
-        services.GetRequiredService<TestCatalogueSeeder>()
-                .SeedAsync().GetAwaiter().GetResult();
+        if (seedDemo)
+        {
+            services.GetRequiredService<TestCatalogueSeeder>()
+                    .SeedAsync().GetAwaiter().GetResult();
 
-        // Same flag again, and last of the seeders because it builds
-        // on all of them: the maintained lists, patients, accounts and
-        // a day's trading, so that every screen opens with something
-        // on it rather than an empty grid.
-        services.GetRequiredService<DemoDataSeeder>()
-                .SeedAsync().GetAwaiter().GetResult();
+            // Same flag again, and last of the seeders because it builds
+            // on all of them: the maintained lists, patients, accounts and
+            // a day's trading, so that every screen opens with something
+            // on it rather than an empty grid.
+            services.GetRequiredService<DemoDataSeeder>()
+                    .SeedAsync().GetAwaiter().GetResult();
+        }
 
         // Last, and every start: an amount stored under a currency this
         // installation no longer trades in cannot be added to one it

@@ -50,13 +50,15 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         View.MenuSelected += (_, key) => Enqueue(() => OnMenuAsync(key));
 
         // Kept for this till, and read back before the next sign-in.
-        View.ThemeChosen += (_, id) => Enqueue(() => GuardAsync(async () =>
-        {
-            using var scope = _scopes.CreateScope();
-            await scope.ServiceProvider
-                .GetRequiredService<IWorkstationSettings>()
-                .SetAsync(WorkstationSettingKey.Theme, id);
-        }));
+        View.ThemeChosen += (_, id) => Enqueue(() =>
+            SaveAsync(WorkstationSettingKey.Theme, id));
+
+        // The View menu's choices likewise.
+        View.ZoomChosen += (_, percent) => Enqueue(() => SaveAsync(
+            WorkstationSettingKey.Zoom,
+            percent.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        View.WindowSizeChosen += (_, size) => Enqueue(() => SaveAsync(
+            WorkstationSettingKey.WindowSize, size));
         // Not queued: each count reads through its own scope, and the
         // queue is held for as long as a menu screen is open - a tick
         // every fifteen seconds would pile up behind it all afternoon.
@@ -70,8 +72,22 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         _connectivity.StateChanged += (_, s) => View.SetConnectivity(Describe(s));
     }
 
+    /// A choice kept for this till, read back before the next sign-in.
+    private Task SaveAsync(string key, string value) => GuardAsync(async () =>
+    {
+        using var scope = _scopes.CreateScope();
+        await scope.ServiceProvider
+            .GetRequiredService<IWorkstationSettings>()
+            .SetAsync(key, value);
+    });
+
     public override async Task InitialiseAsync()
     {
+        using (var scope = _scopes.CreateScope())
+            View.UseWindowSize(await scope.ServiceProvider
+                .GetRequiredService<IWorkstationSettings>()
+                .GetAsync(WorkstationSettingKey.WindowSize));
+
         ShowPharmacy();
         View.SetUser(_user.Username, string.Join(", ", RolesOf(_user)));
 

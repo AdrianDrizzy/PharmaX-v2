@@ -45,7 +45,7 @@ internal sealed class HomeTile : Panel
         BackColor = PhxTheme.Card;
         Cursor = Cursors.Hand;
         Margin = new Padding(0, 0, 14, 14);
-        Size = new Size(212, 110);
+        Size = new Size(212, 132);
 
         // Named after its own caption. A panel has no name of its own, so
         // assistive technology borrowed the text before it in the window
@@ -63,17 +63,19 @@ internal sealed class HomeTile : Panel
         _title.Font = PhxTheme.Subheading;
         _title.ForeColor = PhxTheme.Title;
 
-        // Beside the icon, which OnPaint draws in front of it.
-        _title.Location = new Point(62, 18);
-        _title.Size = new Size(138, 26);
+        // Under the row that OnPaint gives the icon and the figure, so a
+        // long figure - "7,047 · 8 new today" - never lands on the title.
+        _title.AutoEllipsis = true;
+        _title.Location = new Point(16, 54);
+        _title.Size = new Size(184, 26);
         _title.Text = title;
 
         _hint.AutoSize = false;
         _hint.BackColor = Color.Transparent;
         _hint.Font = PhxTheme.Body;
         _hint.ForeColor = PhxTheme.Muted;
-        _hint.Location = new Point(16, 56);
-        _hint.Size = new Size(180, 22);
+        _hint.Location = new Point(16, 82);
+        _hint.Size = new Size(184, 22);
         _hint.Text = hint;
 
         _note.AutoEllipsis = true;
@@ -81,7 +83,7 @@ internal sealed class HomeTile : Panel
         _note.BackColor = Color.Transparent;
         _note.Font = NoteFont;
         _note.ForeColor = PhxTheme.Muted;
-        _note.Location = new Point(16, 80);
+        _note.Location = new Point(16, 104);
         _note.Size = new Size(184, 20);
 
         Controls.Add(_note);
@@ -260,18 +262,27 @@ internal sealed class HomeTile : Panel
     }
 
     /// <summary>
-    /// The job's icon on a rounded square of the brand's tint, level with
-    /// the title.
+    /// The icon's rounded square, in the top row above the title. The
+    /// figure sits level with it on the right.
     /// </summary>
     /// <remarks>
     /// Sized from the title rather than in pixels, so that it grows with
-    /// the display's scaling exactly as the labels beside it do.
+    /// the display's scaling exactly as the labels under it do.
     /// </remarks>
-    private void PaintIcon(Graphics graphics)
+    private Rectangle IconBox()
     {
         var chip = (int)(_title.Height * 1.3);
-        var box = new Rectangle(_hint.Left,
-            _title.Top + (_title.Height - chip) / 2, chip, chip);
+        var gap = _title.Height / 4;
+        return new Rectangle(_title.Left, _title.Top - gap - chip, chip, chip);
+    }
+
+    /// <summary>
+    /// The job's icon on a rounded square of the brand's tint.
+    /// </summary>
+    private void PaintIcon(Graphics graphics)
+    {
+        var box = IconBox();
+        var chip = box.Width;
 
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
@@ -290,17 +301,27 @@ internal sealed class HomeTile : Panel
     }
 
     /// <summary>
-    /// The figure as a pill in the brand's colour, tucked into the corner
-    /// above the title so that a long title keeps its room.
+    /// The figure as a pill in the brand's colour, level with the icon and
+    /// against the card's right-hand margin, in a row of its own so that
+    /// neither the figure nor the title has to give way to the other.
     /// </summary>
     private void PaintCount(Graphics graphics)
     {
-        var text = TextRenderer.MeasureText(_count, CountFont);
-        var height = text.Height + 2;
-        var width = Math.Max(height, text.Width + height / 2);
-        var inset = _title.Top / 3;
+        var icon = IconBox();
 
-        var pill = new Rectangle(Width - width - inset * 2, inset, width, height);
+        // At the title's zoom: the labels' fonts are scaled with the
+        // window, and this one is not a label's.
+        using var font = new Font(CountFont.FontFamily,
+            CountFont.Size * _title.Font.Size / PhxTheme.Subheading.Size,
+            CountFont.Style);
+
+        var text = TextRenderer.MeasureText(_count, font);
+        var height = text.Height + 4;
+        var room = _title.Right - icon.Right - icon.Width / 3;
+        var width = Math.Min(room, Math.Max(height, text.Width + height));
+
+        var pill = new Rectangle(_title.Right - width,
+            icon.Top + (icon.Height - height) / 2, width, height);
 
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
@@ -310,9 +331,11 @@ internal sealed class HomeTile : Panel
 
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
 
-        TextRenderer.DrawText(graphics, _count, CountFont, pill, Color.White,
+        var inside = Rectangle.Inflate(pill, -height / 3, 0);
+
+        TextRenderer.DrawText(graphics, _count, font, inside, Color.White,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
-            | TextFormatFlags.NoPrefix);
+            | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
     }
 
     private static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle box,

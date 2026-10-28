@@ -86,6 +86,10 @@ public sealed class TestCatalogueSeeder
     {
         if (!_options.Development.SeedTestUsers) return;
 
+        // Another system's data is a real pharmacy's: test stock and
+        // patients mixed into it would be counted and reported as its own.
+        if (await Import.ImportedHistory.ExistsAsync(_db, ct).ConfigureAwait(false)) return;
+
         var added = await SeedSuppliersAsync(ct).ConfigureAwait(false);
         added += await SeedProductsAsync(ct).ConfigureAwait(false);
         added += await SeedPatientsAsync(ct).ConfigureAwait(false);

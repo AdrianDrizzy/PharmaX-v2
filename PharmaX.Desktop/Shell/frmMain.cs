@@ -20,6 +20,7 @@ public partial class frmMain : PhxFormBase, IMainView
     {
         InitializeComponent();
         WireTheme();
+        WireView();
         WireMenu();
         WireMenuHover();
         WireHome();
@@ -72,12 +73,19 @@ public partial class frmMain : PhxFormBase, IMainView
         }
 
         // The one in use in bold as well as ticked: beside a swatch the tick
-        // is only a faint frame round the picture.
+        // is only a faint frame round the picture. Made again after a zoom,
+        // at the menu's new size.
         var bold = new Font(mnuMain.Font, FontStyle.Bold);
         Disposed += (_, _) => bold.Dispose();
 
         theme.DropDownOpening += (_, _) =>
         {
+            if (bold.Size != mnuMain.Font.Size)
+            {
+                bold.Dispose();
+                bold = new Font(mnuMain.Font, FontStyle.Bold);
+            }
+
             foreach (ToolStripMenuItem item in theme.DropDownItems)
             {
                 item.Checked = Equals(item.Tag, PhxTheme.Mode);
@@ -89,6 +97,233 @@ public partial class frmMain : PhxFormBase, IMainView
 
         mnuMain.Items.Add(theme);
     }
+
+    /// The window sizes the View menu offers, by shape. Each is the
+    /// window's whole size, frame and all, in the display's pixels.
+    private static readonly (string Shape, int Across, int Down, Size[] Sizes)[] Shapes =
+    {
+        ("16:9", 16, 9, new Size[] { new(1920, 1080), new(1600, 900),
+                                     new(1366, 768), new(1280, 720) }),
+        ("16:10", 16, 10, new Size[] { new(1920, 1200), new(1680, 1050),
+                                       new(1440, 900), new(1280, 800) }),
+        ("4:3", 4, 3, new Size[] { new(1600, 1200), new(1280, 960),
+                                   new(1024, 768) }),
+        ("5:4", 5, 4, new Size[] { new(1280, 1024) })
+    };
+
+    /// <summary>
+    /// The View menu: how large everything is drawn, and the shape and
+    /// size of this window. Kept for this till, as the theme is.
+    /// </summary>
+    /// <remarks>
+    /// Resolution here is the window's, not the display's: PharmaX does
+    /// not change a setting that belongs to every program on the machine.
+    /// A size larger than the screen is offered but greyed, so the list
+    /// reads the same on every till. As with the theme, the entries carry
+    /// no string key in Tag, so the menu wiring and Go to pass them by.
+    /// </remarks>
+    private void WireView()
+    {
+        var view = new ToolStripMenuItem("&View");
+
+        // ---- Zoom
+        var zoom = new ToolStripMenuItem("&Zoom");
+
+        var zoomIn = new ToolStripMenuItem("Zoom &in")
+        {
+            ShortcutKeys = Keys.Control | Keys.Oemplus,
+            ShortcutKeyDisplayString = "Ctrl++"
+        };
+        var zoomOut = new ToolStripMenuItem("Zoom &out")
+        {
+            ShortcutKeys = Keys.Control | Keys.OemMinus,
+            ShortcutKeyDisplayString = "Ctrl+-"
+        };
+        var actual = new ToolStripMenuItem("&Actual size (100%)")
+        {
+            ShortcutKeys = Keys.Control | Keys.D0,
+            ShortcutKeyDisplayString = "Ctrl+0"
+        };
+
+        zoomIn.Click += (_, _) => Zoom(PhxZoom.Step(+1));
+        zoomOut.Click += (_, _) => Zoom(PhxZoom.Step(-1));
+        actual.Click += (_, _) => Zoom(100);
+
+        zoom.DropDownItems.AddRange(new ToolStripItem[]
+        {
+            zoomIn, zoomOut, actual, new ToolStripSeparator()
+        });
+
+        foreach (var percent in PhxZoom.Steps)
+        {
+            var step = new ToolStripMenuItem($"{percent}%") { Tag = percent };
+            step.Click += (_, _) => Zoom(percent);
+            zoom.DropDownItems.Add(step);
+        }
+
+        zoom.DropDownOpening += (_, _) =>
+        {
+            zoomIn.Enabled = PhxZoom.Percent < PhxZoom.Steps[^1];
+            zoomOut.Enabled = PhxZoom.Percent > PhxZoom.Steps[0];
+
+            foreach (var item in zoom.DropDownItems.OfType<ToolStripMenuItem>())
+                if (item.Tag is int percent) item.Checked = percent == PhxZoom.Percent;
+        };
+
+        // ---- Aspect ratio
+        var shape = new ToolStripMenuItem("&Aspect ratio");
+        var fill = new ToolStripMenuItem("&Fill the screen");
+        fill.Click += (_, _) => ChooseWindowSize(null);
+
+        shape.DropDownItems.AddRange(new ToolStripItem[] { fill, new ToolStripSeparator() });
+
+        foreach (var (name, across, down, _) in Shapes)
+        {
+            var item = new ToolStripMenuItem(name) { Tag = (across, down) };
+            item.Click += (_, _) => ChooseWindowSize(Largest(across, down));
+            shape.DropDownItems.Add(item);
+        }
+
+        shape.DropDownOpening += (_, _) =>
+        {
+            fill.Checked = WindowState == FormWindowState.Maximized;
+
+            foreach (var item in shape.DropDownItems.OfType<ToolStripMenuItem>())
+                if (item.Tag is ValueTuple<int, int> ratio)
+                    item.Checked = WindowState == FormWindowState.Normal
+                                   && IsShape(Size, ratio.Item1, ratio.Item2);
+        };
+
+        // ---- Resolution
+        var resolution = new ToolStripMenuItem("&Resolution");
+        var full = new ToolStripMenuItem("F&ull screen");
+        full.Click += (_, _) => ChooseWindowSize(null);
+
+        resolution.DropDownItems.Add(full);
+
+        foreach (var (name, _, _, sizes) in Shapes)
+        {
+            resolution.DropDownItems.Add(new ToolStripSeparator());
+
+            foreach (var size in sizes)
+            {
+                var item = new ToolStripMenuItem(
+                    $"{size.Width} × {size.Height}   ({name})") { Tag = size };
+                item.Click += (_, _) => ChooseWindowSize(size);
+                resolution.DropDownItems.Add(item);
+            }
+        }
+
+        resolution.DropDownOpening += (_, _) =>
+        {
+            var work = Screen.FromControl(this).WorkingArea.Size;
+            full.Checked = WindowState == FormWindowState.Maximized;
+
+            foreach (var item in resolution.DropDownItems.OfType<ToolStripMenuItem>())
+            {
+                if (item.Tag is not Size size) continue;
+
+                item.Enabled = size.Width <= work.Width && size.Height <= work.Height;
+                item.Checked = WindowState == FormWindowState.Normal && Size == size;
+            }
+        };
+
+        view.DropDownItems.AddRange(new ToolStripItem[] { zoom, shape, resolution });
+
+        // Before Help, where Windows programs keep it.
+        var help = mnuMain.Items.OfType<ToolStripMenuItem>()
+            .FirstOrDefault(i => i.Text == "&Help");
+        mnuMain.Items.Insert(help is null ? mnuMain.Items.Count
+                                          : mnuMain.Items.IndexOf(help), view);
+
+        PhxZoom.Changed += OnZoomChanged;
+        Disposed += (_, _) => PhxZoom.Changed -= OnZoomChanged;
+    }
+
+    private void Zoom(int percent)
+    {
+        if (percent == PhxZoom.Percent) return;
+
+        PhxZoom.Change(percent);
+        ZoomChosen?.Invoke(this, percent);
+    }
+
+    /// The icons are pictures at a size, and the logo's room is worked
+    /// out from the header's height, so both are done again.
+    private void OnZoomChanged(object? sender, EventArgs e)
+    {
+        ShowIcons();
+        RefreshBranding();
+        Invalidate(true);
+    }
+
+    /// <summary>
+    /// Sizes the window and keeps it for this till - or, given nothing,
+    /// fills the screen with it again.
+    /// </summary>
+    private void ChooseWindowSize(Size? size)
+    {
+        var value = size is Size chosen
+            ? FormattableString.Invariant($"{chosen.Width}x{chosen.Height}")
+            : "max";
+
+        UseWindowSize(value);
+        WindowSizeChosen?.Invoke(this, value);
+    }
+
+    public void UseWindowSize(string? size)
+    {
+        if (ParseSize(size) is not Size wanted)
+        {
+            WindowState = FormWindowState.Maximized;
+            return;
+        }
+
+        // Never past the screen it is on; centred in what is left of it
+        // once the taskbar has its share.
+        var work = Screen.FromControl(this).WorkingArea;
+        var fits = new Size(Math.Min(wanted.Width, work.Width),
+                            Math.Min(wanted.Height, work.Height));
+
+        WindowState = FormWindowState.Normal;
+        Bounds = new Rectangle(work.Left + (work.Width - fits.Width) / 2,
+                               work.Top + (work.Height - fits.Height) / 2,
+                               fits.Width, fits.Height);
+    }
+
+    private static Size? ParseSize(string? value)
+    {
+        var parts = value?.Split('x');
+
+        return parts is { Length: 2 }
+               && int.TryParse(parts[0], System.Globalization.NumberStyles.None,
+                               System.Globalization.CultureInfo.InvariantCulture, out var across)
+               && int.TryParse(parts[1], System.Globalization.NumberStyles.None,
+                               System.Globalization.CultureInfo.InvariantCulture, out var down)
+               && across >= 640 && down >= 480
+            ? new Size(across, down)
+            : null;
+    }
+
+    /// The largest window of a shape that the screen it is on can hold.
+    private Size Largest(int across, int down)
+    {
+        var work = Screen.FromControl(this).WorkingArea.Size;
+        var width = work.Width;
+        var height = width * down / across;
+
+        if (height > work.Height)
+        {
+            height = work.Height;
+            width = height * across / down;
+        }
+
+        return new Size(width, height);
+    }
+
+    /// Within a pixel or two of the shape, which the arithmetic leaves.
+    private static bool IsShape(Size size, int across, int down) =>
+        Math.Abs(size.Width * down - size.Height * across) <= across + down;
 
     /// <summary>
     /// Gives the logo the room it needs, or none at all.
@@ -216,6 +451,7 @@ public partial class frmMain : PhxFormBase, IMainView
                 "File" => PhxIcon.File,
                 "Help" => PhxIcon.HelpCircle,
                 "Theme" => PhxIcon.Palette,
+                "View" => PhxIcon.Eye,
                 _ => (PhxIcon?)null
             };
 
@@ -690,5 +926,7 @@ public partial class frmMain : PhxFormBase, IMainView
 
     public event EventHandler<string>? MenuSelected;
     public event EventHandler<string>? ThemeChosen;
+    public event EventHandler<int>? ZoomChosen;
+    public event EventHandler<string>? WindowSizeChosen;
     public event EventHandler? WaitingTick;
 }
