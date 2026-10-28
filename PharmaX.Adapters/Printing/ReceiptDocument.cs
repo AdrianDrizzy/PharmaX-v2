@@ -45,6 +45,7 @@ namespace PharmaX.Adapters.Printing;
 /// TOTAL-USD:               2.50
 /// --------------------------------
 /// Cash USD                 2.50
+/// Change USD               0.00
 /// --------------------------------
 /// --------------------------------
 ///
@@ -392,7 +393,13 @@ public sealed class ReceiptDocument : PrintDocument
                        + (currency.Length > 0 ? " " + currency : ""), handed);
             }
 
-        if (show.Change && _sale.Totals.Change > 0m)
+        // Every sale paid in cash says what change was handed back, 0.00
+        // where the cash was exact: a slip with no change line left the
+        // customer to ask whether any was due. Other tenders give none.
+        var paidCash = (_sale.Payments ?? Array.Empty<PaymentDto>())
+            .Any(p => p.TenderType == "Cash");
+
+        if (show.Change && (_sale.Totals.Change > 0m || paidCash))
             Amount("Change" + (currency.Length > 0 ? " " + currency : ""),
                    _sale.Totals.Change);
 

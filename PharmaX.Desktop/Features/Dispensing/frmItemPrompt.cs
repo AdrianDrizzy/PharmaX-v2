@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Dispensing.Dtos;
 using PharmaX.Application.Reference;
@@ -24,12 +24,16 @@ public sealed class frmItemPrompt : Form
     private readonly TextBox _directions = new();
     private readonly TextBox _reads = new();
     private readonly Label _problem = new();
+    private readonly Label _enter = new();
+    private readonly Label _charge = new();
+    private readonly ItemProposalDto _proposal;
     private readonly IReadOnlyDictionary<string, string> _codes;
 
     private frmItemPrompt(ItemProposalDto proposal,
                           IReadOnlyDictionary<string, string> codes)
     {
         _codes = codes;
+        _proposal = proposal;
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
         Name = "frmItemPrompt";
@@ -58,17 +62,32 @@ public sealed class frmItemPrompt : Form
         _quantity.Size = new Size(110, 23);
         _quantity.Text = proposal.Quantity.ToString("0.###", CultureInfo.CurrentCulture);
         _quantity.PlaceholderText = "e.g. 30";
+        _quantity.TextChanged += (_, _) => ShowCharge();
+
+        // What is typed, and what it will be charged, worked out as it is
+        // typed: the pack price pro rata, rounded up as System setup says.
+        _enter.AutoSize = false;
+        _enter.ForeColor = PhxTheme.Muted;
+        _enter.Location = new Point(228, 58);
+        _enter.Name = "lblWhatToEnter";
+        _enter.Size = new Size(228, 32);
+        _enter.Text = proposal.WhatToEnter;
+
+        _charge.AutoSize = false;
+        _charge.Location = new Point(110, 92);
+        _charge.Name = "lblCharge";
+        _charge.Size = new Size(346, 20);
 
         var directionsCaption = new Label
         {
             AutoSize = true,
-            Location = new Point(16, 98),
+            Location = new Point(16, 124),
             Text = "&Directions"
         };
 
         // Mandatory: a label without directions cannot be dispensed
         // (DSP-004).
-        _directions.Location = new Point(110, 94);
+        _directions.Location = new Point(110, 120);
         _directions.MaxLength = 500;
         _directions.Name = "txtDirections";
         _directions.Size = new Size(346, 23);
@@ -81,7 +100,7 @@ public sealed class frmItemPrompt : Form
         _reads.BackColor = SystemColors.Control;
         _reads.BorderStyle = BorderStyle.None;
         _reads.ForeColor = PhxTheme.Muted;
-        _reads.Location = new Point(110, 122);
+        _reads.Location = new Point(110, 148);
         _reads.Multiline = true;
         _reads.Name = "lblLabelReads";
         _reads.ReadOnly = true;
@@ -92,14 +111,14 @@ public sealed class frmItemPrompt : Form
 
         _problem.AutoSize = false;
         _problem.ForeColor = PhxTheme.Negative;
-        _problem.Location = new Point(16, 202);
+        _problem.Location = new Point(16, 228);
         _problem.Name = "lblProblem";
         _problem.Size = new Size(270, 36);
 
         var ok = new Button
         {
             DialogResult = DialogResult.OK,
-            Location = new Point(300, 202),
+            Location = new Point(300, 228),
             Name = "btnOk",
             Size = new Size(75, 28),
             Text = "OK"
@@ -108,7 +127,7 @@ public sealed class frmItemPrompt : Form
         var cancel = new Button
         {
             DialogResult = DialogResult.Cancel,
-            Location = new Point(381, 202),
+            Location = new Point(381, 228),
             Name = "btnCancel",
             Size = new Size(75, 28),
             Text = "Cancel"
@@ -116,13 +135,13 @@ public sealed class frmItemPrompt : Form
 
         Controls.AddRange(new Control[]
         {
-            item, quantityCaption, _quantity, directionsCaption, _directions,
-            _reads, _problem, ok, cancel
+            item, quantityCaption, _quantity, _enter, _charge, directionsCaption,
+            _directions, _reads, _problem, ok, cancel
         });
 
         AcceptButton = ok;
         CancelButton = cancel;
-        ClientSize = new Size(472, 248);
+        ClientSize = new Size(472, 274);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -141,7 +160,13 @@ public sealed class frmItemPrompt : Form
         };
 
         ShowWording();
+        ShowCharge();
     }
+
+    private void ShowCharge() =>
+        _charge.Text = Quantity is decimal quantity && quantity > 0m
+            ? _proposal.ChargeFor(quantity)
+            : "";
 
     private decimal? Quantity =>
         frmNumberPrompt.Interpret(_quantity.Text, null, 3, out _);

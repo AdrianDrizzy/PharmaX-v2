@@ -24,6 +24,7 @@ partial class frmMain
     private ToolStripStatusLabel lblConnectivity = null!;
     private ToolStripStatusLabel lblWaiting = null!;
     private ToolStripStatusLabel lblAlerts = null!;
+    private ToolStripStatusLabel lblAssistant = null!;
 
     /// <summary>
     /// Re-reads the collection queue while the shell is up.
@@ -53,6 +54,7 @@ partial class frmMain
         lblConnectivity = new ToolStripStatusLabel();
         lblWaiting = new ToolStripStatusLabel();
         lblAlerts = new ToolStripStatusLabel();
+        lblAssistant = new ToolStripStatusLabel();
         tmrWaiting = new System.Windows.Forms.Timer(components)
         {
             Interval = 15000
@@ -219,6 +221,17 @@ partial class frmMain
         lblAlerts.BorderSides = ToolStripStatusLabelBorderSides.Right;
         lblAlerts.Visible = false;
 
+        // The stock assistant: there only while draft orders it made are
+        // waiting for somebody to look them over and send them.
+        lblAssistant.Name = "lblAssistant";
+        lblAssistant.Font = PhxTheme.Emphasis;
+        lblAssistant.LinkColor = PhxTheme.Title;
+        lblAssistant.IsLink = true;
+        lblAssistant.LinkBehavior = LinkBehavior.HoverUnderline;
+        lblAssistant.Size = new Size(220, 19);
+        lblAssistant.BorderSides = ToolStripStatusLabelBorderSides.Right;
+        lblAssistant.Visible = false;
+
         lblConnectivity.Name = "lblConnectivity";
         lblConnectivity.Size = new Size(160, 19);
         lblConnectivity.Spring = true;
@@ -227,7 +240,7 @@ partial class frmMain
         staMain.Items.AddRange(new ToolStripItem[]
         {
             lblUser, lblTill, lblSession, lblWaiting, lblAlerts,
-            lblConnectivity
+            lblAssistant, lblConnectivity
         });
         staMain.Location = new Point(0, 678);
         staMain.Name = "staMain";

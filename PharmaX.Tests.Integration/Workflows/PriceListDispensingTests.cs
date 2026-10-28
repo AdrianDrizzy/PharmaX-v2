@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
@@ -70,7 +70,7 @@ public sealed class PriceListDispensingTests : IDisposable
 
         var line = added.Value.State.Items.Should().ContainSingle().Subject;
         line.Quantity.Should().Be(30m);
-        line.Tariff.Should().Be(3.60m, "thirty of a hundred at 12.00 a pack");
+        line.Tariff.Should().Be(4.00m, "thirty of a hundred at 12.00 a pack is 3.60, rounded up to the dollar");
         line.BatchNumber.Should().Be("LOS-2611");
 
         var issued = await service.IssueAsync(begun.Value.Id);

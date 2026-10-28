@@ -108,6 +108,10 @@ public static class PharmacySettingKey
     /// The step every worked-out price is rounded up to, e.g. 0.05.
     public const string Rounding = "pricing.rounding";
 
+    /// The step a cash patient's dispensing charge is rounded up to, e.g.
+    /// 1.00; a dollar where it was never set (DispensingCharge).
+    public const string DispensingRounding = "pricing.dispensing-rounding";
+
     /// Pre-pack stickers already printed, newest first, so any till can
     /// print an old one again.
     public const string PrepackLabels = "labels.prepacks";

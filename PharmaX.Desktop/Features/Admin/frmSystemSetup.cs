@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using PharmaX.Application.Abstractions;
 using PharmaX.Desktop.Mvp;
 using PharmaX.Domain.Primitives;
@@ -23,6 +23,7 @@ public sealed class frmSystemSetup : PhxFormBase
     private readonly IPharmacySettings _pharmacy;
     private readonly NumericUpDown _markup = new();
     private readonly ComboBox _rounding = new();
+    private readonly ComboBox _dispensingRounding = new();
     private readonly Branding _branding;
     private readonly ICurrencyChanger _currency;
 
@@ -262,15 +263,25 @@ public sealed class frmSystemSetup : PhxFormBase
         _rounding.Name = "cboRounding";
         _rounding.Size = new Size(90, 24);
 
+        // A cash patient pays the pack price pro rata for the tablets handed
+        // over, rounded up to this - a dollar, as the previous system charged.
+        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 500), Text = "&Dispensing charges round up to" });
+        _dispensingRounding.DropDownStyle = ComboBoxStyle.DropDownList;
+        _dispensingRounding.Items.AddRange(new object[] { "0.01", "0.05", "0.10", "0.50", "1.00" });
+        _dispensingRounding.Location = new Point(340, 496);
+        _dispensingRounding.Name = "cboDispensingRounding";
+        _dispensingRounding.Size = new Size(90, 24);
+
         _body.Controls.Add(new Label
         {
             AutoSize = true, ForeColor = PhxTheme.Muted,
-            Location = new Point(108, 496), MaximumSize = new Size(440, 0),
-            Text = "An item with no price takes the markup on its first delivery. A "
-                   + "delivery that costs more puts the price up to keep its margin."
+            Location = new Point(2, 530), MaximumSize = new Size(550, 0),
+            Text = "An item with no price takes the markup on its first delivery; a dearer "
+                   + "delivery keeps its margin. A dispensed part pack is charged pro rata and "
+                   + "rounded up: 14 of a 100-pack at 6.66 is 0.93, charged 1.00."
         });
 
-        _body.Controls.AddRange(new Control[] { _markup, _rounding });
+        _body.Controls.AddRange(new Control[] { _markup, _rounding, _dispensingRounding });
     }
 
     /// <summary>A palette as the list offers it.</summary>
@@ -377,6 +388,10 @@ public sealed class frmSystemSetup : PhxFormBase
         _markup.Value = Math.Clamp(markup, _markup.Minimum, _markup.Maximum);
         _rounding.SelectedItem = (step <= 0m ? 0.01m : step).ToString("0.00", CultureInfo.InvariantCulture);
         if (_rounding.SelectedIndex < 0) _rounding.SelectedIndex = 0;
+
+        var dispensingStep = await Application.Dispensing.DispensingCharge.RoundToAsync(_pharmacy);
+        _dispensingRounding.SelectedItem = dispensingStep.ToString("0.00", CultureInfo.InvariantCulture);
+        if (_dispensingRounding.SelectedIndex < 0) _dispensingRounding.SelectedIndex = _dispensingRounding.Items.Count - 1;
 
         _currencies.Focus();
     }
@@ -584,6 +599,8 @@ public sealed class frmSystemSetup : PhxFormBase
             await _pharmacy.SetAsync(PharmacySettingKey.Markup,
                 _markup.Value.ToString(CultureInfo.InvariantCulture));
             await _pharmacy.SetAsync(PharmacySettingKey.Rounding, (string?)_rounding.SelectedItem);
+            await _pharmacy.SetAsync(PharmacySettingKey.DispensingRounding,
+                (string?)_dispensingRounding.SelectedItem);
             PhxTheme.Use(Palette.Resolve(palette.Id, _branding.Logo));
 
             if (changingCurrency)

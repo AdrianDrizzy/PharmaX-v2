@@ -32,6 +32,7 @@ partial class frmReports
     private TextBox txtAsk = null!;
     private Button btnAsk = null!;
     private Label lblAskResult = null!;
+    private TextBox txtFindings = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -147,6 +148,19 @@ partial class frmReports
         lblProvenance.Name = "lblProvenance";
         lblProvenance.Padding = new Padding(6, 8, 6, 8);
 
+        // What the graph shows in sentences, under the rows. Read-only
+        // text rather than a label so it can be copied into an email.
+        txtFindings = new TextBox();
+        txtFindings.BackColor = Color.White;
+        txtFindings.Dock = DockStyle.Bottom;
+        txtFindings.Height = 120;
+        txtFindings.Multiline = true;
+        txtFindings.Name = "txtFindings";
+        txtFindings.ReadOnly = true;
+        txtFindings.ScrollBars = ScrollBars.Vertical;
+        txtFindings.TabStop = false;
+        txtFindings.Visible = false;
+
         splMain.Panel1.Controls.Add(trePresets);
         // The graph, beside the rows, where the report has one. The
         // divider beside it drags to give it more of the screen, and
@@ -179,6 +193,7 @@ partial class frmReports
         splMain.Panel2.Controls.Add(grdPreview);
         splMain.Panel2.Controls.Add(splGraph);
         splMain.Panel2.Controls.Add(pnlGraph);
+        splMain.Panel2.Controls.Add(txtFindings);
         splMain.Panel2.Controls.Add(lblProvenance);
         splMain.Panel2.Controls.Add(pnlSlicers);
         splMain.Panel2.Controls.Add(pnlParameters);

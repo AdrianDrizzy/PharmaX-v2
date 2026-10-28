@@ -1,4 +1,4 @@
-namespace PharmaX.Desktop.Features.Dispensing;
+﻿namespace PharmaX.Desktop.Features.Dispensing;
 
 partial class frmScriptEdit
 {
@@ -164,17 +164,22 @@ partial class frmScriptEdit
 
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Quantity", HeaderText = "Qty", FillWeight = 40,
+            Name = "Quantity", HeaderText = "Qty (tabs)", FillWeight = 48,
             SortMode = DataGridViewColumnSortMode.NotSortable,
-            DefaultCellStyle = number
+            DefaultCellStyle = number,
+            ToolTipText = "The number of tablets, capsules or ml handed over - not packs. "
+                          + "The charge is worked out from the pack price and rounded up."
         });
 
         // The pack this line is priced by and that pack's price: the
         // product's own until changed here, for this script only. The
-        // catalogue is not touched.
+        // catalogue is not touched. Hidden (25 October 2026): the quantity
+        // is counted in tablets and priced from the product's own pack, so
+        // the dispenser enters the tablets alone. Kept, so a script that
+        // set its own pack keeps it when it is corrected.
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "PackUnits", HeaderText = "Pack", FillWeight = 45,
+            Name = "PackUnits", HeaderText = "Pack", FillWeight = 45, Visible = false,
             SortMode = DataGridViewColumnSortMode.NotSortable,
             DefaultCellStyle = number,
             ToolTipText = "How many the price is for - the product's own pack "
@@ -194,11 +199,12 @@ partial class frmScriptEdit
                           + "price unless changed"
         });
 
-        // What the line comes to: price x quantity / pack.
+        // What the line comes to: price x quantity / pack. Hidden with the
+        // pack: the dispensing works the charge out, rounded up.
         grdItems.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Charge", HeaderText = "Charge", FillWeight = 52,
-            ReadOnly = true,
+            ReadOnly = true, Visible = false,
             SortMode = DataGridViewColumnSortMode.NotSortable,
             DefaultCellStyle = new DataGridViewCellStyle
             {

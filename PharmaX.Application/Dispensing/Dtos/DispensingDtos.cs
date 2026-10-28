@@ -93,9 +93,27 @@ public sealed record DispensingLineDto(
 /// False where the product is not on the script - a substitution, or a
 /// mistake - and the quantity and directions are only a starting point.
 /// </param>
+/// <param name="Unit">What the quantity counts: "tablet", "capsule", "ml".</param>
+/// <param name="UnitsInPack">How many of those a priced pack holds; 1 is
+/// whole packs.</param>
+/// <param name="PackPrice">The pack's price for this patient, or null where
+/// a medical aid's tariff prices it.</param>
+/// <param name="RoundTo">The step a cash charge is rounded up to.</param>
 public sealed record ItemProposalDto(Guid ProductId, string ProductCode,
     string Description, decimal Quantity, string Directions,
-    bool FromScript);
+    bool FromScript, string Unit = "tablet", decimal UnitsInPack = 1m,
+    decimal? PackPrice = null, decimal RoundTo = DispensingCharge.DefaultRoundTo)
+{
+    /// "Enter the number of tablets handed over (a pack holds 100)."
+    public string WhatToEnter => DispensingCharge.WhatToEnter(Unit, UnitsInPack);
+
+    /// The charge for a quantity, as it will be worked out; empty where
+    /// the medical aid's tariff decides it.
+    public string ChargeFor(decimal quantity) =>
+        PackPrice is decimal price && quantity > 0m
+            ? DispensingCharge.Explain(price, UnitsInPack, Unit, quantity, RoundTo)
+            : PackPrice is null ? "Charged at the medical aid's tariff." : "";
+}
 
 /// <summary>
 /// Whether the person at the dispensing screen may issue it on their own

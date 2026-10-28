@@ -267,6 +267,28 @@ public partial class frmDispense : PhxFormBase, IDispenseView
 
         if (stage == DispenseStage.NoScript) btnFindScript.Focus();
         else scanBar.TakeFocus();
+
+        // The medicine Ask PharmaX was given, typed in once the script is
+        // open, for the dispenser to pick and go on as usual.
+        if (stage == DispenseStage.NoItems && _productTerm is string product)
+        {
+            _productTerm = null;
+            scanBar.Type(product);
+        }
+    }
+
+    private string? _patientTerm;
+    private string? _productTerm;
+
+    /// <summary>
+    /// Dispensing asked of Ask PharmaX: the patient search starts with the
+    /// name given, and the medicine is typed into the product box once the
+    /// script is open. Every check and the Issue button stay the dispenser's.
+    /// </summary>
+    public void StartFor(string? patient, string? product)
+    {
+        _patientTerm = string.IsNullOrWhiteSpace(patient) ? null : patient.Trim();
+        _productTerm = string.IsNullOrWhiteSpace(product) ? null : product.Trim();
     }
 
     /// The function key on a button, as the hint names it: "F6 ".
@@ -303,7 +325,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         // The patient list doubles as the picker, so a pharmacist who
         // cannot find the patient can add them without leaving the flow.
         using var picker = _views.Create<Patients.frmPatientList>();
-        picker.UseAsPicker();
+        picker.UseAsPicker(_patientTerm);
+        _patientTerm = null;
 
         return picker.ShowDialog(this) == DialogResult.OK
             ? picker.SelectedId

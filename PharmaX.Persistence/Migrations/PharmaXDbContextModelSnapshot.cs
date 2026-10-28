@@ -2062,6 +2062,10 @@ namespace PharmaX.Persistence.Migrations
                     b.Property<Guid?>("QuotationId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReceiptHiddenReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()

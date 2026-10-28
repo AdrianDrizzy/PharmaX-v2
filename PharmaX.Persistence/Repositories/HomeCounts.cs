@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Home;
+using PharmaX.Application.Patients;
 using PharmaX.Application.Reporting;
 using PharmaX.Application.Repositories;
 using PharmaX.Domain.Dispensing;
@@ -36,9 +37,19 @@ public sealed class HomeCounts : IHomeCounts
         var catalogue = _db.Products.Where(p => p.IsActive
             && (!overTheCounter || p.Schedule < 3));
 
+        // People, not files: the same phone number and address entered
+        // twice is one patient. Matched in memory, because the matching
+        // normalises what SQL cannot; seven thousand short rows.
+        var files = await _db.Patients
+            .Where(p => p.IsActive)
+            .Select(p => new { p.Telephone, p.Address })
+            .ToListAsync(ct);
+
         // One after another: a DbContext runs one query at a time.
         return new HomeCountsDto(
-            Patients: await _db.Patients.CountAsync(p => p.IsActive, ct),
+            Patients: PatientIdentity.CountPeople(
+                files.Select(f => (f.Telephone, f.Address))),
+            PatientFiles: files.Count,
             Products: await catalogue.CountAsync(ct),
             OpenPurchaseOrders: await _db.PurchaseOrders.CountAsync(o =>
                 o.Status == PurchaseOrderStatus.Draft

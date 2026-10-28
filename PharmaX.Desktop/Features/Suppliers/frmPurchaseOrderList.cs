@@ -219,6 +219,25 @@ public partial class frmPurchaseOrderList : PhxFormBase,
         ApplyPermissions();
         SeatSplitter();
         if (_presenter is not null) await _presenter.InitialiseAsync();
+
+        // Asked of Ask PharmaX: straight into a new order, with the line
+        // it was given where the product was found.
+        if (_raiseOnOpen && btnRaise.Visible)
+        {
+            _raiseOnOpen = false;
+            if (PromptRaiseOrder(_firstLine is null ? null : new[] { _firstLine }))
+                RefreshRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private bool _raiseOnOpen;
+    private PurchaseOrderLineDto? _firstLine;
+
+    /// Opens a new order as soon as the list is up, starting with this line.
+    public void RaiseOnOpen(PurchaseOrderLineDto? line)
+    {
+        _raiseOnOpen = true;
+        _firstLine = line;
     }
 
     public Guid? SelectedId => grdOrders.CurrentRow?.DataBoundItem

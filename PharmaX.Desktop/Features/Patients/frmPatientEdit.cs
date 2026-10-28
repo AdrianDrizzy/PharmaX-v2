@@ -103,7 +103,22 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
         base.OnLoad(e);
         if (_presenter is not null) await _presenter.InitialiseAsync();
         txtSurname.Focus();
+
+        // "John Peter Moyo": the last word is the surname, the rest the
+        // first names, which is how the staff say a name aloud.
+        if (PatientId is null && !string.IsNullOrWhiteSpace(_name))
+        {
+            var words = _name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            txtSurname.Text = words[^1];
+            txtFirstNames.Text = string.Join(' ', words[..^1]);
+            txtIdNumber.Focus();
+        }
     }
+
+    private string? _name;
+
+    /// The new patient's name, from a request to Ask PharmaX.
+    public void PrefillName(string? name) => _name = name?.Trim();
 
     public void ShowPatient(PatientDto patient)
     {
