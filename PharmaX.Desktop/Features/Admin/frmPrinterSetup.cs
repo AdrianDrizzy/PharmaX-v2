@@ -24,12 +24,14 @@ namespace PharmaX.Desktop.Features.Admin;
 public sealed class frmPrinterSetup : PhxFormBase
 {
     private readonly IWorkstationSettings _settings;
+    private readonly IPharmacySettings _shared;
     private readonly PharmacyProfile _pharmacy;
     private readonly IPrinterDirectory _directory;
 
     private readonly ComboBox _receipt = new();
     private readonly ComboBox _label = new();
     private readonly ComboBox _document = new();
+    private readonly CheckBox _everyComputer = new();
     private readonly Button _share = new();
     private readonly Button _find = new();
     private readonly Label _status = new();
@@ -56,10 +58,12 @@ public sealed class frmPrinterSetup : PhxFormBase
         new(null, "(none chosen - labels will not print)");
 
     public frmPrinterSetup(IWorkstationSettings settings,
+                           IPharmacySettings shared,
                            PharmacyProfile pharmacy,
                            IPrinterDirectory directory)
     {
         _settings = settings;
+        _shared = shared;
         _pharmacy = pharmacy;
         _directory = directory;
 
@@ -88,7 +92,15 @@ public sealed class frmPrinterSetup : PhxFormBase
         Field("&Label printer", _label, 1);
         Field("&Claim forms (A4)", _document, 2);
 
-        var below = 92 + 3 * PhxTheme.RowHeight;
+        // Under the lists, for the label printer: what makes every
+        // dispensary computer print its labels on the same one.
+        _everyComputer.AutoSize = true;
+        _everyComputer.Location = new Point(160, 92 + 3 * PhxTheme.RowHeight);
+        _everyComputer.Name = "chkEveryComputer";
+        _everyComputer.Text = "&Every dispensary computer prints labels on this label printer";
+        Controls.Add(_everyComputer);
+
+        var below = 92 + 4 * PhxTheme.RowHeight;
 
         _share.Location = new Point(160, below);
         _share.Name = "btnSharePrinters";
@@ -185,11 +197,34 @@ public sealed class frmPrinterSetup : PhxFormBase
                 .DistinctBy(c => c.Value, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            var firstLoad = !_loaded;
+            var dispensary = await _shared.GetAsync(PharmacySettingKey.LabelPrinter);
+
+            var labelLost = await FillAsync(_label, WorkstationSettingKey.LabelPrinter,
+                                            options, NoLabelPrinter);
+
+            // No label printer of its own here: the dispensary's is what
+            // this computer prints on (LabelPrinter.ChosenAsync), so say so.
+            if (dispensary is not null && Chosen(_label) is null)
+            {
+                if (options.FirstOrDefault(o => string.Equals(o.Value, dispensary,
+                        StringComparison.OrdinalIgnoreCase)) is { } match)
+                    _label.SelectedItem = match;
+
+                labelLost = (labelLost is null ? "" : "The label printer saved here is not installed on this computer. ")
+                            + "Labels print on the dispensary's label printer, "
+                            + $"{NetworkPrinters.Describe(dispensary)}.";
+            }
+
+            if (firstLoad)
+                _everyComputer.Checked = dispensary is not null
+                    && string.Equals(dispensary, NetworkPathOf(Chosen(_label)),
+                                     StringComparison.OrdinalIgnoreCase);
+
             var lost = new[]
             {
                 await FillAsync(_receipt, WorkstationSettingKey.ReceiptPrinter, options),
-                await FillAsync(_label, WorkstationSettingKey.LabelPrinter, options,
-                                NoLabelPrinter),
+                labelLost,
                 await FillAsync(_document, WorkstationSettingKey.DocumentPrinter, options)
             }.FirstOrDefault(problem => problem is not null);
 
@@ -418,9 +453,40 @@ public sealed class frmPrinterSetup : PhxFormBase
                         + Environment.NewLine + "Save anyway?"))
             return;
 
+        // The dispensary's label printer has to be one the other computers
+        // can reach: a printer plugged in here only once it is shared.
+        string? dispensary = null;
+
+        if (_everyComputer.Checked)
+        {
+            if (label is null)
+            {
+                ShowError("Choose the label printer every dispensary computer "
+                          + "should use, or untick the box.");
+                return;
+            }
+
+            dispensary = NetworkPathOf(label);
+
+            if (dispensary is null)
+            {
+                ShowError($"{label} is not shared, so the other computers cannot "
+                          + "print to it. Press \"Share this computer's printers\" "
+                          + "first, then save again.");
+                return;
+            }
+        }
+
         foreach (var printer in new[] { Chosen(_receipt), Chosen(_label),
                                         Chosen(_document) }.Distinct())
             if (!await ConnectAsync(printer)) return;
+
+        if (dispensary is not null)
+            await _shared.SetAsync(PharmacySettingKey.LabelPrinter, dispensary);
+        else if (string.Equals(await _shared.GetAsync(PharmacySettingKey.LabelPrinter),
+                     NetworkPathOf(label), StringComparison.OrdinalIgnoreCase))
+            // Unticked on the printer that was the dispensary's: it no longer is.
+            await _shared.SetAsync(PharmacySettingKey.LabelPrinter, null);
 
         await _settings.SetAsync(WorkstationSettingKey.ReceiptPrinter,
                                  Chosen(_receipt));
@@ -439,6 +505,17 @@ public sealed class frmPrinterSetup : PhxFormBase
 
     private static string? Chosen(ComboBox combo) =>
         (combo.SelectedItem as Choice)?.Value;
+
+    /// <summary>
+    /// A printer as every computer can name it: \\COMPUTER\Share. One
+    /// plugged in here only once it is shared; null otherwise.
+    /// </summary>
+    private static string? NetworkPathOf(string? printer) =>
+        printer is null ? null
+        : NetworkPrinters.IsNetworkPath(printer) ? printer
+        : NetworkPrinters.OnThisComputer()
+            .FirstOrDefault(p => p.IsShared && string.Equals(p.Name, printer,
+                                 StringComparison.OrdinalIgnoreCase))?.Path;
 
     /// <summary>
     /// Prints one line to the chosen receipt printer. The quickest way

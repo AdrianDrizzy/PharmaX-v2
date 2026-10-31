@@ -173,6 +173,29 @@ public class CollectionServiceTests
     }
 
     /// <summary>
+    /// The till opened a script, the patient queried the price, and the
+    /// pharmacist corrected it. Back at the till, the draft left behind
+    /// must charge the corrected figure, not the one it was opened at.
+    /// </summary>
+    [Fact]
+    public async Task A_resumed_collection_charges_what_the_script_costs_now()
+    {
+        var builder = new CollectionServiceBuilder();
+        var dispensing = builder.Waiting(tariff: 1356m, scheme: 0m, quantity: 30m);
+        var sut = builder.Build();
+
+        (await sut.StartAsync(dispensing.Id)).Value.Totals.Total.Should().Be(1356m);
+
+        dispensing.AmendLine(1, 30m, Money.Of(13.56m));
+
+        var resumed = await sut.StartAsync(dispensing.Id);
+
+        resumed.IsSuccess.Should().BeTrue(resumed.Error?.Message);
+        resumed.Value.Totals.Total.Should().Be(13.56m);
+        resumed.Value.Lines.Where(l => !l.IsVoided).Should().ContainSingle();
+    }
+
+    /// <summary>
     /// The medicine left the shelf when the pharmacist issued the
     /// script. Issuing it again at the till would take the pharmacy's
     /// stock figures out by every script it ever sold.

@@ -140,8 +140,16 @@ internal static class Spooler
     /// Whether the Windows default will do when no printer is chosen for
     /// this purpose (PrinterResolver.Resolve).
     /// </param>
-    public static async Task<PrintResult> PrintAsync(PrintDocument doc,
+    public static Task<PrintResult> PrintAsync(PrintDocument doc,
         IWorkstationSettings settings, string settingKey, string purpose,
+        string jobName, ILogger log, CancellationToken ct,
+        bool orDefault = true) =>
+        PrintAsync(doc, token => settings.GetAsync(settingKey, token), purpose,
+                   jobName, log, ct, orDefault);
+
+    /// <param name="choose">The printer chosen for this purpose, or null.</param>
+    public static async Task<PrintResult> PrintAsync(PrintDocument doc,
+        Func<CancellationToken, Task<string?>> choose, string purpose,
         string jobName, ILogger log, CancellationToken ct,
         bool orDefault = true)
     {
@@ -153,8 +161,7 @@ internal static class Spooler
             // from the till's own thread, and its continuation needed
             // that same thread to finish - so the sale finalised, the
             // hourglass came up, and the window never repainted again.
-            chosen = await settings.GetAsync(settingKey, ct)
-                .ConfigureAwait(false);
+            chosen = await choose(ct).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Deliberately broad: see below.
         catch (Exception ex)
@@ -913,12 +920,17 @@ public sealed class LabelPrinter : ILabelPrinter
     private readonly ILogger<LabelPrinter> _log;
     private readonly IWorkstationSettings _settings;
     private readonly PharmacyProfile? _pharmacy;
+    private readonly IPharmacySettings? _shared;
 
     public LabelPrinter(ILogger<LabelPrinter> log,
                         IWorkstationSettings settings,
-                        PharmacyProfile pharmacy)
-        : this(log, settings) =>
+                        PharmacyProfile pharmacy,
+                        IPharmacySettings shared)
+        : this(log, settings)
+    {
         _pharmacy = pharmacy;
+        _shared = shared;
+    }
 
     public LabelPrinter(ILogger<LabelPrinter> log,
                         IWorkstationSettings settings)
@@ -952,13 +964,35 @@ public sealed class LabelPrinter : ILabelPrinter
         // Only on the printer chosen for labels: the Windows default at a
         // till is the receipt printer, and labels sent there came out on
         // the receipt roll.
-        return await Spooler.PrintAsync(doc, _settings,
-            WorkstationSettingKey.LabelPrinter, "label",
+        return await Spooler.PrintAsync(doc, ChosenAsync, "label",
             $"Label {label.ScriptNumber} {label.ProductDescription}"
             + (copies > 1 ? $" x{copies}" : ""), _log, ct,
             orDefault: false)
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// This computer's own label printer where it has one it can reach,
+    /// otherwise the dispensary's (PharmacySettingKey.LabelPrinter).
+    /// </summary>
+    private async Task<string?> ChosenAsync(CancellationToken ct)
+    {
+        var own = await _settings.GetAsync(WorkstationSettingKey.LabelPrinter, ct)
+            .ConfigureAwait(false);
+
+        if (_shared is null || Reachable(own)) return own;
+
+        return await _shared.GetAsync(PharmacySettingKey.LabelPrinter, ct)
+                   .ConfigureAwait(false)
+               ?? own;
+    }
+
+    /// A printer named on another computer is reached through the network;
+    /// a bare name only where it is installed.
+    internal static bool Reachable(string? printer) =>
+        !string.IsNullOrWhiteSpace(printer)
+        && (NetworkPrinters.IsNetworkPath(printer)
+            || PrinterResolver.Installed().Contains(printer, StringComparer.OrdinalIgnoreCase));
 
     /// <remarks>
     /// On the label printer, straight after the item labels, so it comes
@@ -975,8 +1009,7 @@ public sealed class LabelPrinter : ILabelPrinter
                                         _pharmacy.Address),
             _pharmacy?.Telephone);
 
-        return await Spooler.PrintAsync(doc, _settings,
-            WorkstationSettingKey.LabelPrinter, "label",
+        return await Spooler.PrintAsync(doc, ChosenAsync, "label",
             $"Trailer label {trailer.ScriptNumber}", _log, ct,
             orDefault: false)
             .ConfigureAwait(false);

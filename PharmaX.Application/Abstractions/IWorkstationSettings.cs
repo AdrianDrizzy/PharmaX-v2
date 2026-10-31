@@ -122,4 +122,17 @@ public static class PharmacySettingKey
 
     /// Template labels an administrator has printed, newest first.
     public const string TemplateLabels = "labels.templates";
+
+    /// <summary>
+    /// The dispensary's label printer, as \\COMPUTER\Share, for every
+    /// computer whose own label printer is not chosen or not there.
+    /// </summary>
+    /// <remarks>
+    /// A label printer chosen on the computer it is plugged into is saved
+    /// there under its bare name, which means nothing on the next
+    /// dispensary computer: that one said "no longer installed" and
+    /// printed no labels at all. One network path every computer can
+    /// reach puts every label on the same printer, through the same driver.
+    /// </remarks>
+    public const string LabelPrinter = "printer.dispensary-label";
 }

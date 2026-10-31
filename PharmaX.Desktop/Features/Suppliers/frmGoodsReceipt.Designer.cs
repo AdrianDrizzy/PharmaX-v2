@@ -130,7 +130,7 @@ partial class frmGoodsReceipt
         lblCaptureCaption.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
         lblCaptureCaption.Height = 24;
         lblCaptureCaption.Text =
-            "Delivery note - expiry as MM/yyyy, batch required for "
+            "Delivery note - expiry as MM/yyyy or dd/MM/yyyy, batch required for "
             + "batch-tracked items";
 
         // Tab along a delivery line through the cells that take typing.

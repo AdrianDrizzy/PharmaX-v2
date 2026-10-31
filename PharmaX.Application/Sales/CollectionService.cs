@@ -150,7 +150,23 @@ public sealed class CollectionService : ICollectionService
         // and the patient could then never pay at all.
         if (await _sales.OpenCollectionForAsync(dispensing.Id, ct)
             is Sale resumed)
+        {
+            // At what the script costs now. The draft was priced when the
+            // till first opened it; a pharmacist who has since corrected
+            // the quantity or the charge left the queue showing the new
+            // figure and the till charging the old, higher one.
+            if (!ChargesAsDispensed(resumed, dispensing))
+            {
+                foreach (var stale in resumed.Lines.Where(l => l.IsScript && !l.IsVoided).ToList())
+                    resumed.VoidLine(stale.LineNo,
+                        "The dispensary changed the script's charge.", _user.Id);
+
+                await AddScriptLinesAsync(resumed, dispensing, ct);
+                await _uow.SaveChangesAsync(ct);
+            }
+
             return Result<SaleDto>.Ok(SaleDto.From(resumed));
+        }
 
         var sale = Sale.Open(
             branchId: _sales.CurrentBranchId,
@@ -163,6 +179,24 @@ public sealed class CollectionService : ICollectionService
         // that finalising it does not issue the stock a second time.
         sale.CollectFor(dispensing.Id);
 
+        await AddScriptLinesAsync(sale, dispensing, ct);
+
+        await _sales.AddAsync(sale, ct);
+        await _uow.SaveChangesAsync(ct);
+
+        return Result<SaleDto>.Ok(SaleDto.From(sale));
+    }
+
+    /// Whether a draft's script lines still charge what the dispensing does.
+    private static bool ChargesAsDispensed(Sale sale, Domain.Dispensing.Dispensing dispensing) =>
+        sale.Lines.Where(l => l.IsScript && !l.IsVoided)
+            .Select(l => (l.ProductId, l.UnitPrice.Amount))
+            .SequenceEqual(dispensing.Lines.Where(l => !l.CoPayment.IsZero)
+                .Select(l => (l.ProductId, l.CoPayment.Amount)));
+
+    private async Task AddScriptLinesAsync(Sale sale, Domain.Dispensing.Dispensing dispensing,
+                                           CancellationToken ct)
+    {
         foreach (var line in dispensing.Lines)
         {
             // A fully covered item owes nothing and has no business on a
@@ -205,11 +239,6 @@ public sealed class CollectionService : ICollectionService
             // quantity of one would misstate how much of the batch moved
             // to anything totalling sale lines.
         }
-
-        await _sales.AddAsync(sale, ct);
-        await _uow.SaveChangesAsync(ct);
-
-        return Result<SaleDto>.Ok(SaleDto.From(sale));
     }
 
     /// The item and how much of it, since the line is priced as one.
