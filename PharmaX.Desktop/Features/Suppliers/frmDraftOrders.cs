@@ -34,6 +34,7 @@ public sealed class frmDraftOrders : PhxFormBase
     private readonly Button _excelButton = new();
     private readonly Button _send = new();
     private readonly Button _discard = new();
+    private readonly Button _discardSeveral = new();
     private readonly Button _close = new();
 
     private IReadOnlyList<PurchaseOrderDto> _drafts = Array.Empty<PurchaseOrderDto>();
@@ -112,15 +113,22 @@ public sealed class frmDraftOrders : PhxFormBase
         _excelButton.Text = "Export &Excel";
 
         _send.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        _send.Location = new Point(300, 64);
+        _send.Location = new Point(250, 64);
         _send.Name = "btnSend";
-        _send.Size = new Size(160, 32);
+        _send.Size = new Size(150, 32);
         _send.Text = "&Send to supplier";
 
-        _discard.Location = new Point(466, 64);
+        _discard.Location = new Point(406, 64);
         _discard.Name = "btnDiscard";
-        _discard.Size = new Size(120, 32);
+        _discard.Size = new Size(110, 32);
         _discard.Text = "&Discard draft";
+
+        // The drafts are picked one at a time above, so several are
+        // chosen in a list of their own.
+        _discardSeveral.Location = new Point(522, 64);
+        _discardSeveral.Name = "btnDiscardSeveral";
+        _discardSeveral.Size = new Size(130, 32);
+        _discardSeveral.Text = "Discard se&veral...";
 
         _close.DialogResult = DialogResult.Cancel;
         _close.Location = new Point(660, 64);
@@ -129,7 +137,7 @@ public sealed class frmDraftOrders : PhxFormBase
         _close.Text = "Close";
 
         footer.Controls.AddRange(new Control[]
-            { _total, _note, _pdfButton, _excelButton, _send, _discard, _close });
+            { _total, _note, _pdfButton, _excelButton, _send, _discard, _discardSeveral, _close });
 
         Controls.Add(_lines);
         Controls.Add(header);
@@ -143,6 +151,7 @@ public sealed class frmDraftOrders : PhxFormBase
         _excelButton.Click += (_, _) => Export(pdf: false);
         _send.Click += (_, _) => Operations.Enqueue(SendAsync);
         _discard.Click += (_, _) => Operations.Enqueue(DiscardAsync);
+        _discardSeveral.Click += (_, _) => Operations.Enqueue(DiscardSeveralAsync);
 
         // Opened beside the shell rather than as a dialog, where a button's
         // DialogResult alone does not close the window.
@@ -186,9 +195,7 @@ public sealed class frmDraftOrders : PhxFormBase
         _orders.Items.Clear();
 
         foreach (var order in _drafts)
-            _orders.Items.Add(string.Format(CultureInfo.CurrentCulture,
-                "{0} - {1} ({2} item(s))", order.OrderNumber, order.SupplierName,
-                order.Lines.Count));
+            _orders.Items.Add(Describe(order));
 
         var at = _drafts.ToList().FindIndex(o => o.Id == select);
         _orders.SelectedIndex = _drafts.Count == 0 ? -1 : Math.Max(at, 0);
@@ -203,7 +210,7 @@ public sealed class frmDraftOrders : PhxFormBase
         var order = Current;
         var any = order is not null;
 
-        _pdfButton.Enabled = _excelButton.Enabled = _send.Enabled = _discard.Enabled = any;
+        _pdfButton.Enabled = _excelButton.Enabled = _send.Enabled = _discard.Enabled = _discardSeveral.Enabled = any;
 
         if (order is null)
         {
@@ -327,24 +334,57 @@ public sealed class frmDraftOrders : PhxFormBase
         await LoadDraftsAsync(null);
     }
 
-    private async Task DiscardAsync()
+    private Task DiscardAsync() =>
+        Current is { } order ? DiscardAsync(new[] { order }) : Task.CompletedTask;
+
+    private Task DiscardSeveralAsync()
     {
-        if (_purchasing is null || Current is not { } order) return;
+        if (Current is not { } current) return Task.CompletedTask;
 
-        if (!Confirm($"Discard draft order {order.OrderNumber} to {order.SupplierName}?"))
+        // The one on screen first, so it is already picked.
+        var choices = _drafts.OrderBy(o => o.Id != current.Id)
+            .Select(o => (Describe(o), o))
+            .ToList();
+
+        var picked = frmChoicePrompt.AskMany(this, "Discard draft orders",
+            "The draft orders to discard (Ctrl or Shift for several):", choices);
+
+        return DiscardAsync(picked);
+    }
+
+    /// Each through the service's own cancel, so its checks still apply;
+    /// one refused leaves the rest discarded.
+    private async Task DiscardAsync(IReadOnlyList<PurchaseOrderDto> orders)
+    {
+        if (_purchasing is null || orders.Count == 0) return;
+
+        if (!Confirm(orders.Count == 1
+                ? $"Discard draft order {orders[0].OrderNumber} to {orders[0].SupplierName}?"
+                : $"Discard {orders.Count} draft orders?"))
             return;
 
-        var cancelled = await _purchasing.CancelAsync(order.Id,
-            $"Draft discarded by {_user?.Username}");
+        var failed = new List<string>();
 
-        if (cancelled.IsFailure)
+        foreach (var order in orders)
         {
-            ShowError(cancelled.Error.Message);
-            return;
+            var cancelled = await _purchasing.CancelAsync(order.Id,
+                $"Draft discarded by {_user?.Username}");
+
+            if (cancelled.IsFailure)
+                failed.Add(orders.Count == 1
+                    ? cancelled.Error.Message
+                    : $"{order.OrderNumber}: {cancelled.Error.Message}");
         }
+
+        if (failed.Count > 0) ShowError(string.Join("\n", failed));
+        if (failed.Count == orders.Count) return;
 
         await LoadDraftsAsync(null);
     }
+
+    private static string Describe(PurchaseOrderDto order) =>
+        string.Format(CultureInfo.CurrentCulture, "{0} - {1} ({2} item(s))",
+            order.OrderNumber, order.SupplierName, order.Lines.Count);
 
     private static decimal Quantity(DataGridViewRow row) =>
         Math.Max(0m, ToDecimal(row.Cells["Qty"].Value));

@@ -219,24 +219,36 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     /// </summary>
     private async Task SearchAsync(string? term)
     {
-        var code = View.PromptProductSearch(term);
+        var codes = View.PromptProductsSearch(term);
 
         // Cancelled. The operator has already seen what did and did not
         // match, so an error on top of that would only be noise.
-        if (string.IsNullOrWhiteSpace(code))
+        if (codes.Count == 0)
         {
             View.FocusScan();
             return;
         }
 
-        var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
+        // Each one as if it were picked alone; a refusal does not stop the rest.
+        var failed = new List<string>();
 
-        if (result.IsFailure)
+        foreach (var code in codes)
         {
-            View.ShowError(result.Error.Message);
+            var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
+            if (result.IsFailure)
+                failed.Add(codes.Count == 1
+                    ? result.Error.Message
+                    : $"{code}: {result.Error.Message}");
+        }
+
+        if (failed.Count == codes.Count)
+        {
+            View.ShowError(string.Join("\n", failed));
             View.FocusScan();
             return;
         }
+
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
 
         await RefreshAsync();
     }
@@ -318,13 +330,30 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
     private Task OnVoidAsync() => GuardAsync(async () =>
     {
-        if (ChosenLine() is not int lineNo) return;
+        var lineNos = View.SelectedLineNos;
+        if (lineNos.Count == 0)
+        {
+            ChosenLine();
+            return;
+        }
 
+        // One reason for every line picked; each void is still the
+        // service's to allow or refuse.
         var reason = View.PromptVoidReason();
         if (string.IsNullOrWhiteSpace(reason)) return;
 
-        var result = await _sales.VoidLineAsync(_saleId, lineNo, reason);
-        if (result.IsFailure) View.ShowError(result.Error.Message);
+        var failed = new List<string>();
+
+        foreach (var lineNo in lineNos)
+        {
+            var result = await _sales.VoidLineAsync(_saleId, lineNo, reason);
+            if (result.IsFailure)
+                failed.Add(lineNos.Count == 1
+                    ? result.Error.Message
+                    : $"Line {lineNo}: {result.Error.Message}");
+        }
+
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
 
         await RefreshAsync();
     });

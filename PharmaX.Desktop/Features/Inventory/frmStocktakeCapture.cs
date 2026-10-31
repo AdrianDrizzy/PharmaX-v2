@@ -87,6 +87,10 @@ public partial class frmStocktakeCapture : PhxFormBase,
     public int? SelectedLineNo =>
         grdLines.CurrentRow?.Cells["LineNo"].Value as int?;
 
+    public IReadOnlyList<int> SelectedLineNos =>
+        grdLines.SelectedInOrder().Select(r => r.Cells["LineNo"].Value)
+            .OfType<int>().ToList();
+
     public bool VarianceOnly => chkVarianceOnly.Checked;
 
     public void ShowVarianceOnly(bool varianceOnly) =>

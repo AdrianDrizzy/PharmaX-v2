@@ -14,7 +14,9 @@ partial class frmCollect
     private PhxGrid grdWaiting = null!;
     private Button btnCollect = null!;
     private Button btnRefresh = null!;
+    private Button btnDelete = null!;
     private Button btnClose = null!;
+    private ToolTip tipDelete = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -41,6 +43,9 @@ partial class frmCollect
         btnCollect.Name = "btnCollect";
         btnRefresh = new Button();
         btnRefresh.Name = "btnRefresh";
+        btnDelete = new Button();
+        btnDelete.Name = "btnDelete";
+        tipDelete = new ToolTip(components);
         btnClose = new Button();
         btnClose.Name = "btnClose";
         SuspendLayout();
@@ -72,7 +77,9 @@ partial class frmCollect
         grdWaiting.AutoGenerateColumns = false;
         grdWaiting.Dock = DockStyle.Fill;
         grdWaiting.Name = "grdWaiting";
-        grdWaiting.MultiSelect = false;
+        // Several at once, with Ctrl or Shift, for Delete selected.
+        grdWaiting.MultiSelect = true;
+        grdWaiting.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 
         // Wider rows than a maintenance list: a cashier reads this one
         // across a counter with a patient waiting, not up close.
@@ -98,6 +105,16 @@ partial class frmCollect
         btnRefresh.Text = "&Refresh";
         btnRefresh.UseVisualStyleBackColor = true;
         pnlBottom.Controls.Add(btnRefresh);
+
+        btnDelete.Location = new Point(298, 8);
+        btnDelete.Size = new Size(150, 34);
+        btnDelete.Text = "&Delete selected";
+        btnDelete.UseVisualStyleBackColor = true;
+        tipDelete.SetToolTip(btnDelete,
+            "Deletes the selected scripts and puts their medicine back in stock. "
+            + "Hold Ctrl or Shift to select several. Scripts not collected "
+            + "within 24 hours are deleted by themselves.");
+        pnlBottom.Controls.Add(btnDelete);
 
         btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnClose.Location = new Point(740, 8);

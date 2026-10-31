@@ -59,7 +59,7 @@ public class PosPresenterTests
 
         _view.CodeScanned += Raise.Event<EventHandler<string>>(this, "panado");
 
-        _view.Received().PromptProductSearch("panado");
+        _view.Received().PromptProductsSearch("panado");
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class PosPresenterTests
               .Returns(Result<SaleLineDto>.Fail("POS-001",
                   "No product for code panado."));
 
-        _view.PromptProductSearch("panado").Returns("PAN500");
+        _view.PromptProductsSearch("panado").Returns(["PAN500"]);
 
         _sales.AddLineAsync(sale.Id, "PAN500", 1m)
               .Returns(Result<SaleLineDto>.Ok(sale.Lines[0]));
@@ -88,6 +88,41 @@ public class PosPresenterTests
     }
 
     /// <summary>
+    /// Several picked at once are each sold as if picked alone, in list
+    /// order; one refused does not stop the rest, and is named once.
+    /// </summary>
+    [Fact]
+    public async Task Several_products_chosen_are_each_sold_and_a_refusal_named()
+    {
+        var sale = SaleWithOneLine();
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(sale));
+        _sales.GetAsync(sale.Id).Returns(Result<SaleDto>.Ok(sale));
+
+        _view.PromptProductsSearch(null).Returns(["PAN500", "OLD1", "ASP300"]);
+
+        _sales.AddLineAsync(sale.Id, Arg.Any<string>(), 1m)
+              .Returns(Result<SaleLineDto>.Ok(sale.Lines[0]));
+        _sales.AddLineAsync(sale.Id, "OLD1", 1m)
+              .Returns(Result<SaleLineDto>.Fail("POS-002",
+                  "Old stock is discontinued and cannot be sold."));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.ProductSearchRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        Received.InOrder(() =>
+        {
+            _sales.AddLineAsync(sale.Id, "PAN500", 1m);
+            _sales.AddLineAsync(sale.Id, "OLD1", 1m);
+            _sales.AddLineAsync(sale.Id, "ASP300", 1m);
+        });
+        _view.Received(1).ShowError(
+            "OLD1: Old stock is discontinued and cannot be sold.");
+        await _sales.Received().GetAsync(sale.Id);
+    }
+
+    /// <summary>
     /// Giving up on the search is not an error: the operator has just
     /// seen what did and did not match.
     /// </summary>
@@ -99,7 +134,7 @@ public class PosPresenterTests
               .Returns(Result<SaleLineDto>.Fail("POS-001",
                   "No product for code 9999."));
 
-        _view.PromptProductSearch(Arg.Any<string>()).Returns((string?)null);
+        _view.PromptProductsSearch(Arg.Any<string>()).Returns([]);
 
         var sut = CreateSut();
         await sut.InitialiseAsync();
@@ -133,7 +168,7 @@ public class PosPresenterTests
             "Panado 500mg is discontinued and cannot be sold.");
 
         _view.Received().FocusScan();
-        _view.DidNotReceive().PromptProductSearch(Arg.Any<string>());
+        _view.DidNotReceive().PromptProductsSearch(Arg.Any<string>());
     }
 
     [Fact]
@@ -146,7 +181,7 @@ public class PosPresenterTests
 
         _view.ProductSearchRequested += Raise.EventWith(this, EventArgs.Empty);
 
-        _view.Received().PromptProductSearch(null);
+        _view.Received().PromptProductsSearch(null);
     }
 
     [Fact]
@@ -402,6 +437,7 @@ public class PosPresenterTests
         _sales.OpenAsync().Returns(Result<SaleDto>.Ok(sale));
 
         _view.SelectedLineNo.Returns(1);
+        _view.SelectedLineNos.Returns(new[] { 1 });
         _view.PromptVoidReason().Returns((string?)null);
 
         var sut = CreateSut();
@@ -411,6 +447,35 @@ public class PosPresenterTests
 
         await _sales.DidNotReceive().VoidLineAsync(
             Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// Several lines picked are voided on one reason, and a line the
+    /// service refuses is named without stopping the others.
+    /// </summary>
+    [Fact]
+    public async Task Voiding_several_lines_asks_once_and_names_the_one_refused()
+    {
+        var sale = SaleWithOneLine();
+        _sales.OpenAsync().Returns(Result<SaleDto>.Ok(sale));
+
+        _view.SelectedLineNos.Returns(new[] { 1, 2, 3 });
+        _view.PromptVoidReason().Returns("Customer changed mind");
+        _sales.VoidLineAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>())
+              .Returns(Result.Ok());
+        _sales.VoidLineAsync(Arg.Any<Guid>(), 2, Arg.Any<string>())
+              .Returns(Result.Fail("POS-009", "Line 2 is already voided."));
+
+        var sut = CreateSut();
+        await sut.InitialiseAsync();
+
+        _view.VoidLineRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        _view.Received(1).PromptVoidReason();
+        foreach (var lineNo in new[] { 1, 2, 3 })
+            await _sales.Received(1).VoidLineAsync(sale.Id, lineNo,
+                "Customer changed mind");
+        _view.Received(1).ShowError("Line 2: Line 2 is already voided.");
     }
 
     /// <summary>

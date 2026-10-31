@@ -197,6 +197,12 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
 
     public bool? SelectedIsActive => SelectedRow?.IsActive;
 
+    public IReadOnlyList<PatientListItemDto> SelectedPatients =>
+        grdPatients.SelectedInOrder()
+            .Select(r => r.DataBoundItem)
+            .OfType<PatientListItemDto>()
+            .ToList();
+
     public bool IncludeInactive => chkShowInactive.Checked && !IsPickerMode;
 
     public void ShowPatients(IReadOnlyList<PatientListItemDto> patients)

@@ -72,6 +72,16 @@ public partial class frmCollect : PhxFormBase, ICollectView
 
         grdWaiting.DoubleClick += (_, _) =>
             CollectRequested?.Invoke(this, EventArgs.Empty);
+
+        btnDelete.Click += (_, _) =>
+            DeleteRequested?.Invoke(this, EventArgs.Empty);
+
+        grdWaiting.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Delete) return;
+            e.Handled = true;
+            DeleteRequested?.Invoke(this, EventArgs.Empty);
+        };
     }
 
     /// Runtime. Resolved by the container.
@@ -117,13 +127,20 @@ public partial class frmCollect : PhxFormBase, ICollectView
             ? row.DispensingId
             : null;
 
+    public IReadOnlyList<Guid> SelectedDispensingIds =>
+        grdWaiting.SelectedRows.Cast<DataGridViewRow>()
+            .Select(r => r.DataBoundItem).OfType<WaitingRow>()
+            .Select(r => r.DispensingId).ToList();
+
     public void ShowWaiting(IReadOnlyList<CollectionDto> waiting)
     {
         ArgumentNullException.ThrowIfNull(waiting);
 
         // The selection survives a refresh, so a cashier who has picked
-        // a patient does not lose them every five seconds.
+        // a patient - or several to delete - does not lose them every
+        // five seconds.
         var chosen = SelectedDispensingId;
+        var picked = SelectedDispensingIds.ToHashSet();
 
         GridPager.Attach(grdWaiting).Show(waiting.Select(WaitingRow.From));
 
@@ -140,7 +157,14 @@ public partial class frmCollect : PhxFormBase, ICollectView
                 PhxTheme.Flag(row, PhxTheme.Attention);
         }
 
+        // After the current cell, which clears every other selected row.
+        if (picked.Count > 1)
+            foreach (DataGridViewRow row in grdWaiting.Rows)
+                if (row.DataBoundItem is WaitingRow w && picked.Contains(w.DispensingId))
+                    row.Selected = true;
+
         btnCollect.Enabled = waiting.Count > 0;
+        btnDelete.Enabled = waiting.Count > 0;
 
         _suggestions.Offer(waiting.Select(w => new Suggestion(w.DispensingId,
             w.PatientName, Suggest.Details(w.ScriptNumber,
@@ -201,4 +225,5 @@ public partial class frmCollect : PhxFormBase, ICollectView
     public event EventHandler? RefreshRequested;
     public event EventHandler? FilterChanged;
     public event EventHandler? CollectRequested;
+    public event EventHandler? DeleteRequested;
 }

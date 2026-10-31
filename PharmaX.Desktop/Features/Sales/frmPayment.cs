@@ -241,10 +241,10 @@ public partial class frmPayment : Form
 
     private void RemoveSelected()
     {
-        if (grdPayments.CurrentRow is null) return;
-
-        var index = grdPayments.CurrentRow.Index;
-        if (index >= 0 && index < _payments.Count) _payments.RemoveAt(index);
+        // Bottom up, so taking one off does not move the rows still to go.
+        foreach (var row in grdPayments.SelectedInOrder().Reverse())
+            if (row.Index >= 0 && row.Index < _payments.Count)
+                _payments.RemoveAt(row.Index);
 
         Redraw();
     }

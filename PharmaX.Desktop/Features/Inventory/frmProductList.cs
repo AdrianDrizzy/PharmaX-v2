@@ -233,6 +233,21 @@ public partial class frmProductList : PhxFormBase, IProductListView
     }
 
     /// <summary>
+    /// As <see cref="Pick"/>, for a screen that takes several products at
+    /// once: every one chosen, top to bottom, or none.
+    /// </summary>
+    public static IReadOnlyList<string> PickMany(ViewFactory views,
+        IWin32Window owner, string term)
+    {
+        ArgumentNullException.ThrowIfNull(views);
+
+        using var picker = views.Create<frmProductList>();
+        picker.UseAsPicker(term);
+
+        return picker.ShowDialog(owner) == DialogResult.OK ? picker.SelectedCodes : [];
+    }
+
+    /// <summary>
     /// Called before ShowDialog by a screen that wants to pick a product
     /// rather than maintain the list - the till looking one up by name
     /// instead of scanning it, most of all.
@@ -307,6 +322,37 @@ public partial class frmProductList : PhxFormBase, IProductListView
     /// </summary>
     public Guid? SelectedBatchId => (Selected() as BatchRow)?.BatchId;
 
+    public IReadOnlyList<(Guid Id, string Code)> SelectedProducts
+    {
+        get
+        {
+            var grid = BatchView ? grdBatches : grdProducts;
+
+            // An editable grid selects cells, not rows: a row is picked
+            // where any of its cells is.
+            var rows = grid.SelectedCells.Cast<DataGridViewCell>()
+                .Select(c => c.OwningRow!)
+                .Where(r => !r.IsNewRow)
+                .Distinct()
+                .OrderBy(r => r.Index)
+                .ToList();
+            if (rows.Count == 0 && grid.CurrentRow is { IsNewRow: false } current)
+                rows.Add(current);
+
+            // Several batches of one product deactivate it once.
+            return rows
+                .Select(r => r.DataBoundItem switch
+                {
+                    ProductRow p => (Id: p.Id, Code: p.Code),
+                    BatchRow b => (Id: b.ProductId, Code: b.Code),
+                    _ => (Id: Guid.Empty, Code: "")
+                })
+                .Where(p => p.Id != Guid.Empty)
+                .DistinctBy(p => p.Id)
+                .ToList();
+        }
+    }
+
     private object? Selected() => BatchView
         ? grdBatches.CurrentRow?.DataBoundItem
         : grdProducts.CurrentRow?.DataBoundItem;
@@ -323,6 +369,13 @@ public partial class frmProductList : PhxFormBase, IProductListView
         BatchRow b => b.Code,
         _ => null
     };
+
+    /// <summary>
+    /// Every chosen product's code, top to bottom, for a screen that takes
+    /// several at once: Ctrl+click, Shift+click or Ctrl+A in the list.
+    /// </summary>
+    public IReadOnlyList<string> SelectedCodes =>
+        SelectedProducts.Select(p => p.Code).ToList();
 
     public ProductCellEditDto? PendingEdit { get; private set; }
 

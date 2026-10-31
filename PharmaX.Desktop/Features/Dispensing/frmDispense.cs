@@ -374,6 +374,10 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             ? lineNo
             : null;
 
+    public IReadOnlyList<int> SelectedLineNos =>
+        grdItems.SelectedInOrder().Select(r => r.Cells["LineNo"].Value)
+            .OfType<int>().ToList();
+
     public DirectionsDto? PromptDirections(ItemProposalDto proposal) =>
         frmItemPrompt.Ask(this, proposal, _dosage);
 

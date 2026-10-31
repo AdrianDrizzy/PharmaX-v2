@@ -12,6 +12,9 @@ public interface ICollectView : Mvp.IView
 
     Guid? SelectedDispensingId { get; }
 
+    /// Every row picked, with Ctrl or Shift, for deleting together.
+    IReadOnlyList<Guid> SelectedDispensingIds { get; }
+
     void ShowWaiting(IReadOnlyList<CollectionDto> waiting);
 
     /// The line above the grid: how many are waiting and for how long.
@@ -26,4 +29,5 @@ public interface ICollectView : Mvp.IView
     event EventHandler? RefreshRequested;
     event EventHandler? FilterChanged;
     event EventHandler? CollectRequested;
+    event EventHandler? DeleteRequested;
 }

@@ -89,6 +89,32 @@ public class DispensePresenterTests
         _view.DidNotReceive().ShowError("Needs authorising.");
     }
 
+    /// <summary>
+    /// Several items picked come off together, from the bottom, so taking
+    /// one off cannot move the next under the pharmacist's selection.
+    /// </summary>
+    [Fact]
+    public void Several_items_picked_are_taken_off_from_the_bottom()
+    {
+        var state = Begun();
+        _view.SelectedLineNos.Returns(new[] { 1, 2 });
+        _dispensing.RemoveItemAsync(_dispensingId, Arg.Any<int>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Result<DispensingStateDto>.Ok(state));
+
+        Presenter().Attach(_view);
+
+        _view.ScriptRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.RemoveItemRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        Received.InOrder(() =>
+        {
+            _dispensing.RemoveItemAsync(_dispensingId, 2, Arg.Any<CancellationToken>());
+            _dispensing.RemoveItemAsync(_dispensingId, 1, Arg.Any<CancellationToken>());
+        });
+        _view.DidNotReceive().ShowError(Arg.Any<string>());
+    }
+
     private DispensePresenter Presenter() =>
         new(_dispensing, _scripts, _patients, _printer,
             Substitute.For<IClaimFormService>(), Substitute.For<IClaimFormPrinter>(),

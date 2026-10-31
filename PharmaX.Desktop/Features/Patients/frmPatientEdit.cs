@@ -220,8 +220,15 @@ public partial class frmPatientEdit : PhxFormBase, IPatientEditView
 
     private void RemoveAllergyRow()
     {
-        if (grdAllergies.CurrentRow is { IsNewRow: false } row)
-            grdAllergies.Rows.Remove(row);
+        // Every row with a selected cell, so several go at once; the
+        // grid is edited cell by cell, so rows are never selected whole.
+        IEnumerable<DataGridViewRow?> rows = grdAllergies.SelectedCells.Count > 0
+            ? grdAllergies.SelectedCells.Cast<DataGridViewCell>()
+                .Select(cell => cell.OwningRow).Distinct().ToList()
+            : new[] { grdAllergies.CurrentRow };
+
+        foreach (var row in rows)
+            if (row is { IsNewRow: false }) grdAllergies.Rows.Remove(row);
     }
 
     private static string? Blank(string value) =>

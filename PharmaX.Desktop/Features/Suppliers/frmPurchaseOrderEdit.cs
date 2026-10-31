@@ -346,10 +346,20 @@ public sealed class frmPurchaseOrderEdit : PhxFormBase
 
         var (match, matches) = await Suggest.ResolveProductAsync(_scopes, code);
 
-        // A name that fits several: the list, opened on those words.
+        // A name that fits several: the list, opened on those words. The
+        // first product chosen takes this line, each other one a new line
+        // of its own.
         if (match is null && matches > 1 && _views is not null
-            && frmProductList.Pick(_views, this, code) is string picked)
-            (match, _) = await Suggest.ResolveProductAsync(_scopes, picked);
+            && frmProductList.PickMany(_views, this, code) is { Count: > 0 } picked)
+        {
+            (match, _) = await Suggest.ResolveProductAsync(_scopes, picked[0]);
+
+            foreach (var more in picked.Skip(1))
+            {
+                var index = _lines.Rows.Add(more, "", 1m, 0m, 0m);
+                await LookUpAsync(_lines.Rows[index], more);
+            }
+        }
 
         if (match is null)
         {

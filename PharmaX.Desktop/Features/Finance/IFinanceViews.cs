@@ -13,6 +13,9 @@ public interface IChartView : Mvp.IView
     bool IncludeInactive { get; }
     Guid? SelectedAccountId { get; }
 
+    /// Every account picked, top to bottom; the focused row when none is.
+    IReadOnlyList<Guid> SelectedAccountIds { get; }
+
     void ShowAccounts(IReadOnlyList<LedgerAccountDto> accounts);
 
     /// Collects a new account. Null where the operator gave up.

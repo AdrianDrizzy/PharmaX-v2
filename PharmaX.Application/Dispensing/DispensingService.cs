@@ -124,6 +124,15 @@ public interface IDispensingService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Takes a script nobody came to pay for off Scripts to collect, the
+    /// same way as ReverseAsync: the stock goes back on the shelf. Open to
+    /// everyone who works the Collect screen, and to nothing but a script
+    /// still waiting there.
+    /// </summary>
+    Task<Result> ReverseUncollectedAsync(Guid dispensingId, string reason,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Sets aside a dispensing begun and not issued, for a screen closed
     /// on it. Nothing to do for one already issued.
     /// </summary>
@@ -1082,6 +1091,26 @@ public sealed class DispensingService : IDispensingService
     {
         _permissions.Demand(PermissionCode.ScriptReverse);
 
+        return await ReverseCoreAsync(dispensingId, reason, uncollectedOnly: false, ct);
+    }
+
+    /// <remarks>
+    /// The cashier's permission, not the pharmacist's: a script left on
+    /// Collect is the till's queue to tidy, and the medicine is still in
+    /// the pharmacy to go back on the shelf.
+    /// </remarks>
+    public async Task<Result> ReverseUncollectedAsync(Guid dispensingId,
+        string reason, CancellationToken ct = default)
+    {
+        if (!_permissions.Has(PermissionCode.ScriptReverse))
+            _permissions.Demand(PermissionCode.SaleCreate);
+
+        return await ReverseCoreAsync(dispensingId, reason, uncollectedOnly: true, ct);
+    }
+
+    private async Task<Result> ReverseCoreAsync(Guid dispensingId, string reason,
+        bool uncollectedOnly, CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Fail("DSP-034", "A reversal needs a reason.");
 
@@ -1090,6 +1119,11 @@ public sealed class DispensingService : IDispensingService
         var dispensing = await _dispensings.GetAsync(dispensingId, ct);
         if (dispensing is null)
             return Result.Fail("DSP-000", "Dispensing not found.");
+
+        // Another till may have just taken the money for it.
+        if (uncollectedOnly && !dispensing.AwaitsCollection)
+            return Result.Fail("DSP-058",
+                $"{dispensing.DocumentNumber} is no longer waiting to be collected.");
 
         var script = await _scripts.GetAsync(dispensing.ScriptId, ct);
         var claim = await _claims.ForDispensingAsync(dispensing.Id, ct);
