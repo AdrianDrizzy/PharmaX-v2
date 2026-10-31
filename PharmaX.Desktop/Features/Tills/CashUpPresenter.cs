@@ -16,6 +16,9 @@ public interface ICashUpView : IView
 
     Guid? SelectedShiftId { get; }
 
+    /// The day whose shifts are listed; today unless the operator picked another.
+    DateOnly Day { get; }
+
     /// Every transaction listed, and printed on the slip.
     bool EveryTransaction { get; }
 
@@ -43,6 +46,7 @@ public interface ICashUpView : IView
     bool PreviewSlip(PrintableDocument document, ReceiptHeaderDto header);
 
     event EventHandler? ShiftChanged;
+    event EventHandler? DayChanged;
     event EventHandler? RefreshRequested;
     event EventHandler? EveryTransactionChanged;
     event EventHandler? PrintRequested;
@@ -86,6 +90,7 @@ public sealed class CashUpPresenter : PresenterBase<ICashUpView>
     protected override void Subscribe()
     {
         View.ShiftChanged += (_, _) => Enqueue(LoadShiftAsync);
+        View.DayChanged += (_, _) => Enqueue(InitialiseAsync);
         View.RefreshRequested += (_, _) => Enqueue(InitialiseAsync);
         View.EveryTransactionChanged += (_, _) => View.ShowShift(_shift, _onBehalf);
         View.PrintRequested += (_, _) => Enqueue(PrintAsync);
@@ -99,7 +104,7 @@ public sealed class CashUpPresenter : PresenterBase<ICashUpView>
     {
         // The list is shown with the first shift chosen; choosing raises
         // ShiftChanged, which loads it.
-        _choices = await _shifts.ShiftsAsync();
+        _choices = await _shifts.ShiftsAsync(View.Day);
         View.ShowShifts(_choices, _shifts.MayActForOthers);
 
         if (_choices.Count == 0) View.ShowShift(null, false);
@@ -150,8 +155,27 @@ public sealed class CashUpPresenter : PresenterBase<ICashUpView>
             return;
         }
 
+        if (!MayHandle()) return;
+
         if (View.ShowPayouts(_shift.SessionId)) await LoadShiftAsync();
     });
+
+    /// <summary>
+    /// Every shift is listed to everyone, but only its own cashier or a
+    /// supervisor takes money out of it or closes it.
+    /// </summary>
+    /// <remarks>
+    /// Said here, before the window opens, rather than by the service after
+    /// a count has been typed in.
+    /// </remarks>
+    private bool MayHandle()
+    {
+        if (!_onBehalf || _shifts.MayActForOthers) return true;
+
+        View.ShowInfo("This is another cashier's till. Only they, or a pharmacist, an "
+                      + "assistant or the administrator, can take money out of it or close it.");
+        return false;
+    }
 
     private Task ExportAsync(bool pdf) => GuardAsync(() =>
     {
@@ -189,6 +213,8 @@ public sealed class CashUpPresenter : PresenterBase<ICashUpView>
                           + "and the slip can still be printed.");
             return;
         }
+
+        if (!MayHandle()) return;
 
         if (!View.CountAndClose(_shift.SessionId)) return;
 

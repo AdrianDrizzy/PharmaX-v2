@@ -76,7 +76,8 @@ public sealed class PayoutsPresenter : PresenterBase<IPayoutsView>
         // The open shifts this user may take money out of: their own, or
         // anyone's for whoever cashes up for others. This till's own is
         // always there, whoever opened it.
-        var choices = (await _shifts.ShiftsAsync()).Where(s => s.IsOpen).ToList();
+        var choices = (await _shifts.ShiftsAsync())
+            .Where(s => s.IsOpen && (s.IsOwn || _shifts.MayActForOthers)).ToList();
         var current = await _sessions.CurrentAsync();
 
         if (current is not null && choices.All(c => c.SessionId != current.Id))
