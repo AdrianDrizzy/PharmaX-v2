@@ -22,6 +22,12 @@ public interface IAssistantView : IView
     /// The line under the question box: what the assistant is doing.
     void ShowStatus(string message);
 
+    /// <summary>
+    /// A second person's own sign-in for a permission, on the usual
+    /// authorisation box; their id, or null where nobody signed in.
+    /// </summary>
+    Guid? PromptAuthorisation(string reason, string permissionCode);
+
     event EventHandler? AskRequested;    // Enter, or Ask
     event EventHandler? CloseRequested;
 }

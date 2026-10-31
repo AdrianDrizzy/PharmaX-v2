@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
 using PharmaX.Domain.Security;
@@ -71,7 +71,7 @@ public class ScriptPackPriceTests : IClassFixture<PharmaXFixture>
         lines.Single(l => l.Description == "Priced tablets 1000s").Tariff
             .Should().Be(2m, "1.00 a pack of twenty, for forty");
         lines.Single(l => l.Description == "Shelf tablets 100s").Tariff
-            .Should().BeApproximately(0.93m, 0.01m, "the shelf price, pro rata");
+            .Should().Be(1.00m, "the shelf price pro rata is 0.93, rounded up to the dollar");
 
         // Used again, the new script is priced the same way.
         var draft = await scripts.RepeatAsync(captured.Value);

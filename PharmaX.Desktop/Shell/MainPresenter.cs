@@ -22,7 +22,7 @@ using PharmaX.Domain.Security;
 
 namespace PharmaX.Desktop.Shell;
 
-public sealed class MainPresenter : PresenterBase<IMainView>
+public sealed partial class MainPresenter : PresenterBase<IMainView>
 {
     private readonly ICurrentUser _user;
     private readonly PharmaXOptions _options;
@@ -37,17 +37,25 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     public MainPresenter(ICurrentUser user, PharmaXOptions options,
         PharmacyProfile pharmacy, ITillSessionService sessions, IPermissionService permissions,
         IConnectivityMonitor connectivity, IAuthenticationService auth,
-        ViewFactory views, IServiceScopeFactory scopes)
+        ViewFactory views, IServiceScopeFactory scopes,
+        Features.Assistant.AssistantTasks tasks)
     {
         _user = user; _options = options; _pharmacy = pharmacy;
         _sessions = sessions;
         _permissions = permissions; _connectivity = connectivity;
         _auth = auth; _views = views; _scopes = scopes;
+        _tasks = tasks;
     }
+
+    private readonly Features.Assistant.AssistantTasks _tasks;
 
     protected override void Subscribe()
     {
         View.MenuSelected += (_, key) => Enqueue(() => OnMenuAsync(key));
+
+        // A job asked of Ask PharmaX, from whichever screen it was opened over.
+        _tasks.HandleWith(task => Enqueue(() => RunTaskAsync(task)));
+        _tasks.OpenWith(saved => Enqueue(() => OpenSavedAsync(saved)));
 
         // Kept for this till, and read back before the next sign-in.
         View.ThemeChosen += (_, id) => Enqueue(() =>
@@ -70,6 +78,7 @@ public sealed class MainPresenter : PresenterBase<IMainView>
         // midnight all show without waiting for a screen to close here.
         View.WaitingTick += (_, _) => _ = ShowCountsAsync();
         _connectivity.StateChanged += (_, s) => View.SetConnectivity(Describe(s));
+        SubscribeStockAssistant();
     }
 
     /// A choice kept for this till, read back before the next sign-in.
@@ -153,6 +162,12 @@ public sealed class MainPresenter : PresenterBase<IMainView>
             // a figure that is nought and means "nothing to do", as the
             // status bar does.
             Show("patients", OnFile(c.Patients, c.PatientsAddedToday));
+
+            // The tile counts people; the files behind them are more where
+            // a phone number and address were entered more than once.
+            if (c.PatientFiles > c.Patients)
+                Note("patients", $"{Number(c.PatientFiles)} files, "
+                    + $"{Number(c.PatientFiles - c.Patients)} repeated");
             Show("products", OnFile(c.Products, c.ProductsAddedToday));
             Show("pos", $"{Number(c.SalesToday)} today");
             Show("dispensing", $"{Number(c.ScriptsToday)} today");
@@ -552,6 +567,169 @@ public sealed class MainPresenter : PresenterBase<IMainView>
     /// </summary>
     /// <param name="key">One window per key: the same entry again brings
     /// it to the front.</param>
+    /// <summary>
+    /// Opens the screen for a job asked of Ask PharmaX, filled in as far
+    /// as the request went. The operator finishes and saves it there.
+    /// </summary>
+    private Task RunTaskAsync(Application.Assistant.AppTask task) => GuardAsync(async () =>
+    {
+        var key = task.Kind switch
+        {
+            Application.Assistant.AppTaskKind.NewProduct => "products",
+            Application.Assistant.AppTaskKind.NewPatient => "patients",
+            Application.Assistant.AppTaskKind.Sell => "pos",
+            Application.Assistant.AppTaskKind.ReceiveStock => "goods-receipt",
+            Application.Assistant.AppTaskKind.PurchaseOrder => "purchase-orders",
+            _ => "dispensing"
+        };
+
+        // The same gate as the menu: a cashier who asks to dispense is
+        // told no, not shown the screen.
+        if (ScreenAccess.Keys.Contains(key) && !ScreenAccess.CanOpen(key, _permissions))
+        {
+            View.ShowError("You do not have permission for this action.");
+            return;
+        }
+
+        switch (task.Kind)
+        {
+            case Application.Assistant.AppTaskKind.NewProduct:
+            {
+                using var editor = _views.Create<frmProductEdit>();
+                editor.LoadProduct(null);
+                editor.PrefillDescription(task.Item);
+                editor.ShowDialog((Form)View);
+                break;
+            }
+
+            case Application.Assistant.AppTaskKind.NewPatient:
+            {
+                using var editor = _views.Create<frmPatientEdit>();
+                editor.LoadPatient(null);
+                editor.PrefillName(task.Person);
+                editor.ShowDialog((Form)View);
+                break;
+            }
+
+            case Application.Assistant.AppTaskKind.Sell:
+                var code = await ProductCodeForAsync(task.Item);
+                Open<frmPOS>(key, pos => pos.StartWith(code ?? task.Item, code is not null, task.Quantity));
+                break;
+
+            case Application.Assistant.AppTaskKind.ReceiveStock:
+                Open<frmGoodsReceipt>(key);
+                break;
+
+            case Application.Assistant.AppTaskKind.PurchaseOrder:
+                var line = await OrderLineForAsync(task.Item, task.Quantity);
+                Open<frmPurchaseOrderList>(key, list => list.RaiseOnOpen(line));
+                break;
+
+            case Application.Assistant.AppTaskKind.Dispense:
+                Open<frmDispense>(key, dispense => dispense.StartFor(task.Person, task.Item));
+                break;
+        }
+
+        await CatchUpAsync();
+    });
+
+    /// <summary>
+    /// Opens what a guided job in Ask PharmaX saved - or the existing file
+    /// it chose instead - on its own screen, for the operator to see.
+    /// </summary>
+    private Task OpenSavedAsync(Application.Assistant.Guided.GuidedResult saved) => GuardAsync(async () =>
+    {
+        switch (saved.Kind)
+        {
+            case Application.Assistant.AppTaskKind.NewProduct:
+            {
+                using var editor = _views.Create<frmProductEdit>();
+                editor.LoadProduct(saved.Id);
+                editor.ShowDialog((Form)View);
+                break;
+            }
+
+            case Application.Assistant.AppTaskKind.NewPatient:
+            {
+                using var editor = _views.Create<frmPatientEdit>();
+                editor.LoadPatient(saved.Id);
+                editor.ShowDialog((Form)View);
+                break;
+            }
+
+            // A sale finalised in the conversation: the drawer and the
+            // receipt, as the till does them after taking the money. A
+            // basket held for the cashier has no number and prints nothing.
+            case Application.Assistant.AppTaskKind.Sell when saved.Reference.Length > 0:
+                await PrintReceiptAsync(saved.Id);
+                break;
+        }
+
+        await CatchUpAsync();
+    });
+
+    private async Task PrintReceiptAsync(Guid saleId)
+    {
+        using var scope = _scopes.CreateScope();
+        var services = scope.ServiceProvider;
+
+        var sale = await services.GetRequiredService<Application.Sales.ISaleService>().GetAsync(saleId);
+        if (sale.IsFailure) return;
+
+        if (sale.Value.Payments?.Any(p => string.Equals(p.TenderType, "Cash",
+                StringComparison.OrdinalIgnoreCase)) == true)
+            await services.GetRequiredService<Application.Sales.ICashDrawer>().OpenAsync();
+
+        var receipt = await services.GetRequiredService<Application.Sales.IReceiptParticularsService>()
+            .ForReceiptAsync(sale.Value);
+
+        var printed = await services.GetRequiredService<Application.Sales.IReceiptPrinter>().PrintAsync(
+            receipt, services.GetRequiredService<ReceiptHeaderFactory>().Build());
+
+        // A printer fault never undoes the sale.
+        if (!printed.Printed)
+            View.ShowError("The sale is complete but the receipt did not print. "
+                           + (printed.Problem ?? "") + Environment.NewLine + Environment.NewLine
+                           + "Reprint it from the till with F12 once the printer is ready.");
+    }
+
+    /// The best active product for a name the operator said, preferring
+    /// one with stock; null where nothing matches.
+    private async Task<Application.Inventory.Dtos.ProductListItemDto?> ProductForAsync(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        using var scope = _scopes.CreateScope();
+        var found = await scope.ServiceProvider
+            .GetRequiredService<Application.Inventory.IProductService>()
+            .SearchAsync(name, take: 10, includeInactive: false);
+
+        return found.IsFailure
+            ? null
+            : found.Value.Items.OrderByDescending(p => p.QuantityOnHand > 0m).FirstOrDefault();
+    }
+
+    private async Task<string?> ProductCodeForAsync(string? name) =>
+        (await ProductForAsync(name))?.Code;
+
+    /// One line for a new order, at the product's cost price.
+    private async Task<Application.Suppliers.Dtos.PurchaseOrderLineDto?> OrderLineForAsync(
+        string? name, decimal? quantity)
+    {
+        if (await ProductForAsync(name) is not { } product) return null;
+
+        using var scope = _scopes.CreateScope();
+        var detail = await scope.ServiceProvider
+            .GetRequiredService<Application.Inventory.IProductService>()
+            .GetAsync(product.Id);
+
+        var cost = detail.IsSuccess ? detail.Value.CostPrice : 0m;
+        var qty = quantity ?? 1m;
+
+        return new Application.Suppliers.Dtos.PurchaseOrderLineDto(1, product.Id,
+            product.Description, qty, 0m, qty, cost, cost * qty, product.Code);
+    }
+
     private void Open<TForm>(string key, Action<TForm>? prepare = null,
                              Func<Task>? closed = null)
         where TForm : Form =>

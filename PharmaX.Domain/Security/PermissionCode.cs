@@ -35,6 +35,15 @@ public static class PermissionCode
     public const string SessionPayOut = "pos.session.pay-out";
 
     /// <summary>
+    /// Taking a printed receipt off the Receipts list, with a reason, and
+    /// putting one back. The sale itself is untouched.
+    /// </summary>
+    /// <remarks>
+    /// The manager and the administrator (25 October 2026).
+    /// </remarks>
+    public const string ReceiptHide = "pos.receipt.hide";
+
+    /// <summary>
     /// A pharmacist's own clinical authority: overriding a hard-stop
     /// clinical warning, releasing a controlled medicine, merging two
     /// patient files. Not needed to capture or issue an ordinary script.
@@ -198,7 +207,8 @@ public static class PermissionCode
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,
         UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack,
-        StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust
+        StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust,
+        ReceiptHide
     };
 }
 

@@ -100,6 +100,15 @@ public sealed record GoodsReceiptListItemDto(
     string? SupplierInvoiceNumber, DateOnly ReceivedOn, int Lines,
     decimal Total, bool IsPosted);
 
+/// <summary>
+/// How a product is bought: how many are already on order, who it is
+/// usually ordered from, and who it last came from at what cost.
+/// </summary>
+public sealed record ProductBuyingDto(
+    Guid ProductId, decimal OnOrder, Guid? DefaultSupplierId,
+    string? DefaultSupplierName, Guid? LastSupplierId,
+    string? LastSupplierName, decimal? LastCost, DateOnly? LastReceivedOn);
+
 public sealed record PurchaseOrderLineEditDto(string ProductCode,
     decimal Quantity, decimal UnitCost);
 

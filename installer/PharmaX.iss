@@ -11,7 +11,7 @@
 ; everything this installer owns - see the comment on {app} below.
 
 #define AppName      "PharmaX"
-#define AppVersion   "1.0.18"
+#define AppVersion   "1.0.20"
 #define AppPublisher "PharmaX"
 #define AppExe       "PharmaX.Desktop.exe"
 

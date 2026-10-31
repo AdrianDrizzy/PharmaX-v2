@@ -29,6 +29,7 @@ public static class DependencyInjection
         s.AddScoped<IReceiptParticularsService, ReceiptParticularsService>();
         s.AddScoped<IReceiptHistoryService, ReceiptHistoryService>();
         s.AddScoped<Alerts.IStockAlertService, Alerts.StockAlertService>();
+        s.AddScoped<Alerts.IStockAlertAssistant, Alerts.StockAlertAssistant>();
         s.AddScoped<Finance.ILedgerService, Finance.LedgerService>();
         s.AddScoped<Finance.IJournalPoster, Finance.JournalPoster>();
         s.AddScoped<Claims.IClaimService, Claims.ClaimService>();
@@ -62,6 +63,7 @@ public static class DependencyInjection
         s.AddScoped<ISupplierService, SupplierService>();
         s.AddScoped<IReceivingService, ReceivingService>();
         s.AddScoped<IPurchasingService, PurchasingService>();
+        s.AddScoped<Assistant.Guided.IGuidedFlows, Assistant.Guided.GuidedFlows>();
         return s;
     }
 }

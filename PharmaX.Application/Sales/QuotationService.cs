@@ -1,4 +1,4 @@
-using PharmaX.Application.Abstractions;
+﻿using PharmaX.Application.Abstractions;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
@@ -41,6 +41,24 @@ public sealed record QuotationDto(Guid Id, string QuotationNumber,
                 l.UnitPrice.Amount, l.TaxCode, l.LineTotal.Amount,
                 l.UnitsInPack)).ToList(),
             q.Total.Amount, q.Kind.ToString(), q.ScriptId, q.PatientId);
+    }
+
+    /// <summary>
+    /// A dispensary quote priced as the dispensing will charge it: each
+    /// count of tablets out of a pack rounded up to the step
+    /// (DispensingCharge), so the quote and the co-payment agree. A
+    /// quote for the till is priced as it is.
+    /// </summary>
+    public QuotationDto ChargedAsDispensed(decimal roundTo)
+    {
+        if (Kind != nameof(QuotationKind.Dispensary)) return this;
+
+        var lines = Lines.Select(l => l with
+        {
+            LineTotal = Dispensing.DispensingCharge.For(l.UnitPrice, l.UnitsInPack, l.Quantity, roundTo)
+        }).ToList();
+
+        return this with { Lines = lines, Total = lines.Sum(l => l.LineTotal) };
     }
 
     /// Whether it can still be changed: lines added or taken off.
@@ -203,12 +221,14 @@ public sealed class QuotationService : IQuotationService
     private readonly IUnitOfWork _uow;
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
+    private readonly IPharmacySettings? _settings;
 
     public QuotationService(IQuotationRepository quotations,
         IProductRepository products, IDocumentNumbering numbering,
         IPermissionService permissions, IAuditWriter audit, IUnitOfWork uow,
-        ICurrentUser user, IClock clock)
+        ICurrentUser user, IClock clock, IPharmacySettings? settings = null)
     {
+        _settings = settings;
         _quotations = quotations;
         _products = products;
         _numbering = numbering;
@@ -236,8 +256,14 @@ public sealed class QuotationService : IQuotationService
         await _quotations.AddAsync(quotation, ct);
         await _uow.SaveChangesAsync(ct);
 
-        return Result<QuotationDto>.Ok(QuotationDto.From(quotation));
+        return Result<QuotationDto>.Ok(await PricedAsync(QuotationDto.From(quotation), ct));
     }
+
+    /// The step a dispensary quote is rounded up to, as dispensing rounds.
+    private async Task<QuotationDto> PricedAsync(QuotationDto dto, CancellationToken ct) =>
+        _settings is null
+            ? dto
+            : dto.ChargedAsDispensed(await Dispensing.DispensingCharge.RoundToAsync(_settings, ct));
 
     public async Task<Result<QuotationDto>> FindAsync(string quotationNumber,
         CancellationToken ct = default)
@@ -417,7 +443,7 @@ public sealed class QuotationService : IQuotationService
             });
         }
 
-        return dto with { Lines = lines };
+        return await PricedAsync(dto with { Lines = lines }, ct);
     }
 
     private DateOnly Today =>

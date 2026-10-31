@@ -52,9 +52,14 @@ public class ReportsPresenterTests
     }
 
     [Fact]
-    public async Task A_request_fills_the_screen_in_and_runs_nothing()
+    public async Task A_request_fills_the_screen_in_and_previews_it()
     {
         _view.AskText.Returns("stock expiring in the next 3 months");
+        _runner.RunAsync(Arg.Any<ReportRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new ReportResult("Stock Expiring", Array.Empty<ReportColumn>(),
+                Array.Empty<IReadOnlyDictionary<string, object?>>(),
+                new Dictionary<string, object?>(),
+                new ReportProvenance("test", DateTime.Now, "90 days", "live")));
         _suggester.SuggestAsync(Arg.Any<string>(), Arg.Any<ReportSuggestionContext>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ReportSuggestion(Expiring.Key, null, null,
@@ -73,8 +78,25 @@ public class ReportsPresenterTests
         _view.Received().ShowAskResult(Arg.Is<string>(m =>
             m.StartsWith("Chose Stock Expiring, Expiring within (days): 90.", StringComparison.Ordinal)));
 
-        await _runner.DidNotReceive().RunAsync(Arg.Any<ReportRequest>(),
+        await _runner.Received().RunAsync(Arg.Is<ReportRequest>(r => r.PresetKey == Expiring.Key),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Findings_name_the_best_day_and_compare_the_weekend()
+    {
+        var week = new[] { 100m, 120m, 90m, 110m, 150m, 300m, 50m };
+        var days = new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
+        var chart = new ReportChart("Sales by day of week", ChartKind.Bar, "Sales",
+            days.Zip(week, (d, v) => new ChartPoint(d, v)).ToList());
+
+        var findings = ReportFindings.For(chart);
+
+        Assert.StartsWith("Saturday is the highest with 300", findings[0], StringComparison.Ordinal);
+        Assert.Contains(findings, f => f.StartsWith("Sunday is the lowest", StringComparison.Ordinal)
+                                       && f.Contains("6.0 times", StringComparison.Ordinal));
+        Assert.Contains(findings, f => f.StartsWith("A weekend day averages 175", StringComparison.Ordinal));
+        Assert.Empty(ReportFindings.For(null));
     }
 
     [Fact]

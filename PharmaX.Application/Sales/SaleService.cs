@@ -228,6 +228,11 @@ public sealed class SaleService : ISaleService
                 $"There is no receipt {number}. Check the number printed "
                 + "after Trans No.");
 
+        if (sale.IsReceiptHidden)
+            return Result<SaleDto>.Fail("POS-025",
+                $"Receipt {number} was taken off the receipts list "
+                + $"({sale.ReceiptHiddenReason}), so it is not printed again.");
+
         // The copy names the cashier who sold it, as the original did.
         var cashier = await _users.GetAsync(sale.OperatorId, ct);
 

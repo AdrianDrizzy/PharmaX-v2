@@ -114,6 +114,7 @@ public static class DependencyInjection
         // Ask PharmaX, open from every screen (PhxFormBase.AssistantKey)
         s.AddTransient<Features.Assistant.frmAssistant>();
         s.AddTransient<Features.Assistant.AssistantPresenter>();
+        s.AddSingleton<Features.Assistant.AssistantTasks>();
 
         // Patients
         s.AddTransient<frmPatientList>();
@@ -132,6 +133,7 @@ public static class DependencyInjection
         s.AddTransient<GoodsReceiptPresenter>();
         s.AddTransient<frmPurchaseOrderList>();
         s.AddTransient<frmPurchaseOrderEdit>();
+        s.AddTransient<frmDraftOrders>();
         s.AddTransient<PurchaseOrderListPresenter>();
 
         // Administration

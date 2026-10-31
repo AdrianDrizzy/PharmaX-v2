@@ -37,6 +37,18 @@ public partial class ScanBar : UserControl
     public void TakeFocus() => txtScan.Focus();
 
     /// <summary>
+    /// Puts a name in the box as if typed, so its suggestions open for the
+    /// operator to pick from. Nothing is entered until they do.
+    /// </summary>
+    public void Type(string text)
+    {
+        _buffer.Clear();
+        txtScan.Focus();
+        txtScan.Text = text;
+        txtScan.SelectionStart = txtScan.TextLength;
+    }
+
+    /// <summary>
     /// Offers matching products under the box while a name is being
     /// typed, so an item can be rung up from its first few letters.
     /// </summary>

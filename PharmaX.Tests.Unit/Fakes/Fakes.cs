@@ -225,6 +225,23 @@ public sealed class InMemorySaleRepository : ISaleRepository
         return Task.FromResult(found);
     }
 
+    public Task<(IReadOnlyList<Sale> Page, int Total)> ReceiptsAsync(DateTime fromUtc,
+        DateTime toUtc, string? number, IReadOnlyCollection<Guid> operators,
+        bool includeHidden, int skip, int take, CancellationToken ct = default)
+    {
+        var found = _sales.Values
+            .Where(s => s.Status == SaleStatus.Finalised && s.DocumentNumber.Length > 0
+                        && s.OccurredAtUtc >= fromUtc && s.OccurredAtUtc < toUtc)
+            .Where(s => includeHidden || !s.IsReceiptHidden)
+            .Where(s => string.IsNullOrWhiteSpace(number)
+                        || s.DocumentNumber.Contains(number.Trim(), StringComparison.OrdinalIgnoreCase)
+                        || operators.Contains(s.OperatorId))
+            .OrderByDescending(s => s.OccurredAtUtc)
+            .ToList();
+
+        return Task.FromResult<(IReadOnlyList<Sale>, int)>((found.Skip(skip).Take(take).ToList(), found.Count));
+    }
+
     public Task<IReadOnlyList<Sale>> HeldAsync(CancellationToken ct = default)
     {
         IReadOnlyList<Sale> held = _sales.Values
@@ -272,6 +289,10 @@ public sealed class InMemoryProductRepository : IProductRepository
 
         return Task.FromResult(low);
     }
+
+    public Task<IReadOnlyList<string>> CodesAsync(
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<string>>(_products.Select(p => p.Code).ToList());
 
     public Task<IReadOnlyList<Product>> NothingOnHandAsync(
         CancellationToken ct = default)

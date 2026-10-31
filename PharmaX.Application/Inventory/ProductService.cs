@@ -28,6 +28,15 @@ public interface IProductService
 
     Task<Result<ProductDto>> GetAsync(Guid id, CancellationToken ct = default);
 
+    /// The product a code or barcode belongs to, as the till would scan
+    /// it; null where none does.
+    Task<Result<ProductListItemDto?>> FindAsync(string codeOrBarcode,
+                                                CancellationToken ct = default);
+
+    /// The next number for a new product: one past the highest all-digit
+    /// code, the way the catalogue has been numbered.
+    Task<Result<string>> NextCodeAsync(CancellationToken ct = default);
+
     Task<Result<Guid>> CreateAsync(ProductEditDto edit,
                                    CancellationToken ct = default);
 
@@ -186,6 +195,34 @@ public sealed partial class ProductService : IProductService
 
         return Result<ProductDto>.Ok(
             ProductDto.From(product) with { Batches = held });
+    }
+
+    public async Task<Result<ProductListItemDto?>> FindAsync(
+        string codeOrBarcode, CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ProductRead);
+
+        var product = await _products.FindByCodeOrBarcodeAsync(codeOrBarcode,
+            _permissions.ProductScope(), ct);
+
+        return Result<ProductListItemDto?>.Ok(
+            product is null ? null : ProductListItemDto.From(product));
+    }
+
+    public async Task<Result<string>> NextCodeAsync(CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ProductMaintain);
+
+        var codes = await _products.CodesAsync(ct);
+
+        var highest = codes
+            .Where(c => c.Length is > 0 and < 10 && c.All(char.IsAsciiDigit))
+            .Select(c => int.Parse(c, System.Globalization.CultureInfo.InvariantCulture))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return Result<string>.Ok((highest + 1).ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private bool InScope(Product product) =>

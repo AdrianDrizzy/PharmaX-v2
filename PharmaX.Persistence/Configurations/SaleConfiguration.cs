@@ -43,6 +43,8 @@ public sealed class SaleConfiguration : IEntityTypeConfiguration<Sale>
         });
         b.Ignore(x => x.IsRated);
         b.Ignore(x => x.IsCollection);
+        b.Ignore(x => x.IsReceiptHidden);
+        b.Property(x => x.ReceiptHiddenReason).HasMaxLength(200);
 
         b.HasMany(x => x.Lines)
          .WithOne()

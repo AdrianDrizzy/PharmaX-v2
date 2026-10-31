@@ -204,7 +204,12 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
         if (suggestion.From is DateOnly from && suggestion.To is DateOnly to)
             View.SetPeriod(from, to);
 
-        View.ShowAskResult(Describe(suggestion) + " Check it, then press Preview (F12).");
+        // Straight on to the rows, the graph and what they show: the
+        // operator asked a question, and the answer is the report.
+        await PreviewAsync();
+
+        View.ShowAskResult(Describe(suggestion)
+                           + " Change anything above and press Preview (F12) to run it again.");
     });
 
     /// "Chose Stock Expiring, Expiring within (days): 90."
@@ -323,6 +328,10 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
         View.ShowChart(result.Chart is ReportChart chart && _charts is not null
             ? _charts.Png(chart, 640, 320)
             : null);
+
+        // The headline points under the rows: highest, lowest, how far
+        // apart, and how the rest compare.
+        View.ShowFindings(ReportFindings.For(result.Chart));
     });
 
     /// <remarks>

@@ -155,9 +155,20 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         if (_presenter is not null) await _presenter.InitialiseAsync();
         ApplyPermissions();
         FocusBatch();
+
+        if (ProductId is null && !string.IsNullOrWhiteSpace(_description))
+        {
+            txtDescription.Text = _description;
+            ActiveControl = txtCode;
+        }
     }
 
     private Guid? _focusBatch;
+    private string? _description;
+
+    /// The name for a new product, from a request to Ask PharmaX.
+    public void PrefillDescription(string? description) =>
+        _description = description?.Trim();
 
     private void FocusBatch()
     {

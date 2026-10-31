@@ -54,6 +54,29 @@ public sealed class PurchaseOrder : AuditableEntity
         return line;
     }
 
+    /// <summary>
+    /// Changes how much a draft line asks for, or takes the line off the
+    /// draft where the quantity is nought. A sent order is the supplier's
+    /// to read and is not changed after the fact.
+    /// </summary>
+    public void ChangeQuantity(int lineNo, decimal quantity)
+    {
+        if (Status != PurchaseOrderStatus.Draft)
+            throw new DomainException(
+                "Only a draft order can be changed. Raise a new order.");
+
+        var line = _lines.SingleOrDefault(l => l.LineNo == lineNo)
+                   ?? throw new DomainException($"Line {lineNo} not found.");
+
+        if (quantity < 0m)
+            throw new DomainException("Order quantity must be positive.");
+
+        if (quantity == 0m)
+            _lines.Remove(line);
+        else
+            line.Reorder(quantity);
+    }
+
     public void Send()
     {
         if (_lines.Count == 0)
@@ -127,6 +150,8 @@ public sealed class PurchaseOrderLine : Entity
         PurchaseOrderId = purchaseOrderId;
         LineNo = lineNo;
     }
+
+    internal void Reorder(decimal quantity) => QuantityOrdered = quantity;
 
     internal void Receive(decimal quantity)
     {

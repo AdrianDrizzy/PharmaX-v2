@@ -45,6 +45,19 @@ public interface IMainView : Mvp.IView
     void SetAlerts(string alerts);
 
     /// <summary>
+    /// The stock assistant's button at the foot of the window, saying how
+    /// many draft orders are waiting to be finalised.
+    /// </summary>
+    /// <param name="notice">Empty hides it.</param>
+    void SetAssistantNotice(string notice);
+
+    /// The stock assistant's button was clicked.
+    event EventHandler? AssistantNoticeClicked;
+
+    /// The window is on screen, so a pop-up opened now opens over it.
+    event EventHandler? Opened;
+
+    /// <summary>
     /// A figure on the home tile that opens this menu key - "6,732" on
     /// Patients, "4 waiting" on Collect - or none.
     /// </summary>

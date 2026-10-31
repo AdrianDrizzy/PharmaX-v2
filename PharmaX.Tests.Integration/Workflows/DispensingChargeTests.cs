@@ -1,5 +1,6 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
 using PharmaX.Domain.Security;
 using PharmaX.Persistence;
@@ -21,9 +22,52 @@ public class DispensingChargeTests : IClassFixture<PharmaXFixture>
     public DispensingChargeTests(PharmaXFixture fixture) =>
         _steps = new WorkflowSteps(fixture);
 
+    /// <summary>
+    /// The step a cash charge is rounded up to, for the tests in this class
+    /// that need one: they share the database, so each sets its own.
+    /// </summary>
+    private async Task RoundDispensingTo(string step)
+    {
+        using var scope = _steps.Fixture.NewScope();
+        await PharmaXFixture.Resolve<IPharmacySettings>(scope)
+            .SetAsync(PharmacySettingKey.DispensingRounding, step);
+    }
+
+    [Fact]
+    public async Task A_part_pack_is_charged_rounded_up_to_the_dollar_as_the_old_system_did()
+    {
+        // Calcigard 20mg came across from the old system at 6.66 for 100,
+        // and it charged 1.00 for 14, 2.00 for 30 and 4.00 for 60.
+        await RoundDispensingTo("1.00");
+        await _steps.ProductAsync("DCDOL", "Dollar tablets 100s", 6.66m,
+            schedule: 3, unitsPerPack: 100m, quantity: 5m);
+
+        await _steps.SignInAsync("dc.dollar1", Role.Standard.Pharmacist);
+        var patientId = await _steps.PatientAsync("Dollar", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId, ("DCDOL", 14m, "One daily"));
+
+        using var scope = _steps.Fixture.NewScope();
+        var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+        var dispensingId = (await dispensing.BeginAsync(scriptId)).Value.Id;
+        (await dispensing.AddScriptItemsAsync(dispensingId)).Value
+            .State.Items.Single().Tariff.Should().Be(1.00m, "6.66 x 14 / 100 is 0.93, rounded up");
+
+        foreach (var (tablets, charged) in new[] { (30m, 2.00m), (60m, 4.00m) })
+        {
+            var changed = await dispensing.AmendItemAsync(dispensingId, 1, tablets, null, null);
+
+            changed.IsSuccess.Should().BeTrue(changed.Error.Message);
+            changed.Value.State.Items.Single().Tariff.Should().Be(charged, $"{tablets} tablets");
+        }
+    }
+
     [Fact]
     public async Task An_assistant_charges_an_item_other_than_its_price_with_a_reason()
     {
+        // Charged to the cent, so the charge by hand below is a change.
+        await RoundDispensingTo("0.01");
+
         await _steps.ProductAsync("DCNIF", "Charged tablets 100s", 6.66m,
             schedule: 3, unitsPerPack: 100m, quantity: 5m);
 

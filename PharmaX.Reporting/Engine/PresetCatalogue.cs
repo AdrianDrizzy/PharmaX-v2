@@ -340,7 +340,38 @@ public sealed class PresetCatalogue : IPresetCatalogue
             new Dictionary<string, string?>(),
             new[] { "department", "category" },
             PermissionCode.ReportManagement,
-            Description: "Products whose cost price looks wrong for the pack")
+            Description: "Products whose cost price looks wrong for the pack"),
+
+        // What each patient bought, by product name: their dispensed
+        // medicines and what they bought at the counter. Clinical, because
+        // it says what medicine somebody takes.
+        new("pat.purchases.weekly", "Patient Purchases (Weekly)",
+            "PatientPurchases",
+            new Dictionary<string, string?> { ["groupBy"] = "week" },
+            new[] { "source" },
+            PermissionCode.ReportClinical,
+            Description: "Each week, each patient by name and the products they bought: dispensed and over the counter"),
+
+        new("pat.purchases.monthly", "Patient Purchases (Monthly)",
+            "PatientPurchases",
+            new Dictionary<string, string?> { ["groupBy"] = "month" },
+            new[] { "source" },
+            PermissionCode.ReportClinical,
+            Description: "Each month, each patient by name and the products they bought: dispensed and over the counter"),
+
+        new("pat.purchases.summary", "Patient Purchases Summary",
+            "PatientPurchases",
+            new Dictionary<string, string?> { ["groupBy"] = "patient" },
+            new[] { "source" },
+            PermissionCode.ReportClinical,
+            Description: "One line per patient: visits, scripts, dispensed and counter totals, last visit and what they buy most"),
+
+        new("pat.purchases.by-product", "Products by Patient",
+            "PatientPurchases",
+            new Dictionary<string, string?> { ["groupBy"] = "product" },
+            new[] { "source" },
+            PermissionCode.ReportClinical,
+            Description: "Each product with the patients who bought it and how much: who takes a medicine, who to call on a recall")
 
         // ... one entry per name in specification Appendix B.
     };
@@ -425,7 +456,13 @@ public sealed class PresetCatalogue : IPresetCatalogue
                     new SlicerOptionDto("TransferIn", "Transfer in"),
                     new SlicerOptionDto("StockTake", "Stock take"),
                     new SlicerOptionDto("Disposal", "Breakage or disposal")
-                })
+                }),
+
+            ["source"] = new("source", "Bought as", "lookup", new[]
+            {
+                new SlicerOptionDto("Script", "Dispensed on a script"),
+                new SlicerOptionDto("Counter", "Over the counter")
+            })
         };
 
     public IReadOnlyList<ReportPresetDto> All() =>
@@ -454,6 +491,7 @@ public sealed class PresetCatalogue : IPresetCatalogue
         "inv" => "Inventory",
         "dsp" => "Dispensing",
         "fin" => "Finance",
+        "pat" => "Patients",
         _ => "Other"
     };
 }
