@@ -39,13 +39,13 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
     private readonly ViewFactory? _views;
 
     /// <summary>
-    /// Counts and closes another till's session, for its cashier. Set
-    /// before the window is shown.
+    /// Counts and closes the shift chosen on Cash Up - another cashier's
+    /// where <paramref name="onBehalf"/>. Set before the window is shown.
     /// </summary>
-    public void ForSession(Guid sessionId)
+    public void ForSession(Guid sessionId, bool onBehalf)
     {
         if (_presenter is not null) _presenter.TargetSessionId = sessionId;
-        Text = "Count and close - on the cashier's behalf";
+        Text = onBehalf ? "Count and close - on the cashier's behalf" : "Count and close";
     }
 
     protected override async void OnLoad(EventArgs e)

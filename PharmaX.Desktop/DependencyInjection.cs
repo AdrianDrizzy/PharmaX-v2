@@ -98,6 +98,8 @@ public static class DependencyInjection
         s.AddTransient<TillSessionPresenter>();
         s.AddTransient<frmCashUp>();
         s.AddTransient<CashUpPresenter>();
+        s.AddTransient<frmCashUpHistory>();
+        s.AddTransient<CashUpHistoryPresenter>();
         s.AddTransient<frmEndOfDay>();
         s.AddTransient<EndOfDayPresenter>();
         s.AddTransient<frmPayouts>();

@@ -83,7 +83,7 @@ public sealed class PayoutsPresenter : PresenterBase<IPayoutsView>
         if (current is not null && choices.All(c => c.SessionId != current.Id))
             choices.Insert(0, new ShiftChoiceDto(current.Id, current.TillNumber,
                 current.OpenedByName, current.OpenedAtUtc.ToLocalTime(), IsOpen: true,
-                IsOwn: false));
+                IsOwn: false, AtThisPc: true));
 
         View.ShowShifts(choices, TargetSessionId ?? current?.Id);
 
