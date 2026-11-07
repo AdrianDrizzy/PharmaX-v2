@@ -23,6 +23,9 @@ public interface IPosView : Mvp.IView
 
     int? SelectedLineNo { get; }
 
+    /// Every line picked, with Ctrl or Shift, top to bottom. Esc voids them all.
+    IReadOnlyList<int> SelectedLineNos { get; }
+
     // Prompts, kept on the view because they are UI concerns; the
     // presenter decides when to ask, not how.
     decimal? PromptQuantity(decimal current);
@@ -33,13 +36,14 @@ public interface IPosView : Mvp.IView
 
     /// <summary>
     /// Asks the operator to find a product by name or code and returns
-    /// the code of the one they chose, or null if they gave up.
+    /// the codes of the ones they chose, in list order, or none if they
+    /// gave up.
     /// </summary>
     /// <param name="term">
     /// What they have already typed, if anything, so a search that began
     /// as a scan attempt does not start from an empty box.
     /// </param>
-    string? PromptProductSearch(string? term);
+    IReadOnlyList<string> PromptProductsSearch(string? term);
 
     /// <summary>
     /// Asks the operator to find the account this sale goes on, and

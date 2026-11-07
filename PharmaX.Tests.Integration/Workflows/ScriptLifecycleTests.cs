@@ -237,6 +237,59 @@ public class ScriptLifecycleTests : IClassFixture<PharmaXFixture>
             .NotContain(stored.DocumentNumber);
     }
 
+    /// A cashier cannot reverse a script, but may delete one nobody came
+    /// to pay for from Collect - and its medicine goes back on the shelf.
+    [Fact]
+    public async Task A_cashier_deletes_an_uncollected_script_back_onto_the_shelf()
+    {
+        await _steps.OpenTillAsync();
+
+        var productId = await _steps.ProductAsync("SLDEL",
+            "Deletable tablets 30s", 60m, schedule: 3, unitsPerPack: 30m,
+            batches: new[] { ("SLDEL-A", 12, 4m) });
+
+        await _steps.SignInAsync("sl.pharm5", Role.Standard.Pharmacist);
+        var patientId = await _steps.PatientAsync("Deleted", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("SLDEL", 45m, "One daily"));
+
+        Guid dispensingId;
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+            dispensingId = (await dispensing.BeginAsync(scriptId)).Value.Id;
+            (await dispensing.AddScriptItemsAsync(dispensingId))
+                .IsSuccess.Should().BeTrue();
+            (await dispensing.IssueAsync(dispensingId))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        await _steps.SignInAsync("sl.cash5", Role.Standard.Cashier);
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var collect = PharmaXFixture.Resolve<PharmaX.Application.Sales.ICollectionService>(scope);
+
+            var removed = await collect.RemoveAsync(new[] { dispensingId });
+
+            removed.IsSuccess.Should().BeTrue(removed.Error.Message);
+            (await collect.WaitingAsync()).Value
+                .Should().NotContain(w => w.DispensingId == dispensingId);
+        }
+
+        (await _steps.StockOfAsync(productId)).Product.Should().Be(4m,
+            "the medicine nobody paid for goes back on the shelf");
+
+        using var check = _steps.Fixture.NewScope();
+        var stored = await PharmaXFixture.Resolve<PharmaXDbContext>(check)
+            .Dispensings.AsNoTracking().SingleAsync(d => d.Id == dispensingId);
+
+        stored.Status.Should().Be(DispensingStatus.Reversed);
+        stored.ReversalReason.Should().Be("Deleted from Scripts to collect.");
+    }
+
     private async Task<IReadOnlyList<string?>> ReversedAsync(string reason)
     {
         using var scope = _steps.Fixture.NewScope();

@@ -23,7 +23,8 @@ public sealed class PharmaXOptions
 /// <remarks>
 /// Optional. Where the model file is not on this computer the reports
 /// screen simply has no Ask box. The model is a separate download of
-/// about 1.2 GB, so it is not part of the installer.
+/// about 1.3 GB, so it is not carried inside the installer; setup offers
+/// to download it (the "assistant" task in installer\PharmaX.iss).
 /// </remarks>
 public sealed class AssistantOptions
 {

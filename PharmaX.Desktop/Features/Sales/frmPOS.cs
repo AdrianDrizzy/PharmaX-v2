@@ -366,6 +366,10 @@ public partial class frmPOS : PhxFormBase, IPosView
     public int? SelectedLineNo =>
         grdLines.CurrentRow?.Cells["LineNo"].Value as int?;
 
+    public IReadOnlyList<int> SelectedLineNos =>
+        grdLines.SelectedInOrder().Select(r => r.Cells["LineNo"].Value)
+            .OfType<int>().ToList();
+
     // ---- Prompts ---------------------------------------------------------
 
     public Application.Patients.AccountDto? PromptAccount()
@@ -451,16 +455,16 @@ public partial class frmPOS : PhxFormBase, IPosView
     /// pages, and shows price and stock on hand, which is exactly what
     /// the operator needs to see before selling something.
     /// </summary>
-    public string? PromptProductSearch(string? term)
+    public IReadOnlyList<string> PromptProductsSearch(string? term)
     {
-        if (_views is null) return null;
+        if (_views is null) return [];
 
         using var picker = _views.Create<frmProductList>();
         picker.UseAsPicker(term);
 
         return picker.ShowDialog(this) == DialogResult.OK
-            ? picker.SelectedCode
-            : null;
+            ? picker.SelectedCodes
+            : [];
     }
 
     // ---- Events ----------------------------------------------------------

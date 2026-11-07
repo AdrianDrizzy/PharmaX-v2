@@ -176,6 +176,52 @@ public sealed class NetworkPrinterTests : IDisposable
         (await new PrinterDirectoryStore(db, _clock).ListAsync()).Should().ContainSingle();
     }
 
+    /// <remarks>
+    /// Two dispensary computers set up as the same till: choosing the label
+    /// printer on one used to hand the other a printer only the first had,
+    /// and labels stopped there.
+    /// </remarks>
+    [Fact]
+    public async Task Each_computer_keeps_its_own_printers_on_the_same_till()
+    {
+        await using var db = Database();
+        var options = new PharmaXOptions();
+        var first = new WorkstationSettingStore(db, _clock, options, "DISPENSARY1");
+        var second = new WorkstationSettingStore(db, _clock, options, "DISPENSARY2");
+
+        await first.SetAsync(WorkstationSettingKey.LabelPrinter, "SCRIPT");
+        await second.SetAsync(WorkstationSettingKey.LabelPrinter, @"\\DISPENSARY1\SCRIPT");
+
+        (await first.GetAsync(WorkstationSettingKey.LabelPrinter)).Should().Be("SCRIPT");
+        (await second.GetAsync(WorkstationSettingKey.LabelPrinter))
+            .Should().Be(@"\\DISPENSARY1\SCRIPT");
+
+        // What is the till's rather than the computer's is still shared.
+        await first.SetAsync(WorkstationSettingKey.Theme, "dark");
+        (await second.GetAsync(WorkstationSettingKey.Theme)).Should().Be("dark");
+    }
+
+    /// A computer that has not chosen since keeps what the till had.
+    [Fact]
+    public async Task A_printer_chosen_before_choices_were_per_computer_still_reads()
+    {
+        await using var db = Database();
+        var options = new PharmaXOptions();
+
+        db.WorkstationSettings.Add(new WorkstationSetting
+        {
+            WorkstationCode = options.Workstation.TillNumber,
+            Key = WorkstationSettingKey.ReceiptPrinter,
+            Value = "EPSON",
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        (await new WorkstationSettingStore(db, _clock, options, "TILL-1")
+                .GetAsync(WorkstationSettingKey.ReceiptPrinter))
+            .Should().Be("EPSON");
+    }
+
     private PharmaXDbContext Database()
     {
         var db = new PharmaXDbContext(new DbContextOptionsBuilder<PharmaXDbContext>()

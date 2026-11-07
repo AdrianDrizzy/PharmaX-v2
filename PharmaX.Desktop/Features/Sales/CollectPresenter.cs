@@ -28,6 +28,7 @@ public sealed class CollectPresenter : PresenterBase<ICollectView>
         View.RefreshRequested += (_, _) => Enqueue(LoadAsync);
         View.FilterChanged += (_, _) => Show();
         View.CollectRequested += (_, _) => Enqueue(OnCollectAsync);
+        View.DeleteRequested += (_, _) => Enqueue(OnDeleteAsync);
     }
 
     public override Task InitialiseAsync() => LoadAsync();
@@ -83,6 +84,29 @@ public sealed class CollectPresenter : PresenterBase<ICollectView>
         await RefreshQuietlyAsync();
 
         if (paid) View.ShowInfo($"{chosen.PatientName} paid. Next patient.");
+    });
+
+    private Task OnDeleteAsync() => GuardAsync(async () =>
+    {
+        var ids = View.SelectedDispensingIds;
+
+        if (ids.Count == 0)
+        {
+            View.ShowInfo("Choose the scripts to delete first. Hold Ctrl or Shift to pick several.");
+            return;
+        }
+
+        if (!View.Confirm(string.Format(CultureInfo.CurrentCulture,
+                "Delete {0} script(s) from Scripts to collect?\n\n"
+                + "Their medicine goes back into stock, and the patient will "
+                + "have to be dispensed again to collect it.", ids.Count)))
+            return;
+
+        var result = await _collections.RemoveAsync(ids);
+        await RefreshQuietlyAsync();
+
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+        else View.ShowInfo($"{result.Value} script(s) deleted. Their medicine is back in stock.");
     });
 
     private void Show()

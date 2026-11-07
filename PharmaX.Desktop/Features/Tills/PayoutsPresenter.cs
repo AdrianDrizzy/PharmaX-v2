@@ -23,10 +23,11 @@ public interface IPayoutsView : IView
 
     void ClearEntry();
 
-    Guid? SelectedPayoutId { get; }
+    /// The entries picked, top to bottom; the focused one where none is.
+    IReadOnlyList<Guid> SelectedPayoutIds { get; }
 
-    /// Why it is being voided, or null where the operator backed out.
-    string? PromptVoidReason(PayoutDto payout);
+    /// Why they are being voided, or null where the operator backed out.
+    string? PromptVoidReason(IReadOnlyList<PayoutDto> payouts);
 
     event EventHandler? ShiftChanged;
     event EventHandler? AddRequested;
@@ -75,7 +76,8 @@ public sealed class PayoutsPresenter : PresenterBase<IPayoutsView>
         // The open shifts this user may take money out of: their own, or
         // anyone's for whoever cashes up for others. This till's own is
         // always there, whoever opened it.
-        var choices = (await _shifts.ShiftsAsync()).Where(s => s.IsOpen).ToList();
+        var choices = (await _shifts.ShiftsAsync())
+            .Where(s => s.IsOpen && (s.IsOwn || _shifts.MayActForOthers)).ToList();
         var current = await _sessions.CurrentAsync();
 
         if (current is not null && choices.All(c => c.SessionId != current.Id))
@@ -129,29 +131,46 @@ public sealed class PayoutsPresenter : PresenterBase<IPayoutsView>
 
     private Task VoidAsync() => GuardAsync(async () =>
     {
-        var payout = _shown.FirstOrDefault(p => p.Id == View.SelectedPayoutId);
+        var ids = View.SelectedPayoutIds;
+        var picked = _shown.Where(p => ids.Contains(p.Id)).ToList();
 
-        if (payout is null)
+        if (picked.Count == 0)
         {
             View.ShowError("Choose the entry to void.");
             return;
         }
 
-        if (payout.IsVoided)
+        // Ones already voided are left as they are; the rest still go.
+        var payouts = picked.Where(p => !p.IsVoided).ToList();
+
+        if (payouts.Count == 0)
         {
-            View.ShowInfo("That entry is already voided.");
+            View.ShowInfo(picked.Count == 1
+                ? "That entry is already voided."
+                : "Those entries are already voided.");
             return;
         }
 
-        if (View.PromptVoidReason(payout) is not string reason) return;
+        // One reason for every entry picked; each void is still the
+        // service's to allow or refuse.
+        if (View.PromptVoidReason(payouts) is not string reason) return;
 
-        var result = await _payouts.VoidAsync(payout.Id, reason);
+        var failed = new List<string>();
+        var voided = false;
 
-        if (result.IsFailure)
+        foreach (var payout in payouts)
         {
-            View.ShowError(result.Error.Message);
-            return;
+            var result = await _payouts.VoidAsync(payout.Id, reason);
+            if (result.IsFailure)
+                failed.Add(payouts.Count == 1
+                    ? result.Error.Message
+                    : $"{payout.KindName} {Format.Money(payout.Amount)}: {result.Error.Message}");
+            else
+                voided = true;
         }
+
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
+        if (!voided) return;
 
         Changed = true;
         await LoadAsync();

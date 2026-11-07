@@ -12,6 +12,9 @@ public interface IPatientListView : IView
     /// Whether the chosen patient is active; null where none is chosen.
     bool? SelectedIsActive { get; }
 
+    /// Every patient picked, top to bottom; the focused row when none is.
+    IReadOnlyList<PatientListItemDto> SelectedPatients { get; }
+
     /// The "Show deactivated" box.
     bool IncludeInactive { get; }
 
@@ -163,33 +166,52 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     private Task DeactivateAsync() => GuardAsync(async () =>
     {
-        if (View.SelectedId is not Guid id)
+        if (View.SelectedIsActive is not bool active)
+        {
+            View.ShowInfo("Choose a patient first.");
+            return;
+        }
+
+        // The focused row decides, as the button's label says; picked
+        // rows already that way are left alone.
+        var picked = View.SelectedPatients.Where(p => p.IsActive == active).ToList();
+        var count = picked.Count;
+        if (count == 0)
         {
             View.ShowInfo("Choose a patient first.");
             return;
         }
 
         // A deactivated file, shown by the toggle, comes back the same way.
-        if (View.SelectedIsActive == false)
+        if (!active)
         {
-            if (!View.Confirm("Reactivate this patient? They will appear in searches again."))
+            if (!View.Confirm(count == 1
+                    ? "Reactivate this patient? They will appear in searches again."
+                    : $"Reactivate {count} patients? They will appear in searches again."))
                 return;
-
-            var back = await _patients.ReactivateAsync(id);
-            if (back.IsFailure) View.ShowError(back.Error.Message);
-            await LoadAsync();
+        }
+        else if (!View.Confirm(count == 1
+                     ? "Deactivate this patient? Their dispensing history is "
+                       + "kept - it is a legal record - but they will not appear "
+                       + "in searches."
+                     : $"Deactivate {count} patients? Their dispensing history is "
+                       + "kept - it is a legal record - but they will not appear "
+                       + "in searches."))
             return;
+
+        var failed = new List<string>();
+        foreach (var patient in picked)
+        {
+            var result = active
+                ? await _patients.DeactivateAsync(patient.Id)
+                : await _patients.ReactivateAsync(patient.Id);
+            if (result.IsFailure)
+                failed.Add(count == 1
+                    ? result.Error.Message
+                    : $"{patient.FullName} ({patient.FileNumber}): {result.Error.Message}");
         }
 
-        if (!View.Confirm(
-                "Deactivate this patient? Their dispensing history is "
-                + "kept - it is a legal record - but they will not appear "
-                + "in searches."))
-            return;
-
-        var result = await _patients.DeactivateAsync(id);
-
-        if (result.IsFailure) View.ShowError(result.Error.Message);
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
         await LoadAsync();
     });
 }

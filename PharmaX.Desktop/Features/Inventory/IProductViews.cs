@@ -15,6 +15,10 @@ public interface IProductListView : IView
     /// The batch of the selected row in the batch view; null otherwise.
     Guid? SelectedBatchId { get; }
 
+    /// Every product picked, top to bottom, once each; the focused row
+    /// when none is picked.
+    IReadOnlyList<(Guid Id, string Code)> SelectedProducts { get; }
+
     /// <summary>
     /// Whether the operator has asked to see the shelf a batch at a time
     /// rather than a product at a time.

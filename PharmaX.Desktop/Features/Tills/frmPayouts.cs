@@ -289,15 +289,20 @@ public sealed class frmPayouts : PhxFormBase, IPayoutsView
         _amount.Focus();
     }
 
-    public Guid? SelectedPayoutId => _grid.CurrentRow?.Tag as Guid?;
+    public IReadOnlyList<Guid> SelectedPayoutIds =>
+        _grid.SelectedInOrder().Select(r => r.Tag).OfType<Guid>().ToList();
 
-    public string? PromptVoidReason(PayoutDto payout)
+    public string? PromptVoidReason(IReadOnlyList<PayoutDto> payouts)
     {
-        ArgumentNullException.ThrowIfNull(payout);
+        ArgumentNullException.ThrowIfNull(payouts);
 
-        var reason = frmTextPrompt.Ask(this, "Void money out",
-            string.Format(Format.Culture, "Void {0} {1}: {2}? Why?", payout.KindName,
-                Format.Money(payout.Amount), payout.Note),
+        var question = payouts.Count == 1
+            ? string.Format(Format.Culture, "Void {0} {1}: {2}? Why?", payouts[0].KindName,
+                Format.Money(payouts[0].Amount), payouts[0].Note)
+            : string.Format(Format.Culture, "Void {0} entries, {1} in all? Why?", payouts.Count,
+                Format.Money(payouts.Sum(p => p.Amount)));
+
+        var reason = frmTextPrompt.Ask(this, "Void money out", question,
             hint: "e.g. Entered twice");
 
         if (reason is not null && reason.Length == 0)

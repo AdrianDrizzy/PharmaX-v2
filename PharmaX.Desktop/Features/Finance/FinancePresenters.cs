@@ -74,21 +74,37 @@ public sealed class ChartPresenter : PresenterBase<IChartView>
 
     private Task OnDeactivateAsync() => GuardAsync(async () =>
     {
-        if (Selected() is not LedgerAccountDto account) return;
-
-        if (!View.Confirm($"Deactivate {account.Code} {account.Name}? "
-                          + "It stays in the books, and leaves this list."))
-            return;
-
-        var result = await _ledger.DeactivateAccountAsync(account.Id);
-
-        if (result.IsFailure)
+        var picked = View.SelectedAccountIds
+            .Select(id => _accounts.FirstOrDefault(a => a.Id == id))
+            .OfType<LedgerAccountDto>()
+            .ToList();
+        if (picked.Count == 0)
         {
-            View.ShowError(result.Error.Message);
+            View.ShowInfo("Choose an account first.");
             return;
         }
 
-        await LoadAsync();
+        if (!View.Confirm(picked.Count == 1
+                ? $"Deactivate {picked[0].Code} {picked[0].Name}? "
+                  + "It stays in the books, and leaves this list."
+                : $"Deactivate {picked.Count} accounts? "
+                  + "They stay in the books, and leave this list."))
+            return;
+
+        var failed = new List<string>();
+        foreach (var account in picked)
+        {
+            var result = await _ledger.DeactivateAccountAsync(account.Id);
+            if (result.IsFailure)
+                failed.Add(picked.Count == 1
+                    ? result.Error.Message
+                    : $"{account.Code} {account.Name}: {result.Error.Message}");
+        }
+
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
+
+        // Nothing changed when every one was refused.
+        if (failed.Count < picked.Count) await LoadAsync();
     });
 
     private LedgerAccountDto? Selected()

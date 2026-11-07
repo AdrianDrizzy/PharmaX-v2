@@ -160,18 +160,27 @@ public partial class frmDispensaryQuote : PhxFormBase
         picker.UseAsPicker(term);
 
         if (picker.ShowDialog(this) != DialogResult.OK) return;
-        if (picker.SelectedCode is not string code) return;
 
-        await AddCodeAsync(code, mayFind: false);
+        await AddPickedAsync(picker.SelectedCodes);
     });
 
     /// <summary>
     /// Asks how many - counted as the script counts them - and puts the
     /// item on, opening the quote with its first item.
     /// </summary>
-    private async Task AddCodeAsync(string code, bool mayFind)
+    /// <param name="refused">
+    /// Where a refusal goes when several were picked, to be reported once.
+    /// </param>
+    private async Task AddCodeAsync(string code, bool mayFind,
+                                    List<string>? refused = null)
     {
         if (_quotations is null) return;
+
+        void Refuse(string message)
+        {
+            if (refused is null) ShowError(message);
+            else refused.Add($"{code}: {message}");
+        }
 
         if (_current is { IsOpen: false })
         {
@@ -194,7 +203,7 @@ public partial class frmDispensaryQuote : PhxFormBase
                 return;
             }
 
-            ShowError(found.Error.Message);
+            Refuse(found.Error.Message);
             scanBar.TakeFocus();
             return;
         }
@@ -223,7 +232,7 @@ public partial class frmDispensaryQuote : PhxFormBase
 
             if (opened.IsFailure)
             {
-                ShowError(opened.Error.Message);
+                Refuse(opened.Error.Message);
                 return;
             }
 
@@ -235,12 +244,37 @@ public partial class frmDispensaryQuote : PhxFormBase
 
         if (added.IsFailure)
         {
-            ShowError(added.Error.Message);
+            Refuse(added.Error.Message);
             return;
         }
 
         Show(added.Value);
         scanBar.TakeFocus();
+    }
+
+    /// <summary>
+    /// Each picked product as if it were picked alone, its quantity asked
+    /// for in turn; a refusal does not stop the rest.
+    /// </summary>
+    private async Task AddPickedAsync(IReadOnlyList<string> codes)
+    {
+        if (codes.Count == 1)
+        {
+            await AddCodeAsync(codes[0], mayFind: false);
+            return;
+        }
+
+        var refused = new List<string>();
+
+        foreach (var code in codes)
+        {
+            await AddCodeAsync(code, mayFind: false, refused);
+
+            // A saved quote takes nothing more, and has said so once.
+            if (_current is { IsOpen: false }) break;
+        }
+
+        if (refused.Count > 0) ShowError(string.Join("\n", refused));
     }
 
     /// The product list, opened on what was typed, from inside the guard.
@@ -252,9 +286,8 @@ public partial class frmDispensaryQuote : PhxFormBase
         picker.UseAsPicker(term);
 
         if (picker.ShowDialog(this) != DialogResult.OK) return;
-        if (picker.SelectedCode is not string code) return;
 
-        await AddCodeAsync(code, mayFind: false);
+        await AddPickedAsync(picker.SelectedCodes);
     }
 
     private Task RemoveAsync() => GuardAsync(async () =>

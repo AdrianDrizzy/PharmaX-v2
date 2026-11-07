@@ -133,6 +133,17 @@ public sealed class DemoDataSeeder
     {
         if (!_options.Development.SeedTestUsers) return;
 
+        // Imported trading is a real shelf: the top-up to ten and the
+        // shelf state below would overwrite the stock it ends on.
+        if (await Import.ImportedHistory.ExistsAsync(_db, ct).ConfigureAwait(false))
+        {
+            _log.LogInformation(
+                "Demonstration data was not seeded: this database holds "
+                + "trading imported from another system.");
+
+            return;
+        }
+
         // The seeded administrator is who all of this is done as. Without
         // it there are no permissions to act under, and every service
         // call below would be refused.

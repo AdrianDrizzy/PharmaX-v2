@@ -8,6 +8,7 @@ using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Sales;
 using PharmaX.Domain.Tills;
 using PharmaX.Persistence;
+using PharmaX.Persistence.Import;
 
 namespace PharmaX.Tests.Integration.Persistence;
 
@@ -181,6 +182,24 @@ public sealed class DataImporterTests : IDisposable
             .Should().Be("28 Woodstock Road\nThorngrove\nBulawayo");
         (await settings.GetAsync(PharmacySettingKey.TradingName))
             .Should().Be("BethRapha", "the name was already set");
+    }
+
+    /// <remarks>
+    /// What keeps the development seeders' test stock off an imported
+    /// shelf: the old system's receipt and script numbers give it away.
+    /// </remarks>
+    [Fact]
+    public async Task Imported_trading_is_recognised_as_such()
+    {
+        using (var scope = _fixture.NewScope())
+            (await ImportedHistory.ExistsAsync(PharmaXFixture.Resolve<PharmaXDbContext>(scope)))
+                .Should().BeFalse("nothing has been imported yet");
+
+        (await ImportAsync()).Succeeded.Should().BeTrue();
+
+        using var check = _fixture.NewScope();
+        (await ImportedHistory.ExistsAsync(PharmaXFixture.Resolve<PharmaXDbContext>(check)))
+            .Should().BeTrue();
     }
 
     [Fact]

@@ -175,6 +175,13 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
 
             var batch = row.Cells["Batch"].Value?.ToString()?.Trim();
             var expiryText = row.Cells["Expiry"].Value?.ToString()?.Trim();
+            var expiry = ToExpiry(expiryText);
+
+            // Said on the cell: the status line only knows the date is missing.
+            row.Cells["Expiry"].ErrorText =
+                expiry is null && !string.IsNullOrWhiteSpace(expiryText)
+                    ? "Enter the expiry as MM/yyyy or dd/MM/yyyy."
+                    : "";
 
             // The order's own product, as long as the operator has not
             // typed a different code over it; then the service checks the
@@ -191,7 +198,7 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
                 Quantity: ToDecimal(row.Cells["Qty"].Value),
                 UnitCost: ToDecimal(row.Cells["Cost"].Value),
                 BatchNumber: string.IsNullOrWhiteSpace(batch) ? null : batch,
-                ExpiryDate: ToExpiry(expiryText),
+                ExpiryDate: expiry,
                 PurchaseOrderLineNo:
                     row.Cells["OrderLine"].Value is int lineNo
                         ? lineNo
@@ -412,25 +419,11 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
         };
 
     /// <summary>
-    /// Expiry is typed as MM/yyyy, because that is what is printed on a
-    /// medicine pack. It resolves to the last day of that month, which
-    /// is what the printed date means.
+    /// Expiry as MM/yyyy, which is what is printed on a medicine pack and
+    /// means the last day of that month, or as a whole date, day first.
     /// </summary>
-    private static DateOnly? ToExpiry(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-
-        if (DateOnly.TryParseExact(text, new[] { "MM/yyyy", "MM/yy" },
-                CultureInfo.CurrentCulture, DateTimeStyles.None,
-                out var monthOnly))
-            return new DateOnly(monthOnly.Year, monthOnly.Month,
-                DateTime.DaysInMonth(monthOnly.Year, monthOnly.Month));
-
-        return DateOnly.TryParse(text, CultureInfo.CurrentCulture,
-                DateTimeStyles.None, out var full)
-            ? full
-            : null;
-    }
+    private static DateOnly? ToExpiry(string? text) =>
+        Inventory.ExpiryText.TryParse(text, out var expiry) ? expiry : null;
 
     public event EventHandler? SupplierRequested;
     public event EventHandler? OrderRequested;

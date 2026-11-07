@@ -74,6 +74,19 @@ public interface IMainView : Mvp.IView
     /// The id of the ThemeMode just put in use from the Theme menu.
     event EventHandler<string>? ThemeChosen;
 
+    /// The zoom just put in use from the View menu, in per cent.
+    event EventHandler<int>? ZoomChosen;
+
+    /// The window size just chosen from the View menu: "max", or
+    /// "1366x768".
+    event EventHandler<string>? WindowSizeChosen;
+
+    /// <summary>
+    /// Puts the shell's window back to the size this till last chose -
+    /// "max" or nothing for the whole screen, or "1366x768".
+    /// </summary>
+    void UseWindowSize(string? size);
+
     /// Raised on the shell's own timer, to re-read the count above.
     event EventHandler? WaitingTick;
 }

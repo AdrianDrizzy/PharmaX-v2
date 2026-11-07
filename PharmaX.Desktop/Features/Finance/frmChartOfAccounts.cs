@@ -66,6 +66,13 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
 
     public bool IncludeInactive => chkInactive.Checked;
 
+    public IReadOnlyList<Guid> SelectedAccountIds =>
+        grdAccounts.SelectedInOrder()
+            .Select(r => r.DataBoundItem)
+            .OfType<AccountRow>()
+            .Select(a => a.Id)
+            .ToList();
+
     public Guid? SelectedAccountId =>
         grdAccounts.CurrentRow?.DataBoundItem is AccountRow row
             ? row.Id

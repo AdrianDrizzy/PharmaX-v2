@@ -11,9 +11,17 @@
 ; everything this installer owns - see the comment on {app} below.
 
 #define AppName      "PharmaX"
-#define AppVersion   "1.0.20"
+#define AppVersion   "1.0.23"
 #define AppPublisher "PharmaX"
 #define AppExe       "PharmaX.Desktop.exe"
+
+; The model Ask PharmaX runs on, where AssistantOptions.ModelPath looks
+; for it. Downloaded by setup rather than carried inside it: it is 1.2 GB,
+; and a till that never asks anything has no use for it. The hash is the
+; file's published SHA-256, so a broken or substituted download is refused.
+#define ModelFile    "Qwen3.5-2B-Q4_K_M.gguf"
+#define ModelUrl     "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf"
+#define ModelSha256  "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223"
 
 [Setup]
 AppId={{7C3E6A21-9F4D-4E8B-A6C5-2D1B8F0A4E77}
@@ -73,6 +81,13 @@ Name: "mainserver"; \
     Description: "This is the pharmacy's main computer - install the database the tills share"; \
     GroupDescription: "Database:"; Flags: unchecked
 
+; Ticked by default, and skipped where the model is already there - an
+; upgrade does not fetch it again. Without it PharmaX works as before and
+; simply offers no Ask box.
+Name: "assistant"; \
+    Description: "Download the PharmaX Assistant model (about 1.3 GB, needs the internet)"; \
+    GroupDescription: "Ask PharmaX:"
+
 [Files]
 ; The whole published folder: the executable plus the native libraries
 ; it needs - SQLite, the PDF renderer, the graphics used by printing.
@@ -128,6 +143,9 @@ Name: "{commonappdata}\{#AppName}\branding"; Permissions: users-modify
 Name: "{commonappdata}\{#AppName}\attachments"; Permissions: users-modify
 Name: "{commonappdata}\{#AppName}\data"; Permissions: users-modify
 
+; The assistant's model, and the cache PharmaX writes beside it.
+Name: "{commonappdata}\{#AppName}\assistant"; Permissions: users-modify
+
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
@@ -180,3 +198,70 @@ Filename: "{sys}\schtasks.exe"; \
 ; the first half of an upgrade, and deleting any of that would turn a
 ; reinstall into a data loss.
 Type: files; Name: "{app}\*.log"
+
+[Code]
+var
+  ModelDownload: TDownloadWizardPage;
+  ModelDownloaded: Boolean;
+
+function ModelPath: String;
+begin
+  Result := ExpandConstant('{commonappdata}\{#AppName}\assistant\{#ModelFile}');
+end;
+
+procedure InitializeWizard;
+begin
+  ModelDownload := CreateDownloadPage(
+    'Downloading the PharmaX Assistant',
+    'The model Ask PharmaX runs on, about 1.3 GB. This can take a while.',
+    nil);
+end;
+
+// On Install, before anything is copied, so a failed download is said
+// plainly and the rest of setup carries on. The file is checked against
+// its SHA-256 by DownloadTemporaryFile and lands in {tmp}; it is moved
+// into ProgramData after install (CurStepChanged).
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+
+  if (CurPageID <> wpReady) or not WizardIsTaskSelected('assistant')
+     or FileExists(ModelPath) then
+    Exit;
+
+  ModelDownload.Clear;
+  ModelDownload.Add('{#ModelUrl}', '{#ModelFile}', '{#ModelSha256}');
+  ModelDownload.Show;
+  try
+    try
+      ModelDownload.Download;
+      ModelDownloaded := True;
+    except
+      if not ModelDownload.AbortedByUser then
+        SuppressibleMsgBox(
+          'The PharmaX Assistant could not be downloaded:' + #13#10#13#10 +
+          GetExceptionMessage + #13#10#13#10 +
+          'PharmaX will install and work without it. To add it later, run ' +
+          'this installer again on a computer with internet access, or ' +
+          'copy {#ModelFile} into ' +
+          ExpandConstant('{commonappdata}\{#AppName}\assistant') + '.',
+          mbInformation, MB_OK, IDOK);
+    end;
+  finally
+    ModelDownload.Hide;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep <> ssPostInstall) or not ModelDownloaded then Exit;
+
+  ForceDirectories(ExtractFileDir(ModelPath));
+
+  // Copied rather than renamed: {tmp} may be on another drive.
+  if not FileCopy(ExpandConstant('{tmp}\{#ModelFile}'), ModelPath, False) then
+    SuppressibleMsgBox(
+      'The PharmaX Assistant was downloaded but could not be put in ' +
+      ExtractFileDir(ModelPath) + '. PharmaX will work without it.',
+      mbInformation, MB_OK, IDOK);
+end;

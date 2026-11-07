@@ -26,6 +26,9 @@ public interface IDispenseView : Mvp.IView
     /// The item the pharmacist has selected in the grid, if any.
     int? SelectedLineNo { get; }
 
+    /// Every item picked, with Ctrl or Shift, for taking off together.
+    IReadOnlyList<int> SelectedLineNos { get; }
+
     Guid? PromptPatientSearch();
     Guid? PromptScriptSearch(Guid patientId);
 

@@ -73,6 +73,16 @@ public sealed record ShiftCashUpDto(Guid SessionId, string TillNumber,
 
     /// Counted less expected, once the till is closed.
     public decimal? Variance => Declared - ExpectedTotal;
+
+    /// <summary>
+    /// What each person who signed in at this till took on it.
+    /// </summary>
+    /// <remarks>
+    /// One till, opened once, and the cashiers take turns at it: the shift
+    /// carries the name of whoever opened it, so without this nobody's own
+    /// takings could be checked.
+    /// </remarks>
+    public IReadOnlyList<CashierTotalDto> Cashiers => ShiftTally.ByCashier(Transactions);
 }
 
 /// <summary>Every till and cashier for one day.</summary>
@@ -97,20 +107,13 @@ public sealed record EndOfDayDto(DateOnly Day, IReadOnlyList<ShiftCashUpDto> Shi
         .ToList();
 
     /// By whoever rang each transaction up, whatever till it was on.
-    public IReadOnlyList<CashierTotalDto> Cashiers => Shifts
-        .SelectMany(s => s.Transactions)
-        .GroupBy(t => t.OperatorName)
-        .Select(g => new CashierTotalDto(g.Key,
-            g.Count(t => t.Kind is "Sale" or "Script collection"),
-            g.Where(t => t.Kind is "Sale" or "Script collection").Sum(t => t.Total),
-            -g.Where(t => t.Kind == "Refund").Sum(t => t.Total),
-            g.Where(t => t.Kind == "Account payment").Sum(t => t.Total)))
-        .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
-        .ToList();
+    public IReadOnlyList<CashierTotalDto> Cashiers =>
+        ShiftTally.ByCashier(Shifts.SelectMany(s => s.Transactions));
 }
 
+/// <param name="Cash">The cash they took and kept: what their cash in the drawer should be.</param>
 public sealed record CashierTotalDto(string Name, int Sales, decimal SalesTotal,
-                                     decimal Refunds, decimal AccountPayments)
+                                     decimal Refunds, decimal AccountPayments, decimal Cash = 0m)
 {
     public decimal Net => SalesTotal - Refunds + AccountPayments;
 }
@@ -121,6 +124,22 @@ public sealed record CashierTotalDto(string Name, int Sales, decimal SalesTotal,
 /// </summary>
 public static class ShiftTally
 {
+    /// Totals by whoever rang each transaction up, by name.
+    public static IReadOnlyList<CashierTotalDto> ByCashier(
+        IEnumerable<ShiftTransactionDto> transactions) => transactions
+        .GroupBy(t => t.OperatorName)
+        .Select(g => new CashierTotalDto(g.Key,
+            g.Count(t => t.Kind is "Sale" or "Script collection"),
+            g.Where(t => t.Kind is "Sale" or "Script collection").Sum(t => t.Total),
+            -g.Where(t => t.Kind == "Refund").Sum(t => t.Total),
+            g.Where(t => t.Kind == "Account payment").Sum(t => t.Total),
+            // Tenders are already what was kept, change handed back off.
+            g.Where(t => t.Kind != "Paid out")
+                .SelectMany(t => t.Tenders).Where(t => t.Tender == nameof(TenderType.Cash))
+                .Sum(t => t.Amount)))
+        .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToList();
+
     /// <param name="names">Display names by user id.</param>
     /// <param name="scripts">
     /// The script number for each sale that collected a dispensing,
@@ -303,6 +322,20 @@ public static class CashUpSlip
             Amount($"{ShiftTally.Label(tender.Tender)} ({tender.Count})", tender.Amount);
         lines.Add(rule);
 
+        // Only where more than one person worked the till: whose takings
+        // are whose, cash apart, for each to answer for their own.
+        if (shift.Cashiers.Count > 1)
+        {
+            lines.Add("By cashier");
+            foreach (var cashier in shift.Cashiers)
+            {
+                Text($"{cashier.Name} ({cashier.Sales})");
+                Amount("  Net takings", cashier.Net);
+                Amount("  of which cash", cashier.Cash);
+            }
+            lines.Add(rule);
+        }
+
         // Each with what it was for, so the drawer's shortfall explains
         // itself: drawings, lunch, the other expenses.
         var paid = (shift.Payouts ?? Array.Empty<PayoutDto>()).Where(p => !p.IsVoided).ToList();
@@ -372,8 +405,11 @@ public interface IShiftCashUpService
     /// Whether this user may cash up somebody else's till.
     bool MayActForOthers { get; }
 
-    /// Open shifts, and today's closed ones: only their own for a cashier.
-    Task<IReadOnlyList<ShiftChoiceDto>> ShiftsAsync(CancellationToken ct = default);
+    /// Everyone's shifts running at any time on the day, today where none is
+    /// given - still-open ones from before it included - this user's own first.
+    /// Only their own, or a supervisor, may pay out of or close one.
+    Task<IReadOnlyList<ShiftChoiceDto>> ShiftsAsync(DateOnly? day = null,
+        CancellationToken ct = default);
 
     Task<ShiftCashUpDto> ShiftAsync(Guid sessionId, CancellationToken ct = default);
 
@@ -421,17 +457,20 @@ public sealed class ShiftCashUpService : IShiftCashUpService
     public static bool MayActForOthersOf(IPermissionService permissions) =>
         permissions.Has(PermissionCode.SessionCloseOtherUser);
 
-    public async Task<IReadOnlyList<ShiftChoiceDto>> ShiftsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<ShiftChoiceDto>> ShiftsAsync(DateOnly? day = null,
+        CancellationToken ct = default)
     {
-        var today = _clock.UtcNow.ToLocalTime().Date;
+        var start = (day ?? DateOnly.FromDateTime(_clock.UtcNow.ToLocalTime()))
+            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Local);
         var sessions = await _sessions.ActiveBetweenAsync(
-            today.ToUniversalTime(), today.AddDays(1).ToUniversalTime(), ct);
-        var others = MayActForOthers;
+            start.ToUniversalTime(), start.AddDays(1).ToUniversalTime(), ct);
         var choices = new List<ShiftChoiceDto>();
 
+        // Everyone who worked a till that day, so a cashier whose till was
+        // opened under another login still finds it; their own comes first.
         foreach (var s in sessions
-                     .Where(s => others || s.OpenedBy == _user.Id)
-                     .OrderBy(s => s.Status == TillSessionStatus.Closed)
+                     .OrderBy(s => s.OpenedBy != _user.Id)
+                     .ThenBy(s => s.Status == TillSessionStatus.Closed)
                      .ThenByDescending(s => s.OpenedAtUtc))
             choices.Add(new ShiftChoiceDto(s.Id, s.TillNumber,
                 (await _users.GetAsync(s.OpenedBy, ct))?.DisplayName ?? "Unknown",
@@ -443,13 +482,10 @@ public sealed class ShiftCashUpService : IShiftCashUpService
 
     public async Task<ShiftCashUpDto> ShiftAsync(Guid sessionId, CancellationToken ct = default)
     {
+        // Anyone may read a shift's totals; paying out of it and closing it
+        // are TillPayoutService's and CashUpService's to allow.
         var session = await _sessions.GetAsync(sessionId, ct)
                       ?? throw new InvalidOperationException("That till shift was not found.");
-
-        if (session.OpenedBy != _user.Id && !MayActForOthers)
-            throw new PermissionDeniedException(
-                "You can cash up your own shift only. Ask a pharmacist, an assistant "
-                + "or the administrator to cash up for somebody else.");
 
         return await TallyAsync(session, ct);
     }
@@ -467,17 +503,29 @@ public sealed class ShiftCashUpService : IShiftCashUpService
 
         foreach (var session in sessions.OrderBy(s => s.TillNumber, StringComparer.Ordinal)
                                          .ThenBy(s => s.OpenedAtUtc))
-            shifts.Add(await TallyAsync(session, ct));
+            shifts.Add(await TallyAsync(session, ct, (start, start.AddDays(1))));
 
         return new EndOfDayDto(day, shifts);
     }
 
-    private async Task<ShiftCashUpDto> TallyAsync(TillSession session, CancellationToken ct)
+    /// <param name="day">
+    /// For the end of day: only what happened between these UTC times. A
+    /// dispensary till left open for a week otherwise brought the whole
+    /// week's takings into every day's total.
+    /// </param>
+    private async Task<ShiftCashUpDto> TallyAsync(TillSession session, CancellationToken ct,
+        (DateTime From, DateTime To)? day = null)
     {
-        var sales = await _sales.ForSessionAsync(session.Id, ct);
-        var returns = await _returns.ForSessionAsync(session.Id, ct);
-        var payments = await _accounts.PaymentsForSessionAsync(session.Id, ct);
-        var payouts = await _sessions.PayoutsAsync(session.Id, ct);
+        bool On(DateTime atUtc) => day is not { } d || (atUtc >= d.From && atUtc < d.To);
+
+        var sales = (await _sales.ForSessionAsync(session.Id, ct))
+            .Where(s => On(s.OccurredAtUtc)).ToList();
+        var returns = (await _returns.ForSessionAsync(session.Id, ct))
+            .Where(r => On(r.OccurredAtUtc)).ToList();
+        var payments = (await _accounts.PaymentsForSessionAsync(session.Id, ct))
+            .Where(p => On(p.CreatedAtUtc)).ToList();
+        var payouts = (await _sessions.PayoutsAsync(session.Id, ct))
+            .Where(p => On(p.PaidAtUtc)).ToList();
 
         var names = new Dictionary<Guid, string>();
         foreach (var id in sales.Select(s => s.OperatorId)

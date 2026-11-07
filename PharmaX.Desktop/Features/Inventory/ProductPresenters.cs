@@ -58,20 +58,32 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
     /// Leaves the product on past sales and takes it off this list.
     private Task DeactivateAsync() => GuardAsync(async () =>
     {
-        if (View.SelectedId is not Guid id)
+        var picked = View.SelectedProducts;
+        if (picked.Count == 0)
         {
             View.ShowInfo("Choose a product first.");
             return;
         }
 
-        if (!View.Confirm(
-                "Deactivate this product? It stays on past sales and "
-                + "dispensings, and leaves this list."))
+        if (!View.Confirm(picked.Count == 1
+                ? "Deactivate this product? It stays on past sales and "
+                  + "dispensings, and leaves this list."
+                : $"Deactivate {picked.Count} products? They stay on past "
+                  + "sales and dispensings, and leave this list."))
             return;
 
-        var result = await _products.DeactivateAsync(id);
+        // Each one is still the service's to allow or refuse.
+        var failed = new List<string>();
+        foreach (var (id, code) in picked)
+        {
+            var result = await _products.DeactivateAsync(id);
+            if (result.IsFailure)
+                failed.Add(picked.Count == 1
+                    ? result.Error.Message
+                    : $"{code}: {result.Error.Message}");
+        }
 
-        if (result.IsFailure) View.ShowError(result.Error.Message);
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
 
         await LoadAsync();
     });

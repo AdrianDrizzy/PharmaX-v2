@@ -249,21 +249,32 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
     private Task RemoveItemAsync() => GuardAsync(async () =>
     {
-        if (_dispensingId == Guid.Empty || View.SelectedLineNo is not int lineNo)
+        var lineNos = View.SelectedLineNos;
+
+        if (_dispensingId == Guid.Empty || lineNos.Count == 0)
         {
             View.ShowInfo("Choose the item to take off.");
             return;
         }
 
-        var result = await _dispensing.RemoveItemAsync(_dispensingId, lineNo);
+        var failed = new List<string>();
+        DispensingStateDto? latest = null;
 
-        if (result.IsFailure)
+        // Bottom up, in case taking one off numbers the rest again.
+        foreach (var lineNo in lineNos.Reverse())
         {
-            View.ShowError(result.Error.Message);
-            return;
+            var result = await _dispensing.RemoveItemAsync(_dispensingId, lineNo);
+
+            if (result.IsFailure)
+                failed.Add(lineNos.Count == 1
+                    ? result.Error.Message
+                    : $"Item {lineNo}: {result.Error.Message}");
+            else
+                latest = result.Value;
         }
 
-        Render(result.Value);
+        if (latest is not null) Render(latest);
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
     });
 
     /// What is on the dispensing now, for the questions a change asks.

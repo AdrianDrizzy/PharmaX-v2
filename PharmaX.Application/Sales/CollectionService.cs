@@ -45,6 +45,14 @@ public interface ICollectionService
     /// </summary>
     Task<Result<SaleDto>> StartAsync(Guid dispensingId,
                                      CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes scripts from the queue that nobody is coming to pay for:
+    /// each is reversed, so its medicine goes back into stock, and any
+    /// payment a till had begun on it is voided. Returns how many went.
+    /// </summary>
+    Task<Result<int>> RemoveAsync(IReadOnlyCollection<Guid> dispensingIds,
+                                  CancellationToken ct = default);
 }
 
 public sealed class CollectionService : ICollectionService
@@ -55,15 +63,22 @@ public sealed class CollectionService : ICollectionService
     private readonly IPatientRepository _patients;
     private readonly IScriptRepository _scripts;
     private readonly IUserRepository _users;
+    private readonly IDispensingService _dispensing;
     private readonly IPermissionService _permissions;
     private readonly IUnitOfWork _uow;
     private readonly ICurrentUser _user;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// How long a script waits on Collect before it is taken off by itself.
+    /// </summary>
+    public static readonly TimeSpan KeptFor = TimeSpan.FromHours(24);
+
     public CollectionService(IDispensingRepository dispensings,
         ISaleRepository sales, IProductRepository products,
         IPatientRepository patients, IScriptRepository scripts,
-        IUserRepository users, IPermissionService permissions,
+        IUserRepository users, IDispensingService dispensing,
+        IPermissionService permissions,
         IUnitOfWork uow, ICurrentUser user, IClock clock)
     {
         _dispensings = dispensings;
@@ -72,6 +87,7 @@ public sealed class CollectionService : ICollectionService
         _patients = patients;
         _scripts = scripts;
         _users = users;
+        _dispensing = dispensing;
         _permissions = permissions;
         _uow = uow;
         _user = user;
@@ -86,6 +102,21 @@ public sealed class CollectionService : ICollectionService
         _permissions.Demand(PermissionCode.SaleCreate);
 
         var waiting = await _dispensings.AwaitingCollectionAsync(ct);
+
+        // Whoever opens the queue first after a script's 24 hours are up
+        // takes it off, on every till, for every user: the patient is not
+        // coming, and the medicine belongs back on the shelf.
+        var expired = waiting
+            .Where(d => _clock.UtcNow - (d.IssuedAtUtc ?? _clock.UtcNow) > KeptFor)
+            .ToList();
+
+        if (expired.Count > 0)
+        {
+            foreach (var d in expired)
+                await TakeOffAsync(d.Id, "Not collected within 24 hours.", ct);
+
+            waiting = await _dispensings.AwaitingCollectionAsync(ct);
+        }
         var described = new List<CollectionDto>(waiting.Count);
 
         foreach (var d in waiting)
@@ -150,7 +181,23 @@ public sealed class CollectionService : ICollectionService
         // and the patient could then never pay at all.
         if (await _sales.OpenCollectionForAsync(dispensing.Id, ct)
             is Sale resumed)
+        {
+            // At what the script costs now. The draft was priced when the
+            // till first opened it; a pharmacist who has since corrected
+            // the quantity or the charge left the queue showing the new
+            // figure and the till charging the old, higher one.
+            if (!ChargesAsDispensed(resumed, dispensing))
+            {
+                foreach (var stale in resumed.Lines.Where(l => l.IsScript && !l.IsVoided).ToList())
+                    resumed.VoidLine(stale.LineNo,
+                        "The dispensary changed the script's charge.", _user.Id);
+
+                await AddScriptLinesAsync(resumed, dispensing, ct);
+                await _uow.SaveChangesAsync(ct);
+            }
+
             return Result<SaleDto>.Ok(SaleDto.From(resumed));
+        }
 
         var sale = Sale.Open(
             branchId: _sales.CurrentBranchId,
@@ -163,6 +210,71 @@ public sealed class CollectionService : ICollectionService
         // that finalising it does not issue the stock a second time.
         sale.CollectFor(dispensing.Id);
 
+        await AddScriptLinesAsync(sale, dispensing, ct);
+
+        await _sales.AddAsync(sale, ct);
+        await _uow.SaveChangesAsync(ct);
+
+        return Result<SaleDto>.Ok(SaleDto.From(sale));
+    }
+
+    public async Task<Result<int>> RemoveAsync(IReadOnlyCollection<Guid> dispensingIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dispensingIds);
+        _permissions.Demand(PermissionCode.SaleCreate);
+
+        if (dispensingIds.Count == 0)
+            return Result<int>.Fail("DSP-059", "Choose the scripts to delete first.");
+
+        var removed = 0;
+        var refused = new List<string>();
+
+        foreach (var id in dispensingIds.Distinct())
+        {
+            var result = await TakeOffAsync(id, "Deleted from Scripts to collect.", ct);
+
+            if (result.IsSuccess) removed++;
+            else refused.Add(result.Error.Message);
+        }
+
+        // The rest are gone either way; the message says which were not.
+        return refused.Count == 0
+            ? Result<int>.Ok(removed)
+            : Result<int>.Fail("DSP-060", $"{removed} deleted. Not deleted: "
+                                          + string.Join(" ", refused));
+    }
+
+    /// <summary>
+    /// Voids any payment a till had begun on the script, then reverses it.
+    /// </summary>
+    /// <remarks>
+    /// The draft goes first: left open, it would still hold the dispensing,
+    /// and a cashier finishing it later would be charging for medicine
+    /// that is back on the shelf.
+    /// </remarks>
+    private async Task<Result> TakeOffAsync(Guid dispensingId, string reason,
+                                            CancellationToken ct)
+    {
+        if (await _sales.OpenCollectionForAsync(dispensingId, ct) is Sale draft)
+        {
+            draft.Abandon(reason);
+            await _uow.SaveChangesAsync(ct);
+        }
+
+        return await _dispensing.ReverseUncollectedAsync(dispensingId, reason, ct);
+    }
+
+    /// Whether a draft's script lines still charge what the dispensing does.
+    private static bool ChargesAsDispensed(Sale sale, Domain.Dispensing.Dispensing dispensing) =>
+        sale.Lines.Where(l => l.IsScript && !l.IsVoided)
+            .Select(l => (l.ProductId, l.UnitPrice.Amount))
+            .SequenceEqual(dispensing.Lines.Where(l => !l.CoPayment.IsZero)
+                .Select(l => (l.ProductId, l.CoPayment.Amount)));
+
+    private async Task AddScriptLinesAsync(Sale sale, Domain.Dispensing.Dispensing dispensing,
+                                           CancellationToken ct)
+    {
         foreach (var line in dispensing.Lines)
         {
             // A fully covered item owes nothing and has no business on a
@@ -205,11 +317,6 @@ public sealed class CollectionService : ICollectionService
             // quantity of one would misstate how much of the batch moved
             // to anything totalling sale lines.
         }
-
-        await _sales.AddAsync(sale, ct);
-        await _uow.SaveChangesAsync(ct);
-
-        return Result<SaleDto>.Ok(SaleDto.From(sale));
     }
 
     /// The item and how much of it, since the line is priced as one.

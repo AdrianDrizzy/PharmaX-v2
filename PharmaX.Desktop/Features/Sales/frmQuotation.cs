@@ -200,17 +200,29 @@ public partial class frmQuotation : PhxFormBase
         picker.UseAsPicker(term);
 
         if (picker.ShowDialog(this) != DialogResult.OK) return;
-        if (picker.SelectedCode is not string code) return;
 
-        var result = await _quotations.AddLineAsync(_current.Id, code, 1m);
+        var codes = picker.SelectedCodes;
+        var failed = new List<string>();
 
-        if (result.IsFailure)
+        // Each one as if it were picked alone; a refusal does not stop the rest.
+        foreach (var code in codes)
         {
-            ShowError(result.Error.Message);
-            return;
+            var result = await _quotations.AddLineAsync(_current.Id, code, 1m);
+
+            if (result.IsFailure)
+                failed.Add(codes.Count == 1
+                    ? result.Error.Message
+                    : $"{code}: {result.Error.Message}");
+            else
+                Show(result.Value);
         }
 
-        Show(result.Value);
+        if (failed.Count > 0)
+        {
+            ShowError(string.Join("\n", failed));
+            if (failed.Count == codes.Count) return;
+        }
+
         scanBar.TakeFocus();
     });
 
@@ -218,19 +230,27 @@ public partial class frmQuotation : PhxFormBase
     {
         if (_quotations is null || _current is null) return;
 
-        if (grdLines.CurrentRow?.DataBoundItem is not QuotationLineDto line)
-            return;
+        // Bottom up, in case taking one off numbers the rest again.
+        var lineNos = grdLines.SelectedInOrder().Select(r => r.DataBoundItem)
+            .OfType<QuotationLineDto>().Select(l => l.LineNo).Reverse().ToList();
 
-        var result = await _quotations.RemoveLineAsync(_current.Id,
-                                                       line.LineNo);
+        if (lineNos.Count == 0) return;
 
-        if (result.IsFailure)
+        var failed = new List<string>();
+
+        foreach (var lineNo in lineNos)
         {
-            ShowError(result.Error.Message);
-            return;
+            var result = await _quotations.RemoveLineAsync(_current.Id, lineNo);
+
+            if (result.IsFailure)
+                failed.Add(lineNos.Count == 1
+                    ? result.Error.Message
+                    : $"Line {lineNo}: {result.Error.Message}");
+            else
+                Show(result.Value);
         }
 
-        Show(result.Value);
+        if (failed.Count > 0) ShowError(string.Join("\n", failed));
     });
 
     private Task IssueAsync() => GuardAsync(async () =>

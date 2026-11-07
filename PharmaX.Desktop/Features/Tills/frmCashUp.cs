@@ -13,16 +13,18 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
 {
     /// What the screen says a cash-up is, step by step.
     internal const string Guidance =
-        "1. Choose the shift.  2. Check the totals; Money out records drawings, lunch and expenses.  "
+        "1. Choose the day (today unless cashing up an earlier one) and the shift.  2. Check the totals; Money out records drawings, lunch and expenses.  "
         + "3. Preview and print the slip (F9) and count the drawer against \"Cash in drawer\".  "
         + "4. Count cash and close till (over 20.00 out needs a reason). Scripts show by number only.";
 
     private readonly CashUpPresenter? _presenter;
     private readonly ViewFactory? _views;
 
+    private readonly DateTimePicker _day = new();
     private readonly ComboBox _shift = new();
     private readonly Label _behalf = new();
     private readonly PhxGrid _tenders = new();
+    private readonly PhxGrid _cashiers = new();
     private readonly PhxGrid _transactions = new();
     private readonly CheckBox _every = new();
     private readonly Label _empty = new();
@@ -82,10 +84,12 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         var bar = new TableLayoutPanel
         {
             AutoSize = true,
-            ColumnCount = 4,
+            ColumnCount = 6,
             Dock = DockStyle.Top,
             Padding = new Padding(10, 6, 10, 2)
         };
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430F));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -108,10 +112,22 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         _behalf.Margin = new Padding(8, 7, 3, 0);
         _behalf.Name = "lblBehalf";
 
-        bar.Controls.Add(new Label { AutoSize = true, Margin = new Padding(3, 7, 6, 0), Text = "&Shift" }, 0, 0);
-        bar.Controls.Add(_shift, 1, 0);
-        bar.Controls.Add(refresh, 2, 0);
-        bar.Controls.Add(_behalf, 3, 0);
+        // Today unless a till left from an earlier day still needs cashing
+        // up, or a closed day's slip is wanted again.
+        _day.Format = DateTimePickerFormat.Custom;
+        _day.CustomFormat = "ddd dd/MM/yyyy";
+        _day.Width = 150;
+        _day.Name = "dtpDay";
+        _day.Value = DateTime.Today;
+        _day.MaxDate = DateTime.Today;
+        _day.ValueChanged += (_, _) => DayChanged?.Invoke(this, EventArgs.Empty);
+
+        bar.Controls.Add(new Label { AutoSize = true, Margin = new Padding(3, 7, 6, 0), Text = "&Day" }, 0, 0);
+        bar.Controls.Add(_day, 1, 0);
+        bar.Controls.Add(new Label { AutoSize = true, Margin = new Padding(12, 7, 6, 0), Text = "&Shift" }, 2, 0);
+        bar.Controls.Add(_shift, 3, 0);
+        bar.Controls.Add(refresh, 4, 0);
+        bar.Controls.Add(_behalf, 5, 0);
 
         // ---- Totals left, tenders right --------------------------------
         var totals = new TableLayoutPanel
@@ -166,11 +182,25 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         _tenders.AddColumn("Tender", "Tender", 140);
         _tenders.AddColumn("Payments", "Payments", 70, rightAlign: true);
         _tenders.AddColumn("Amount", "Amount", 90, "N2", rightAlign: true);
+
+        // Several cashiers take turns at the one till: each one's own takings.
+        _cashiers.Dock = DockStyle.Fill;
+        _cashiers.Name = "grdCashiers";
+        _cashiers.AddColumn("Cashier", "Cashier", 140);
+        _cashiers.AddColumn("Sales", "Sales", 50, rightAlign: true);
+        _cashiers.AddColumn("Net", "Net takings", 90, "N2", rightAlign: true);
+        _cashiers.AddColumn("Cash", "of which cash", 90, "N2", rightAlign: true);
+
+        _tenders.Dock = DockStyle.Top;
+        _tenders.Height = 100;
+        tenderPanel.Controls.Add(_cashiers);
+        tenderPanel.Controls.Add(Heading("By cashier (who rang each sale up)"));
         tenderPanel.Controls.Add(_tenders);
         tenderPanel.Controls.Add(Heading("By tender (refunds taken off)"));
 
-        // Six rows on the drawer's side since money paid out has its own.
-        var top = new Panel { Dock = DockStyle.Top, Height = 215 };
+        // Six rows on the drawer's side since money paid out has its own;
+        // the cashiers under the tenders need the rest.
+        var top = new Panel { Dock = DockStyle.Top, Height = 280 };
         top.Controls.Add(tenderPanel);
         top.Controls.Add(totals);
 
@@ -308,12 +338,15 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
 
     public Guid? SelectedShiftId => (_shift.SelectedItem as ShiftChoiceDto)?.SessionId;
 
+    public DateOnly Day => DateOnly.FromDateTime(_day.Value);
+
     public bool EveryTransaction => _every.Checked;
 
     public void ShowShift(ShiftCashUpDto? shift, bool onBehalf)
     {
         _behalf.Text = onBehalf ? "On the cashier's behalf" : "";
         _tenders.Rows.Clear();
+        _cashiers.Rows.Clear();
         _transactions.Rows.Clear();
 
         if (shift is null)
@@ -343,6 +376,9 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
 
         foreach (var t in shift.Tenders)
             _tenders.Rows.Add(ShiftTally.Label(t.Tender), t.Count, t.Amount);
+
+        foreach (var c in shift.Cashiers)
+            _cashiers.Rows.Add(c.Name, c.Sales, c.Net, c.Cash);
 
         if (EveryTransaction)
             foreach (var t in shift.Transactions)
@@ -406,6 +442,7 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         frmSlipPreview.Confirm(this, document, header);
 
     public event EventHandler? ShiftChanged;
+    public event EventHandler? DayChanged;
     public event EventHandler? RefreshRequested;
     public event EventHandler? EveryTransactionChanged;
     public event EventHandler? PrintRequested;

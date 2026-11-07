@@ -61,7 +61,7 @@ partial class frmChartOfAccounts
 
         grdAccounts.AutoGenerateColumns = false;
         grdAccounts.Dock = DockStyle.Fill;
-        grdAccounts.MultiSelect = false;
+        grdAccounts.MultiSelect = true;
         grdAccounts.Name = "grdAccounts";
 
         Bind(grdAccounts, "Code", "Code", 70);

@@ -40,6 +40,64 @@ public class CollectionServiceTests
         result.Value.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Several_scripts_are_deleted_from_the_queue_at_once()
+    {
+        var builder = new CollectionServiceBuilder();
+        var first = builder.Waiting(tariff: 90m, scheme: 60m);
+        var second = builder.Waiting(tariff: 40m, scheme: 0m);
+        var kept = builder.Waiting(tariff: 20m, scheme: 0m);
+        var service = builder.Build();
+
+        var result = await service.RemoveAsync(new[] { first.Id, second.Id });
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be(2);
+        (await service.WaitingAsync()).Value.Should().ContainSingle()
+            .Which.DispensingId.Should().Be(kept.Id);
+    }
+
+    /// A till that had begun taking the money for a deleted script would
+    /// otherwise charge for medicine already back on the shelf.
+    [Fact]
+    public async Task Deleting_a_script_voids_the_payment_a_till_had_begun()
+    {
+        var builder = new CollectionServiceBuilder();
+        var dispensing = builder.Waiting(tariff: 90m, scheme: 60m);
+        var service = builder.Build();
+        await service.StartAsync(dispensing.Id);
+
+        await service.RemoveAsync(new[] { dispensing.Id });
+
+        (await builder.Sales.OpenCollectionForAsync(dispensing.Id)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_script_waiting_over_24_hours_is_taken_off_by_itself()
+    {
+        var builder = new CollectionServiceBuilder();
+        var dispensing = builder.Waiting(tariff: 90m, scheme: 60m);
+        builder.Clock.Advance(TimeSpan.FromHours(24.5));
+
+        var result = await builder.Build().WaitingAsync();
+
+        result.Value.Should().BeEmpty();
+        await builder.Reversals.Received(1).ReverseUncollectedAsync(dispensing.Id,
+            "Not collected within 24 hours.", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_script_waiting_under_24_hours_stays_on_the_queue()
+    {
+        var builder = new CollectionServiceBuilder();
+        builder.Waiting(tariff: 90m, scheme: 60m);
+        builder.Clock.Advance(TimeSpan.FromHours(23));
+
+        var result = await builder.Build().WaitingAsync();
+
+        result.Value.Should().ContainSingle();
+    }
+
     /// <summary>
     /// The figure on the till is the figure the pharmacist quoted, to
     /// the cent. That is the whole promise of the hand-off.
@@ -170,6 +228,29 @@ public class CollectionServiceTests
         // The same sale, not a second one holding the same dispensing.
         second.Value.Id.Should().Be(first.Value.Id);
         second.Value.Totals.Total.Should().Be(30m);
+    }
+
+    /// <summary>
+    /// The till opened a script, the patient queried the price, and the
+    /// pharmacist corrected it. Back at the till, the draft left behind
+    /// must charge the corrected figure, not the one it was opened at.
+    /// </summary>
+    [Fact]
+    public async Task A_resumed_collection_charges_what_the_script_costs_now()
+    {
+        var builder = new CollectionServiceBuilder();
+        var dispensing = builder.Waiting(tariff: 1356m, scheme: 0m, quantity: 30m);
+        var sut = builder.Build();
+
+        (await sut.StartAsync(dispensing.Id)).Value.Totals.Total.Should().Be(1356m);
+
+        dispensing.AmendLine(1, 30m, Money.Of(13.56m));
+
+        var resumed = await sut.StartAsync(dispensing.Id);
+
+        resumed.IsSuccess.Should().BeTrue(resumed.Error?.Message);
+        resumed.Value.Totals.Total.Should().Be(13.56m);
+        resumed.Value.Lines.Where(l => !l.IsVoided).Should().ContainSingle();
     }
 
     /// <summary>
@@ -367,6 +448,23 @@ internal sealed class CollectionServiceBuilder
         return dispensing;
     }
 
+    /// Reverses for real, as far as the queue can tell: the script stops
+    /// waiting. Stock and claims are DispensingService's own tests.
+    public PharmaX.Application.Dispensing.IDispensingService Reversals { get; }
+
+    public CollectionServiceBuilder()
+    {
+        Reversals = Substitute.For<PharmaX.Application.Dispensing.IDispensingService>();
+        Reversals.ReverseUncollectedAsync(Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                var dispensing = await Dispensings.GetAsync(call.Arg<Guid>());
+                dispensing!.Reverse(call.ArgAt<string>(1));
+                return PharmaX.Application.Results.Result.Ok();
+            });
+    }
+
     public CollectionService Build() =>
         new(Dispensings, Sales, Products,
             Substitute.For<PharmaX.Application.Repositories
@@ -375,6 +473,7 @@ internal sealed class CollectionServiceBuilder
                 .IScriptRepository>(),
             Substitute.For<PharmaX.Application.Repositories
                 .IUserRepository>(),
+            Reversals,
             new PharmaX.Application.Security.PermissionService(
                 User, Permissions, Audit),
             UnitOfWork, User, Clock);

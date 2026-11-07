@@ -91,22 +91,54 @@ public sealed class WorkstationSettingStore : IWorkstationSettings
     private readonly PharmaXDbContext _db;
     private readonly IClock _clock;
     private readonly string _workstation;
+    private readonly string _computer;
 
     public WorkstationSettingStore(PharmaXDbContext db, IClock clock,
                                    PharmaXOptions options)
+        : this(db, clock, options, Environment.MachineName) { }
+
+    /// <param name="computer">This computer's name, as Windows gives it.</param>
+    public WorkstationSettingStore(PharmaXDbContext db, IClock clock,
+                                   PharmaXOptions options, string computer)
     {
         _db = db;
         _clock = clock;
         _workstation = options.Workstation.TillNumber;
+        _computer = computer;
     }
+
+    /// <summary>
+    /// Printers and labels are the computer's, not the till number's.
+    /// </summary>
+    /// <remarks>
+    /// Two dispensary computers set up as the same till shared one row, so
+    /// choosing the label printer on one stopped the other printing: it
+    /// was handed a printer only the first had. Kept under the computer's
+    /// name in the key, so the table and its key need not change.
+    /// </remarks>
+    private static bool PerComputer(string key) =>
+        key.StartsWith("printer.", StringComparison.Ordinal)
+        || key.StartsWith("label.", StringComparison.Ordinal);
+
+    private string Own(string key) =>
+        PerComputer(key) ? $"{key}@{_computer}" : key;
 
     public async Task<string?> GetAsync(string key,
         CancellationToken ct = default)
     {
+        var own = Own(key);
+
+        // This computer's own row where it has saved one - even a blank
+        // "none" - otherwise what the till had before choices were kept
+        // per computer.
         var setting = await _db.WorkstationSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.WorkstationCode == _workstation
-                                      && s.Key == key, ct);
+                          .AsNoTracking()
+                          .FirstOrDefaultAsync(s => s.WorkstationCode == _workstation
+                                                    && s.Key == own, ct)
+                      ?? (own == key ? null : await _db.WorkstationSettings
+                          .AsNoTracking()
+                          .FirstOrDefaultAsync(s => s.WorkstationCode == _workstation
+                                                    && s.Key == key, ct));
 
         return setting?.Value;
     }
@@ -167,6 +199,8 @@ public sealed class WorkstationSettingStore : IWorkstationSettings
     public async Task SetAsync(string key, string? value,
         CancellationToken ct = default)
     {
+        key = Own(key);
+
         var setting = await _db.WorkstationSettings
             .FirstOrDefaultAsync(s => s.WorkstationCode == _workstation
                                       && s.Key == key, ct);

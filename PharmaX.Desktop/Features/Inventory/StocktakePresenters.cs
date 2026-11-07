@@ -33,6 +33,9 @@ public interface IStocktakeCaptureView : IView
     Guid StocktakeId { get; }
     int? SelectedLineNo { get; }
 
+    /// Every line picked, with Ctrl or Shift, for clearing together.
+    IReadOnlyList<int> SelectedLineNos { get; }
+
     void ShowStocktake(StocktakeDto stocktake);
     void ShowVarianceOnly(bool varianceOnly);
 
@@ -224,21 +227,35 @@ public sealed class StocktakeCapturePresenter
 
     private Task ClearAsync() => GuardAsync(async () =>
     {
-        if (Selected() is not StocktakeLineDto line) return;
+        var lineNos = View.SelectedLineNos;
 
-        // Cleared to uncounted, not to zero: zero means the shelf was
-        // empty, uncounted means nobody looked.
-        var result = await _stocktakes.RecordCountAsync(View.StocktakeId,
-            line.LineNo, counted: null);
-
-        if (result.IsFailure)
+        if (lineNos.Count == 0 || _current is null)
         {
-            View.ShowError(result.Error.Message);
+            View.ShowInfo("Choose a line first.");
             return;
         }
 
-        _current = result.Value;
+        var failed = new List<string>();
+
+        foreach (var lineNo in lineNos)
+        {
+            if (_current.Lines.All(l => l.LineNo != lineNo)) continue;
+
+            // Cleared to uncounted, not to zero: zero means the shelf was
+            // empty, uncounted means nobody looked.
+            var result = await _stocktakes.RecordCountAsync(View.StocktakeId,
+                lineNo, counted: null);
+
+            if (result.IsFailure)
+                failed.Add(lineNos.Count == 1
+                    ? result.Error.Message
+                    : $"Line {lineNo}: {result.Error.Message}");
+            else
+                _current = result.Value;
+        }
+
         Redraw();
+        if (failed.Count > 0) View.ShowError(string.Join("\n", failed));
     });
 
     private Task PostAsync() => GuardAsync(async () =>

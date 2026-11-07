@@ -345,19 +345,122 @@ public class ShiftCashUpTests
     }
 
     [Fact]
-    public async Task A_cashier_sees_and_cashes_up_only_their_own_shift()
+    public async Task A_cashier_sees_every_shift_of_the_day_their_own_first()
     {
         var (mine, theirs, service) = Service(PermissionsOf(Role.Standard.Cashier));
 
+        // A till opened for them under another login is still in the list.
         var shifts = await service.ShiftsAsync();
-        shifts.Select(s => s.SessionId).Should().Equal(mine.Id);
-        service.MayActForOthers.Should().BeFalse();
+        shifts.Select(s => s.SessionId).Should().Equal(mine.Id, theirs.Id);
+        shifts[0].IsOwn.Should().BeTrue();
+        service.MayActForOthers.Should().BeFalse(
+            "closing or paying out of someone else's till stays with a supervisor");
 
-        var act = () => service.ShiftAsync(theirs.Id);
-        await act.Should().ThrowAsync<PermissionDeniedException>();
+        (await service.ShiftAsync(theirs.Id)).SessionId.Should().Be(theirs.Id);
 
         var day = () => service.EndOfDayAsync(DateOnly.FromDateTime(Noon));
         await day.Should().ThrowAsync<PermissionDeniedException>();
+    }
+
+    /// One till, opened once, two cashiers taking turns at it: each one's
+    /// own takings, and their cash, add up to the shift's.
+    [Fact]
+    public void Each_cashier_on_a_shared_till_has_their_own_takings()
+    {
+        static ShiftTransactionDto T(string kind, string who, decimal total, string tender) =>
+            new(Noon, kind, "", who, total, 0m,
+                new[] { new TenderTotalDto(tender, 1, total) }, Array.Empty<ShiftItemDto>());
+
+        var byCashier = ShiftTally.ByCashier(new[]
+        {
+            T("Sale", "Mary", 20m, "Cash"),
+            T("Script collection", "Mary", 45m, "Card"),
+            T("Sale", "John", 15m, "Cash"),
+            T("Refund", "John", -5m, "Cash"),
+            T("Account payment", "John", 10m, "Cash")
+        });
+
+        byCashier.Select(c => (c.Name, c.Sales, c.Net, c.Cash)).Should().Equal(
+            ("John", 1, 20m, 20m),
+            ("Mary", 2, 65m, 20m));
+    }
+
+    /// A dispensary till left open from yesterday brought yesterday's
+    /// takings into today's end of day too, so the day never added up.
+    [Fact]
+    public async Task The_end_of_day_counts_only_that_days_sales_from_a_till_left_open()
+    {
+        var yesterday = Noon.AddDays(-1);
+        var session = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "3", Cashier,
+                                       Money.Of(50m), yesterday);
+
+        Sale Sell(decimal price, DateTime at)
+        {
+            var sale = Sale.Open(session.BranchId, session.WorkstationId, session.Id, Cashier, at);
+            sale.AddLine(SaleLine.Create(Guid.NewGuid(), "Panado 500mg 20s", 1m, Money.Of(price), 15m,
+                "A", PriceSource.StandardRetail));
+            sale.TakePayments(new[] { SalePayment.Create(TenderType.Cash, Money.Of(price)) });
+            sale.Finalise("R" + price, at);
+            return sale;
+        }
+
+        var sessions = Substitute.For<ITillSessionRepository>();
+        sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                .Returns(new[] { session });
+        sessions.GetAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        sessions.PayoutsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<TillPayout>());
+        var sales = Substitute.For<ISaleRepository>();
+        sales.ForSessionAsync(session.Id, Arg.Any<CancellationToken>())
+             .Returns(new[] { Sell(30m, yesterday), Sell(12m, Noon) });
+        var returns = Substitute.For<IReturnRepository>();
+        returns.ForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+               .Returns(Array.Empty<SaleReturn>());
+        var accounts = Substitute.For<IAccountRepository>();
+        accounts.PaymentsForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<AccountTransaction>());
+
+        var service = new ShiftCashUpService(sessions, sales, returns, accounts,
+            new InMemoryUserRepository(), Substitute.For<IDispensingRepository>(),
+            Substitute.For<IScriptRepository>(), new FakeCurrentUser { Id = Supervisor },
+            PermissionsOf(Role.Standard.Administrator), new FakeClock(Noon));
+
+        var today = await service.EndOfDayAsync(DateOnly.FromDateTime(Noon.ToLocalTime()));
+        today.SalesTotal.Should().Be(12m);
+        today.SalesCount.Should().Be(1);
+
+        var before = await service.EndOfDayAsync(DateOnly.FromDateTime(yesterday.ToLocalTime()));
+        before.SalesTotal.Should().Be(30m);
+
+        // The shift itself still counts the whole drawer.
+        (await service.ShiftAsync(session.Id)).SalesTotal.Should().Be(42m);
+    }
+
+    /// Today by default; another day reads that day's shifts, midnight to
+    /// midnight where the till is.
+    [Fact]
+    public async Task Cash_up_lists_the_shifts_of_the_day_chosen()
+    {
+        var sessions = Substitute.For<ITillSessionRepository>();
+        sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<TillSession>());
+
+        var service = new ShiftCashUpService(sessions, Substitute.For<ISaleRepository>(),
+            Substitute.For<IReturnRepository>(), Substitute.For<IAccountRepository>(),
+            new InMemoryUserRepository(), Substitute.For<IDispensingRepository>(),
+            Substitute.For<IScriptRepository>(), new FakeCurrentUser { Id = Cashier },
+            PermissionsOf(Role.Standard.Cashier), new FakeClock(Noon));
+
+        var earlier = new DateOnly(2026, 10, 20);
+        await service.ShiftsAsync(earlier);
+        await service.ShiftsAsync();
+
+        var from = earlier.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+        await sessions.Received(1).ActiveBetweenAsync(from, from.AddDays(1), Arg.Any<CancellationToken>());
+
+        var today = DateOnly.FromDateTime(Noon.ToLocalTime())
+            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+        await sessions.Received(1).ActiveBetweenAsync(today, today.AddDays(1), Arg.Any<CancellationToken>());
     }
 
     [Theory]

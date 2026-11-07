@@ -275,9 +275,11 @@ partial class frmPOS
 
         // A right-click picks the line it lands on first, so the void
         // hits the line under the pointer, not the one highlighted before.
+        // One inside a Ctrl or Shift selection keeps it, to void them all.
         grdLines.CellMouseDown += (_, e) =>
         {
             if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
+            if (grdLines.Rows[e.RowIndex].Selected && grdLines.SelectedRows.Count > 1) return;
             grdLines.ClearSelection();
             grdLines.CurrentCell = grdLines.Rows[e.RowIndex].Cells[Math.Max(0, e.ColumnIndex)];
         };
