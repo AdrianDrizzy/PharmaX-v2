@@ -328,7 +328,7 @@ public partial class frmGoodsReceipt : PhxFormBase, IGoodsReceiptView
 
         foreach (var line in lines)
             grdPreview.Rows.Add(line.LineNo, line.Description, line.Quantity,
-                line.UnitCost, line.LineTotal, line.BatchNumber ?? "",
+                line.UnitCost, line.LineTotal, line.SellingPrice, line.BatchNumber ?? "",
                 line.ExpiryDate?.ToString("MM/yyyy",
                     CultureInfo.CurrentCulture) ?? "");
 

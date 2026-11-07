@@ -61,10 +61,13 @@ public sealed record GoodsReceiptProductDto(
     Guid ProductId, string Code, string Description, decimal CostPrice,
     bool IsBatchTracked);
 
+/// <param name="SellingPrice">
+/// What the item sells at once the receipt posts; previews only.
+/// </param>
 public sealed record GoodsReceiptLineDto(
     int LineNo, Guid ProductId, string Description, decimal Quantity,
     decimal UnitCost, decimal LineTotal, string? BatchNumber,
-    DateOnly? ExpiryDate, string ProductCode = "")
+    DateOnly? ExpiryDate, string ProductCode = "", decimal? SellingPrice = null)
 {
     public static GoodsReceiptLineDto From(GoodsReceiptLine l,
                                            string productCode = "")

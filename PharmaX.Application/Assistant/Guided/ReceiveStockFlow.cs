@@ -362,7 +362,7 @@ public sealed class ReceiveStockFlow : GuidedFlow
         decimal? cost = answer.Length == 0 ? DefaultCost() : Answers.Money(answer);
         if (cost is null) return Reply.Retry("What does one pack cost, e.g. 4.50?");
 
-        var note = await SqueezeNoteAsync(cost.Value, ct);
+        var note = await PriceNoteAsync(cost.Value, ct);
 
         if (_lastCost is decimal last && last > 0m && Math.Abs(cost.Value - last) / last > CostTolerance)
         {
@@ -390,23 +390,29 @@ public sealed class ReceiveStockFlow : GuidedFlow
     private async Task<decimal?> AutomaticPriceAsync(CancellationToken ct)
     {
         _pricing ??= await Pricing.ReadAsync(_settings, ct);
-        return Pricing.NewRetail(_product!.RetailPrice, _product.CostPrice, _cost, _pricing.Value.Markup,
+        return Pricing.NewRetail(_product!.RetailPrice, _cost, _pricing.Value.Markup,
                                  _pricing.Value.Rounding);
     }
 
-    /// Said where the price will move by itself and the operator may not change it.
-    private async Task<string?> SqueezeNoteAsync(decimal cost, CancellationToken ct)
+    /// Said wherever posting will move the price by itself, up or down,
+    /// unless the price question that follows a dearer cost asks instead.
+    private async Task<string?> PriceNoteAsync(decimal cost, CancellationToken ct)
     {
-        if (_product is not { RetailPrice: > 0m } p || cost <= p.CostPrice || MayChangePrice) return null;
+        if (_product is not { } p) return null;
 
         var keep = _cost;
         _cost = cost;
+        var asked = Squeezed && MayChangePrice;
         var automatic = await AutomaticPriceAsync(ct);
         _cost = keep;
 
+        if (asked) return null;
+
         return automatic is decimal price
-            ? $"The cost is up, so the selling price goes up to {Answers.Show(price)} when this is posted."
-            : $"The cost is up and the selling price stays {Answers.Show(p.RetailPrice)}.";
+            ? $"When this is posted the selling price goes from {Answers.Show(p.RetailPrice)} to {Answers.Show(price)}."
+            : p.RetailPrice > 0m && cost > p.CostPrice
+                ? $"The cost is up and the selling price stays {Answers.Show(p.RetailPrice)}."
+                : null;
     }
 
     private Reply BatchNumber(string answer)
@@ -460,8 +466,8 @@ public sealed class ReceiveStockFlow : GuidedFlow
                    + $"to {NewProductFlow.Margin(_cost, p.RetailPrice)}.";
 
         return automatic is decimal price
-            ? $"{said} Change the selling price? Press Enter for {Answers.Show(price)}, which keeps the margin, "
-              + "or say another price."
+            ? $"{said} Change the selling price? Press Enter for {Answers.Show(price)}, the cost plus the "
+              + $"{_pricing!.Value.Markup.ToString("0.##", CultureInfo.InvariantCulture)}% markup, or say another price."
             : $"{said} Change the selling price? Say a new price, or press Enter to keep it.";
     }
 

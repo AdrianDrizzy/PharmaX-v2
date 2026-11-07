@@ -133,6 +133,16 @@ public class ReceiveStockFlowTests
         flow.Waiting.Should().Be("cost");
     }
 
+    [Fact]
+    public async Task A_cheaper_cost_says_the_price_comes_down()
+    {
+        var flow = Flow();
+        await flow.StartAsync();
+        await SayAsync(flow, "1", "INV1", "", "", "");
+
+        (await flow.ReplyAsync("2.60")).Should().Contain("the selling price goes from 4.00 to 3.90");
+    }
+
     [Theory]
     [InlineData("01/10/2026", "has already passed", "expiry")]
     [InlineData("31/01/2027", "expires in 98 days", "check")]

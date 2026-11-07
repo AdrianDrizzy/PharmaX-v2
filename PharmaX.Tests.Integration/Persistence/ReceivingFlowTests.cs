@@ -70,6 +70,7 @@ public class ReceivingFlowTests : IClassFixture<PharmaXFixture>
             // The last price paid becomes the cost price, which is what
             // every subsequent margin is measured against.
             product.CostPrice.Amount.Should().Be(15m);
+            product.RetailPrice.Amount.Should().Be(22.50m, "cost x 1.5, down from 30.00");
 
             var batch = await db.Batches.AsNoTracking()
                 .SingleAsync(b => b.ProductId == product.Id);
@@ -159,6 +160,42 @@ public class ReceivingFlowTests : IClassFixture<PharmaXFixture>
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("GRN-009");
+    }
+
+    /// <summary>
+    /// Bonus stock comes in at nothing on a line of its own. It used to
+    /// become the cost price, so the item showed a 100% margin.
+    /// </summary>
+    [Fact]
+    public async Task A_free_line_keeps_the_cost_and_the_screen_shows_the_new_price()
+    {
+        await SignInAsync();
+
+        var supplierId = await GivenASupplierAsync("BONUS", "Bonus Wholesale");
+        var code = await GivenAProductAsync("BONUS1", "Bonus item");
+
+        using (var scope = _fixture.NewScope())
+        {
+            var receiving = PharmaXFixture.Resolve<IReceivingService>(scope);
+            var receipt = Receipt(supplierId, PharmaXFixture.Resolve<IClock>(scope).Today,
+                new GoodsReceiptLineEditDto(code, 10m, 8m, null, null),
+                new GoodsReceiptLineEditDto(code, 2m, 0m, null, null));
+
+            (await receiving.PreviewAsync(receipt)).Value.Select(l => l.SellingPrice)
+                .Should().Equal(new decimal?[] { 12m, 12m }, "8.00 x 1.5, which the free line leaves");
+
+            var result = await receiving.ReceiveAsync(receipt);
+            result.IsSuccess.Should().BeTrue(result.Error.Message);
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var product = await PharmaXFixture.Resolve<PharmaXDbContext>(scope).Products
+                .AsNoTracking().SingleAsync(p => p.Code == code);
+
+            product.CostPrice.Amount.Should().Be(8m);
+            product.RetailPrice.Amount.Should().Be(12m);
+        }
     }
 
     /// <summary>

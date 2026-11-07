@@ -342,7 +342,7 @@ public sealed partial class NewProductFlow : GuidedFlow
         _pricing ??= await Pricing.ReadAsync(_settings, ct);
         var (markup, Reply) = _pricing.Value;
 
-        return Pricing.NewRetail(0m, 0m, _cost, markup, Reply);
+        return Pricing.NewRetail(0m, _cost, markup, Reply);
     }
 
     private async Task<string> PricePromptAsync(CancellationToken ct)

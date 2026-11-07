@@ -527,6 +527,50 @@ public class ShiftCashUpTests
         theirs.ClosedBy.Should().Be(Supervisor);
     }
 
+    /// The one till is opened in the morning and the cashiers take turns:
+    /// whoever is signed in at it at the end cashes it up from Cash Up.
+    [Fact]
+    public async Task The_cashier_signed_in_at_the_till_closes_it_whoever_opened_it()
+    {
+        var till = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "1", Guid.NewGuid(),
+                                    Money.Of(50m), Noon);
+        var sessions = Substitute.For<ITillSessionRepository>();
+        sessions.GetAsync(till.Id, Arg.Any<CancellationToken>()).Returns(till);
+        sessions.PayoutsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<TillPayout>());
+
+        var sales = Substitute.For<ISaleRepository>();
+        sales.ForSessionAsync(till.Id, Arg.Any<CancellationToken>()).Returns(Array.Empty<Sale>());
+        var returns = Substitute.For<IReturnRepository>();
+        returns.ForSessionAsync(till.Id, Arg.Any<CancellationToken>()).Returns(Array.Empty<SaleReturn>());
+        var accounts = Substitute.For<IAccountRepository>();
+        accounts.PaymentsForSessionAsync(till.Id, Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<AccountTransaction>());
+
+        var cashier = PharmaX.Domain.Security.User.Create("john", "John", "x", mustChangePassword: false);
+        var atTheTill = new FakeCurrentUser { Id = cashier.Id, TillSessionId = till.Id };
+        var shifts = new ShiftCashUpService(sessions, sales, returns, accounts,
+            new InMemoryUserRepository(cashier), Substitute.For<IDispensingRepository>(),
+            Substitute.For<IScriptRepository>(), atTheTill,
+            PermissionsOf(Role.Standard.Cashier), new FakeClock(Noon));
+        sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                .Returns(new[] { till });
+
+        var listed = (await shifts.ShiftsAsync()).Should().ContainSingle().Subject;
+        listed.IsOwn.Should().BeTrue("they are on the till now");
+        listed.CurrentCashier.Should().Be("John");
+
+        var cashUp = new CashUpService(sessions, sales, returns, accounts,
+            Substitute.For<IJournalPoster>(), new FakeSessionContext(), new FakeAuditWriter(),
+            Substitute.For<IOutbox>(), new FakeUnitOfWork(), atTheTill,
+            new FakeClock(Noon), PermissionsOf(Role.Standard.Cashier));
+
+        var result = await cashUp.CloseAsync("Counted at the end of the day", till.Id);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error.Message : "");
+        till.Status.Should().Be(TillSessionStatus.Closed);
+    }
+
     [Theory]
     [InlineData(Role.Standard.Cashier, true, false)]
     [InlineData(Role.Standard.Pharmacist, true, true)]

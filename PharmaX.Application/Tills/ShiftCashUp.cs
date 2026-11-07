@@ -13,11 +13,18 @@ using PharmaX.Domain.Tills;
 namespace PharmaX.Application.Tills;
 
 /// <summary>A shift somebody may cash up, as the picker lists it.</summary>
+/// <param name="CashierName">Whoever opened the till.</param>
+/// <param name="CurrentCashier">
+/// Whoever rang up its latest sale, where that is somebody else: the
+/// cashiers take turns at the one till, and the picker names who is on it.
+/// </param>
 public sealed record ShiftChoiceDto(Guid SessionId, string TillNumber,
-    string CashierName, DateTime OpenedAtLocal, bool IsOpen, bool IsOwn)
+    string CashierName, DateTime OpenedAtLocal, bool IsOpen, bool IsOwn,
+    string? CurrentCashier = null)
 {
     public override string ToString() => string.Format(CultureInfo.CurrentCulture,
-        "Till {0} - {1} - from {2:dd/MM HH:mm}{3}", TillNumber, CashierName,
+        "Till {0} - {1} - from {2:dd/MM HH:mm}{3}", TillNumber,
+        CurrentCashier is null ? CashierName : $"{CurrentCashier} (opened by {CashierName})",
         OpenedAtLocal, IsOpen ? "" : " (closed)");
 }
 
@@ -466,18 +473,51 @@ public sealed class ShiftCashUpService : IShiftCashUpService
             start.ToUniversalTime(), start.AddDays(1).ToUniversalTime(), ct);
         var choices = new List<ShiftChoiceDto>();
 
+        // This computer's own open till: whoever is signed in at it is the
+        // cashier on it now, whoever opened it.
+        var here = _user.TillSessionId;
+        bool Own(TillSession s) => s.OpenedBy == _user.Id || s.Id == here;
+
         // Everyone who worked a till that day, so a cashier whose till was
         // opened under another login still finds it; their own comes first.
         foreach (var s in sessions
-                     .OrderBy(s => s.OpenedBy != _user.Id)
+                     .OrderBy(s => !Own(s))
                      .ThenBy(s => s.Status == TillSessionStatus.Closed)
                      .ThenByDescending(s => s.OpenedAtUtc))
-            choices.Add(new ShiftChoiceDto(s.Id, s.TillNumber,
-                (await _users.GetAsync(s.OpenedBy, ct))?.DisplayName ?? "Unknown",
+        {
+            var opener = (await _users.GetAsync(s.OpenedBy, ct))?.DisplayName ?? "Unknown";
+            var current = await CurrentCashierAsync(s, here, ct);
+
+            choices.Add(new ShiftChoiceDto(s.Id, s.TillNumber, opener,
                 s.OpenedAtUtc.ToLocalTime(), s.Status != TillSessionStatus.Closed,
-                s.OpenedBy == _user.Id));
+                Own(s), current == opener ? null : current));
+        }
 
         return choices;
+    }
+
+    /// <summary>
+    /// Who is on the till now: whoever is signed in at it, on its own
+    /// computer; elsewhere whoever rang up its latest sale.
+    /// </summary>
+    /// <remarks>
+    /// Not the latest sign-in: sign-ins are logged by till number, which a
+    /// dispensary PC may share with the till.
+    /// </remarks>
+    private async Task<string?> CurrentCashierAsync(TillSession session, Guid? here,
+                                                    CancellationToken ct)
+    {
+        if (session.Status == TillSessionStatus.Closed) return null;
+
+        var id = session.Id == here
+            ? _user.Id
+            : (await _sales.ForSessionAsync(session.Id, ct))
+                .Where(s => s.Status == SaleStatus.Finalised)
+                .OrderByDescending(s => s.OccurredAtUtc)
+                .Select(s => (Guid?)s.OperatorId)
+                .FirstOrDefault();
+
+        return id is Guid who ? (await _users.GetAsync(who, ct))?.DisplayName : null;
     }
 
     public async Task<ShiftCashUpDto> ShiftAsync(Guid sessionId, CancellationToken ct = default)

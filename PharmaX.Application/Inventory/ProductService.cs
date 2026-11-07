@@ -315,7 +315,7 @@ public sealed partial class ProductService : IProductService
 
         var (markup, step) = await Pricing.ReadAsync(_settings, ct);
 
-        return Pricing.NewRetail(0m, 0m, edit.CostPrice, markup, step) is decimal retail
+        return Pricing.NewRetail(0m, edit.CostPrice, markup, step) is decimal retail
             ? edit with { RetailPrice = retail }
             : edit;
     }

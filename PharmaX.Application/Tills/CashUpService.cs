@@ -198,9 +198,11 @@ public sealed class CashUpService : ICashUpService
             return Result.Fail("POS-016", "No open session.");
 
         // Named by id - from the Cash Up screen, perhaps on another
-        // computer - a cashier may close only a shift they opened. This
-        // till's own session they close as before, whoever opened it.
-        if (sessionId is not null && session.OpenedBy != _user.Id && !forOthers)
+        // computer - a cashier may close only a shift they opened, or the
+        // one open on the till they are signed in at: the cashiers take
+        // turns at one till, and whoever is on it at the end cashes it up.
+        if (sessionId is not null && session.OpenedBy != _user.Id && !forOthers
+            && _user.TillSessionId != session.Id)
             return Result.Fail("POS-027",
                 "Somebody else's till is closed by a pharmacist, an assistant "
                 + "or the administrator.");
