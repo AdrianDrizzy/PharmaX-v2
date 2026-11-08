@@ -1,4 +1,6 @@
 using FluentAssertions;
+using NSubstitute;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Inventory;
 
 namespace PharmaX.Tests.Unit.Application;
@@ -6,21 +8,47 @@ namespace PharmaX.Tests.Unit.Application;
 public sealed class PricingTests
 {
     [Theory]
-    // A dearer delivery keeps the margin: cost 10 -> 12, retail 15 -> 18.
-    [InlineData(15, 10, 12, 0, 0.05, 18)]
-    // Rounded up to the step.
-    [InlineData(15, 10, 11.11, 0, 0.05, 16.70)]
-    // No price yet: the default markup on cost.
-    [InlineData(0, 0, 10, 40, 0.10, 14)]
-    public void A_price_goes_up_with_its_cost(decimal retail, decimal oldCost,
-        decimal newCost, decimal markup, decimal step, decimal expected) =>
-        Pricing.NewRetail(retail, oldCost, newCost, markup, step).Should().Be(expected);
+    // Cost x 1.5, whatever the price was before.
+    [InlineData(0, 10, 50, 0.05, 15)]
+    [InlineData(12, 10, 50, 0.05, 15)]
+    [InlineData(18, 10, 50, 0.05, 15)]    // a cheaper delivery brings it down
+    // Rounded up to the step: 11.11 x 1.5 is 16.665.
+    [InlineData(15, 11.11, 50, 0.05, 16.70)]
+    // Another markup where System setup sets one.
+    [InlineData(0, 10, 40, 0.10, 14)]
+    public void A_delivery_prices_the_item_at_cost_plus_the_markup(decimal retail, decimal cost,
+        decimal markup, decimal step, decimal expected) =>
+        Pricing.NewRetail(retail, cost, markup, step).Should().Be(expected);
 
     [Theory]
-    [InlineData(15, 10, 9, 40)]   // cheaper delivery: left alone
-    [InlineData(15, 10, 10, 40)]  // same cost
-    [InlineData(0, 0, 10, 0)]     // no price and no markup set
-    public void A_price_is_never_lowered_or_guessed(decimal retail, decimal oldCost,
-        decimal newCost, decimal markup) =>
-        Pricing.NewRetail(retail, oldCost, newCost, markup, 0.05m).Should().BeNull();
+    [InlineData(15, 10, 50)]   // already cost x 1.5
+    [InlineData(15, 0, 50)]    // a free line
+    [InlineData(15, 10, 0)]    // markup set to nothing
+    public void A_price_is_left_alone(decimal retail, decimal cost, decimal markup) =>
+        Pricing.NewRetail(retail, cost, markup, 0.05m).Should().BeNull();
+
+    [Fact]
+    public async Task The_markup_is_fifty_percent_until_set()
+    {
+        var settings = Substitute.For<IPharmacySettings>();
+        settings.GetAsync(PharmacySettingKey.Markup, Arg.Any<CancellationToken>()).Returns((string?)null);
+
+        (await Pricing.ReadAsync(settings)).Markup.Should().Be(50m);
+
+        settings.GetAsync(PharmacySettingKey.Markup, Arg.Any<CancellationToken>()).Returns("0");
+
+        (await Pricing.ReadAsync(settings)).Markup.Should().Be(0m, "set to nothing on purpose");
+    }
+
+    [Fact]
+    public async Task Prices_round_up_to_a_cent_until_set()
+    {
+        var settings = Substitute.For<IPharmacySettings>();
+        settings.GetAsync(PharmacySettingKey.Rounding, Arg.Any<CancellationToken>()).Returns((string?)null);
+
+        var (markup, step) = await Pricing.ReadAsync(settings);
+
+        // 21.67 x 1.5 is 32.505: up to 32.51, as System setup's "Round up to 0.01" says.
+        Pricing.NewRetail(0m, 21.67m, markup, step).Should().Be(32.51m);
+    }
 }

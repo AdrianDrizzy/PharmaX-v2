@@ -464,8 +464,9 @@ public sealed class StockService : IStockService
             }
 
             // The last price paid becomes the cost price, which is what
-            // the margin on every subsequent sale is measured against.
-            product.ChangeCostPrice(line.UnitCost);
+            // the margin on every subsequent sale is measured against. A
+            // free line paid nothing, so it says nothing about the cost.
+            if (line.UnitCost.Amount > 0m) product.ChangeCostPrice(line.UnitCost);
 
             var balance = product.QuantityOnHand + line.Quantity;
             product.SetQuantityOnHand(balance);

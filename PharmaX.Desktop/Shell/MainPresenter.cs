@@ -7,6 +7,7 @@ using PharmaX.Application.Reference;
 using PharmaX.Application.Sales;
 using PharmaX.Application.Security;
 using PharmaX.Application.Tills;
+using PharmaX.Application.Tills.Dtos;
 using PharmaX.Desktop.Features.Admin;
 using PharmaX.Desktop.Features.Dispensing;
 using PharmaX.Desktop.Features.Finance;
@@ -109,13 +110,14 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
         View.SetConnectivity(Describe(_connectivity.State));
 
         var session = await _sessions.CurrentAsync();
-        View.SetSession(session is null ? "No open session" : "Session open");
+        View.SetSession(SessionStatus(session));
 
         // Offer each screen on its own merits, from the same policy the
         // guard in OnMenuAsync reads - and every service still refuses
         // for itself if the menu is ever wrong.
         View.ApplyAccess(key => ScreenAccess.CanOpen(key, _permissions));
 
+        await OfferEarlierCashUpAsync(session);
         await ShowWaitingAsync();
         await ShowAlertsAsync();
         await ShowCountsAsync();
@@ -744,8 +746,36 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
     private async Task CatchUpAsync()
     {
         var session = await _sessions.CurrentAsync();
-        View.SetSession(session is null ? "No open session" : "Session open");
+        View.SetSession(SessionStatus(session));
         await ShowCountsAsync();
+    }
+
+    private static string SessionStatus(TillSessionDto? session) =>
+        session is null ? "No open session"
+        : session.OpenedBefore(DateOnly.FromDateTime(DateTime.Today))
+            ? $"Session open since {session.OpenedAtUtc.ToLocalTime():ddd dd/MM}"
+            : "Session open";
+
+    /// <summary>
+    /// A till left open from an earlier day takes today's sales into that
+    /// day's shift, so sign-in says so and offers its cash-up first.
+    /// </summary>
+    /// <remarks>
+    /// Asked, not enforced: a night shift that runs past midnight is still
+    /// one shift.
+    /// </remarks>
+    private async Task OfferEarlierCashUpAsync(TillSessionDto? session)
+    {
+        if (session is null || !session.OpenedBefore(DateOnly.FromDateTime(DateTime.Today))) return;
+
+        var open = $"Till {session.TillNumber} has been open since "
+                   + $"{session.OpenedAtUtc.ToLocalTime():ddd dd/MM HH:mm} and has not been "
+                   + "cashed up, so anything sold now goes into that shift.";
+
+        if (!ScreenAccess.CanOpen("cash-up", _permissions))
+            View.ShowInfo(open + " Ask whoever cashes up to close it first.");
+        else if (Confirmed(open + " Cash it up now?"))
+            await OnMenuAsync("cash-up");
     }
 
     /// <summary>

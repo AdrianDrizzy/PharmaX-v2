@@ -6,29 +6,29 @@ using PharmaX.Domain.Primitives;
 namespace PharmaX.Application.Inventory;
 
 /// <summary>
-/// The pharmacy's pricing rules: a default markup on cost for an item
-/// with no price yet, the margin kept when a delivery costs more, and
-/// every price worked out rounded up to a step (System setup, Prices).
+/// The pharmacy's pricing rules: every delivery prices an item at its cost
+/// plus the markup - 50% unless System setup says otherwise, so a 10.00
+/// cost sells at 15.00 - rounded up to a step (System setup, Prices).
 /// </summary>
 public static class Pricing
 {
+    private const decimal DefaultMarkup = 50m;
+
+    // What System setup shows when nothing is saved: "Round up to 0.01".
+    private const decimal DefaultStep = 0.01m;
+
     public static decimal RoundUp(decimal price, decimal step) =>
         step <= 0m ? Math.Round(price, 2) : Math.Ceiling(price / step) * step;
 
-    /// The retail a delivery at newCost calls for, or null to leave it.
-    /// Prices only go up here; lowering one is a person's decision.
-    public static decimal? NewRetail(decimal retail, decimal oldCost,
-        decimal newCost, decimal markupPercent, decimal step)
+    /// The retail a delivery at cost calls for, up or down, or null to leave it.
+    public static decimal? NewRetail(decimal retail, decimal cost,
+        decimal markupPercent, decimal step)
     {
-        decimal target;
+        // A free line, or a markup set to nothing, says nothing about the price.
+        if (cost <= 0m || markupPercent <= 0m) return null;
 
-        if (retail > 0m && oldCost > 0m)
-            target = newCost > oldCost ? retail * newCost / oldCost : 0m;
-        else
-            target = markupPercent > 0m ? newCost * (1m + markupPercent / 100m) : 0m;
-
-        var price = RoundUp(target, step);
-        return price > retail ? price : null;
+        var price = RoundUp(cost * (1m + markupPercent / 100m), step);
+        return price != retail ? price : null;
     }
 
     /// A new retail price, with its audit line - which the Price Changes
@@ -49,7 +49,8 @@ public static class Pricing
             $"{{\"productId\":\"{product.Id}\",\"retail\":{price.ToString(CultureInfo.InvariantCulture)}}}");
     }
 
-    /// Markup percent and rounding step as set, zero where not set.
+    /// Markup percent and rounding step as set: a markup of 50 and a step of
+    /// a cent where not set.
     public static async Task<(decimal Markup, decimal Step)> ReadAsync(
         IPharmacySettings settings, CancellationToken ct = default)
     {
@@ -58,7 +59,10 @@ public static class Pricing
         static decimal Parse(string? value) =>
             decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : 0m;
 
-        return (Parse(await settings.GetAsync(PharmacySettingKey.Markup, ct).ConfigureAwait(false)),
-                Parse(await settings.GetAsync(PharmacySettingKey.Rounding, ct).ConfigureAwait(false)));
+        var markup = await settings.GetAsync(PharmacySettingKey.Markup, ct).ConfigureAwait(false);
+        var step = await settings.GetAsync(PharmacySettingKey.Rounding, ct).ConfigureAwait(false);
+
+        return (string.IsNullOrWhiteSpace(markup) ? DefaultMarkup : Parse(markup),
+                string.IsNullOrWhiteSpace(step) ? DefaultStep : Parse(step));
     }
 }

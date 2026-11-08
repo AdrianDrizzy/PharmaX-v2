@@ -13,11 +13,19 @@ using PharmaX.Domain.Tills;
 namespace PharmaX.Application.Tills;
 
 /// <summary>A shift somebody may cash up, as the picker lists it.</summary>
+/// <param name="CashierName">Whoever opened the till.</param>
+/// <param name="CurrentCashier">
+/// Whoever rang up its latest sale, where that is somebody else: the
+/// cashiers take turns at the one till, and the picker names who is on it.
+/// </param>
+/// <param name="AtThisPc">Opened on this computer: the till the picker starts on.</param>
 public sealed record ShiftChoiceDto(Guid SessionId, string TillNumber,
-    string CashierName, DateTime OpenedAtLocal, bool IsOpen, bool IsOwn)
+    string CashierName, DateTime OpenedAtLocal, bool IsOpen, bool IsOwn,
+    string? CurrentCashier = null, bool AtThisPc = false)
 {
     public override string ToString() => string.Format(CultureInfo.CurrentCulture,
-        "Till {0} - {1} - from {2:dd/MM HH:mm}{3}", TillNumber, CashierName,
+        "Till {0}{1} - {2} - from {3:dd/MM HH:mm}{4}", TillNumber, AtThisPc ? " (this PC)" : "",
+        CurrentCashier is null ? CashierName : $"{CurrentCashier} (opened by {CashierName})",
         OpenedAtLocal, IsOpen ? "" : " (closed)");
 }
 
@@ -52,6 +60,8 @@ public sealed record ShiftTransactionDto(DateTime AtLocal, string Kind,
 /// Money taken out of the drawer - drawings, lunch, other expenses -
 /// voided entries included.
 /// </param>
+/// <param name="ClosedByName">Whoever counted and closed it; null while open.</param>
+/// <param name="VarianceReason">Why the count was out, where it was asked.</param>
 public sealed record ShiftCashUpDto(Guid SessionId, string TillNumber,
     string CashierName, DateTime OpenedAtLocal, DateTime? ClosedAtLocal,
     bool IsOpen, decimal OpeningFloat, int SalesCount, decimal SalesTotal,
@@ -59,7 +69,8 @@ public sealed record ShiftCashUpDto(Guid SessionId, string TillNumber,
     decimal ChangeGiven, int ScriptsCollected,
     IReadOnlyList<TenderTotalDto> Tenders, decimal ExpectedCash,
     decimal? Declared, IReadOnlyList<ShiftTransactionDto> Transactions,
-    IReadOnlyList<PayoutDto>? Payouts = null)
+    IReadOnlyList<PayoutDto>? Payouts = null, string? ClosedByName = null,
+    string? VarianceReason = null)
 {
     /// Money in for the shift: sales less refunds, plus account payments.
     public decimal NetTakings => SalesTotal - RefundsTotal + AccountPayments;
@@ -235,7 +246,8 @@ public static class ShiftTally
             finalised.Sum(s => s.ChangeGiven.Amount),
             finalised.Count(s => s.IsCollection),
             tenders, session.OpeningFloat.Amount + cash - PayoutDto.Total(paidOut),
-            session.ClosingDeclared?.Amount, transactions, paidOut);
+            session.ClosingDeclared?.Amount, transactions, paidOut,
+            session.ClosedBy is Guid by ? Name(by) : null, session.ClosingVarianceReason);
     }
 
     /// Payments added up by tender, in the till's tender order.
@@ -406,8 +418,9 @@ public interface IShiftCashUpService
     bool MayActForOthers { get; }
 
     /// Everyone's shifts running at any time on the day, today where none is
-    /// given - still-open ones from before it included - this user's own first.
-    /// Only their own, or a supervisor, may pay out of or close one.
+    /// given - still-open ones from before it included - this computer's
+    /// till first, then this user's own. Only their own, or a supervisor,
+    /// may pay out of or close one.
     Task<IReadOnlyList<ShiftChoiceDto>> ShiftsAsync(DateOnly? day = null,
         CancellationToken ct = default);
 
@@ -415,6 +428,10 @@ public interface IShiftCashUpService
 
     /// Every till and cashier with a shift running at any time that day.
     Task<EndOfDayDto> EndOfDayAsync(DateOnly day, CancellationToken ct = default);
+
+    /// Every till closed between the two days, both included, the latest first.
+    Task<IReadOnlyList<ShiftCashUpDto>> HistoryAsync(DateOnly first, DateOnly last,
+        CancellationToken ct = default);
 }
 
 public sealed class ShiftCashUpService : IShiftCashUpService
@@ -429,11 +446,13 @@ public sealed class ShiftCashUpService : IShiftCashUpService
     private readonly ICurrentUser _user;
     private readonly IPermissionService _permissions;
     private readonly IClock _clock;
+    private readonly PharmaXOptions _options;
 
     public ShiftCashUpService(ITillSessionRepository sessions, ISaleRepository sales,
         IReturnRepository returns, IAccountRepository accounts, IUserRepository users,
         IDispensingRepository dispensings, IScriptRepository scripts,
-        ICurrentUser user, IPermissionService permissions, IClock clock)
+        ICurrentUser user, IPermissionService permissions, IClock clock,
+        PharmaXOptions options)
     {
         _sessions = sessions;
         _sales = sales;
@@ -445,6 +464,7 @@ public sealed class ShiftCashUpService : IShiftCashUpService
         _user = user;
         _permissions = permissions;
         _clock = clock;
+        _options = options;
     }
 
     public bool MayActForOthers => MayActForOthersOf(_permissions);
@@ -466,18 +486,54 @@ public sealed class ShiftCashUpService : IShiftCashUpService
             start.ToUniversalTime(), start.AddDays(1).ToUniversalTime(), ct);
         var choices = new List<ShiftChoiceDto>();
 
+        // This computer's own till: whoever is signed in at it is the
+        // cashier on it now, whoever opened it.
+        var here = _user.TillSessionId;
+        var workstation = Guid.Parse(_options.Workstation.WorkstationId);
+        bool AtThisPc(TillSession s) => s.WorkstationId == workstation || s.Id == here;
+        bool Own(TillSession s) => s.OpenedBy == _user.Id || s.Id == here;
+
         // Everyone who worked a till that day, so a cashier whose till was
-        // opened under another login still finds it; their own comes first.
+        // opened under another login still finds it. This computer's comes
+        // first, so it is the one chosen, then their own elsewhere.
         foreach (var s in sessions
-                     .OrderBy(s => s.OpenedBy != _user.Id)
+                     .OrderBy(s => AtThisPc(s) ? 0 : Own(s) ? 1 : 2)
                      .ThenBy(s => s.Status == TillSessionStatus.Closed)
                      .ThenByDescending(s => s.OpenedAtUtc))
-            choices.Add(new ShiftChoiceDto(s.Id, s.TillNumber,
-                (await _users.GetAsync(s.OpenedBy, ct))?.DisplayName ?? "Unknown",
+        {
+            var opener = (await _users.GetAsync(s.OpenedBy, ct))?.DisplayName ?? "Unknown";
+            var current = await CurrentCashierAsync(s, AtThisPc(s), ct);
+
+            choices.Add(new ShiftChoiceDto(s.Id, s.TillNumber, opener,
                 s.OpenedAtUtc.ToLocalTime(), s.Status != TillSessionStatus.Closed,
-                s.OpenedBy == _user.Id));
+                Own(s), current == opener ? null : current, AtThisPc(s)));
+        }
 
         return choices;
+    }
+
+    /// <summary>
+    /// Who is on the till now: whoever is signed in at it, on its own
+    /// computer; elsewhere whoever rang up its latest sale.
+    /// </summary>
+    /// <remarks>
+    /// Not the latest sign-in: sign-ins are logged by till number, which a
+    /// dispensary PC may share with the till.
+    /// </remarks>
+    private async Task<string?> CurrentCashierAsync(TillSession session, bool atThisPc,
+                                                    CancellationToken ct)
+    {
+        if (session.Status == TillSessionStatus.Closed) return null;
+
+        var id = atThisPc
+            ? _user.Id
+            : (await _sales.ForSessionAsync(session.Id, ct))
+                .Where(s => s.Status == SaleStatus.Finalised)
+                .OrderByDescending(s => s.OccurredAtUtc)
+                .Select(s => (Guid?)s.OperatorId)
+                .FirstOrDefault();
+
+        return id is Guid who ? (await _users.GetAsync(who, ct))?.DisplayName : null;
     }
 
     public async Task<ShiftCashUpDto> ShiftAsync(Guid sessionId, CancellationToken ct = default)
@@ -508,13 +564,34 @@ public sealed class ShiftCashUpService : IShiftCashUpService
         return new EndOfDayDto(day, shifts);
     }
 
+    public async Task<IReadOnlyList<ShiftCashUpDto>> HistoryAsync(DateOnly first, DateOnly last,
+        CancellationToken ct = default)
+    {
+        // Listed to whoever may open Cash Up, as any day's shifts already are.
+        var start = first.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+        var end = last.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+        var history = new List<ShiftCashUpDto>();
+
+        // shortcut: each till is tallied on its own, a few queries apiece; fine for
+        // a month of a few tills, read the range in one query per kind if years are wanted.
+        foreach (var session in (await _sessions.ActiveBetweenAsync(start, end, ct))
+                     .Where(s => s.ClosedAtUtc >= start && s.ClosedAtUtc < end)
+                     .OrderByDescending(s => s.ClosedAtUtc))
+            history.Add(await TallyAsync(session, ct, scriptNumbers: false));
+
+        return history;
+    }
+
     /// <param name="day">
     /// For the end of day: only what happened between these UTC times. A
     /// dispensary till left open for a week otherwise brought the whole
     /// week's takings into every day's total.
     /// </param>
+    /// <param name="scriptNumbers">
+    /// Off for the history, which lists totals only: two reads per script.
+    /// </param>
     private async Task<ShiftCashUpDto> TallyAsync(TillSession session, CancellationToken ct,
-        (DateTime From, DateTime To)? day = null)
+        (DateTime From, DateTime To)? day = null, bool scriptNumbers = true)
     {
         bool On(DateTime atUtc) => day is not { } d || (atUtc >= d.From && atUtc < d.To);
 
@@ -532,11 +609,23 @@ public sealed class ShiftCashUpService : IShiftCashUpService
                      .Concat(returns.Select(r => r.OperatorId))
                      .Concat(payments.Select(p => p.CreatedBy))
                      .Concat(payouts.Select(p => p.PaidBy))
-                     .Append(session.OpenedBy).Distinct())
+                     .Append(session.OpenedBy)
+                     .Concat(session.ClosedBy is Guid by ? new[] { by } : Array.Empty<Guid>())
+                     .Distinct())
             names[id] = (await _users.GetAsync(id, ct))?.DisplayName ?? "Unknown";
 
-        // The script number for every collection, and for every refunded
-        // sale that was one.
+        var scripts = scriptNumbers
+            ? await ScriptNumbersAsync(sales, returns, ct)
+            : new Dictionary<Guid, string>();
+
+        return ShiftTally.Build(session, sales, returns, payments, names, scripts, payouts);
+    }
+
+    /// The script number for every collection, and for every refunded
+    /// sale that was one.
+    private async Task<Dictionary<Guid, string>> ScriptNumbersAsync(IReadOnlyList<Sale> sales,
+        IReadOnlyList<SaleReturn> returns, CancellationToken ct)
+    {
         var scripts = new Dictionary<Guid, string>();
         var collections = sales.Where(s => s.IsCollection).ToList();
 
@@ -552,6 +641,6 @@ public sealed class ShiftCashUpService : IShiftCashUpService
             scripts[sale.Id] = script?.ScriptNumber ?? "";
         }
 
-        return ShiftTally.Build(session, sales, returns, payments, names, scripts, payouts);
+        return scripts;
     }
 }

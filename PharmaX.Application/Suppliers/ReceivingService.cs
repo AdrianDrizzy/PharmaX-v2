@@ -138,13 +138,24 @@ public sealed class ReceivingService : IReceivingService
             return Result<IReadOnlyList<GoodsReceiptLineDto>>
                 .Fail(problem.Code, problem.Message);
 
+        // Line by line, as posting prices them, so a free line shows what
+        // the paid line before it set and a mistyped cost shows its price.
+        var (markup, step) = await Pricing.ReadAsync(_settings, ct);
+        var sellAt = new Dictionary<Guid, decimal>();
+
+        foreach (var (product, line) in resolved.Lines)
+        {
+            var now = sellAt.GetValueOrDefault(product.Id, product.RetailPrice.Amount);
+            sellAt[product.Id] = Pricing.NewRetail(now, line.UnitCost, markup, step) ?? now;
+        }
+
         IReadOnlyList<GoodsReceiptLineDto> preview = resolved.Lines
             .Select((r, i) => new GoodsReceiptLineDto(
                 i + 1, r.Product.Id, r.Product.Description, r.Line.Quantity,
                 r.Line.UnitCost, r.Line.Quantity * r.Line.UnitCost,
                 r.Product.IsBatchTracked ? r.Line.BatchNumber : null,
                 r.Product.IsBatchTracked ? r.Line.ExpiryDate : null,
-                r.Product.Code))
+                r.Product.Code, sellAt[r.Product.Id]))
             .ToList();
 
         return Result<IReadOnlyList<GoodsReceiptLineDto>>.Ok(preview);
@@ -222,15 +233,14 @@ public sealed class ReceivingService : IReceivingService
         // Posting is the point at which stock moves, and it happens
         // inside this transaction: a receipt that fails to save leaves
         // no batches and no movements behind.
-        // A dearer delivery puts the price up to keep the margin, and an
-        // item with no price yet takes the default markup. Before the
-        // receipt moves the cost, so the old cost is still there to see.
+        // Every delivery prices the item at its cost plus the markup:
+        // cost x 1.5 unless System setup says otherwise.
         var (markup, step) = await Pricing.ReadAsync(_settings, ct);
 
         foreach (var line in receipt.Lines)
             if (await _products.GetAsync(line.ProductId, ct) is { } product
-                && Pricing.NewRetail(product.RetailPrice.Amount, product.CostPrice.Amount,
-                       line.UnitCost.Amount, markup, step) is decimal retail)
+                && Pricing.NewRetail(product.RetailPrice.Amount, line.UnitCost.Amount,
+                       markup, step) is decimal retail)
                 Pricing.ChangeRetail(product, retail, _audit, _outbox,
                     $" (delivery {number} at {line.UnitCost})");
 

@@ -201,6 +201,7 @@ partial class frmGoodsReceipt
         grdPreview.AddColumn("Qty", "Qty", 60, "0.###", true);
         grdPreview.AddColumn("Cost", "Unit cost", 75, "N2", true);
         grdPreview.AddColumn("Total", "Total", 80, "N2", true);
+        grdPreview.AddColumn("Sell", "Sell at", 75, "N2", true);
         grdPreview.AddColumn("Batch", "Batch", 90);
         grdPreview.AddColumn("Expiry", "Expiry", 65);
 

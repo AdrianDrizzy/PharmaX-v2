@@ -14,6 +14,11 @@ public sealed record TillSessionDto(
             s.Id, s.TillNumber, openedByName, s.OpenedAtUtc,
             s.OpeningFloat.Amount, s.Status.ToString(), s.XReadCount);
     }
+
+    /// Opened on a day before <paramref name="today"/>, by this computer's
+    /// clock: still open, so everything sold now goes into that day's shift.
+    public bool OpenedBefore(DateOnly today) =>
+        DateOnly.FromDateTime(OpenedAtUtc.ToLocalTime()) < today;
 }
 
 /// <summary>

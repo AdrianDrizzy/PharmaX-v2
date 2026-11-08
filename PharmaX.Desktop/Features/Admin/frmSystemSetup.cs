@@ -276,8 +276,8 @@ public sealed class frmSystemSetup : PhxFormBase
         {
             AutoSize = true, ForeColor = PhxTheme.Muted,
             Location = new Point(2, 530), MaximumSize = new Size(550, 0),
-            Text = "An item with no price takes the markup on its first delivery; a dearer "
-                   + "delivery keeps its margin. A dispensed part pack is charged pro rata and "
+            Text = "Every delivery prices the item at its cost plus the markup: at 50%, a "
+                   + "10.00 cost sells at 15.00. A dispensed part pack is charged pro rata and "
                    + "rounded up: 14 of a 100-pack at 6.66 is 0.93, charged 1.00."
         });
 

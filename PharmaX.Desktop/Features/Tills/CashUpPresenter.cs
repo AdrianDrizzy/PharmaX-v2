@@ -12,12 +12,19 @@ namespace PharmaX.Desktop.Features.Tills;
 public interface ICashUpView : IView
 {
     /// <param name="forOthers">True where the user may pick any cashier's shift.</param>
-    void ShowShifts(IReadOnlyList<ShiftChoiceDto> shifts, bool forOthers);
+    /// <param name="select">The shift to show, where listed; the first otherwise.</param>
+    void ShowShifts(IReadOnlyList<ShiftChoiceDto> shifts, bool forOthers, Guid? select);
 
     Guid? SelectedShiftId { get; }
 
     /// The day whose shifts are listed; today unless the operator picked another.
     DateOnly Day { get; }
+
+    /// Moves the day without raising DayChanged.
+    void ShowDay(DateOnly day);
+
+    /// The cash-up history; the closed shift chosen from it, or null.
+    ShiftCashUpDto? PickFromHistory();
 
     /// Every transaction listed, and printed on the slip.
     bool EveryTransaction { get; }
@@ -28,10 +35,11 @@ public interface ICashUpView : IView
     string? PromptSavePath(string suggestedName, bool pdf);
 
     /// <summary>
-    /// The count-and-close screen for this shift. True where the till was
+    /// The count-and-close screen for this shift, titled for another
+    /// cashier's where <paramref name="onBehalf"/>. True where the till was
     /// closed.
     /// </summary>
-    bool CountAndClose(Guid sessionId);
+    bool CountAndClose(Guid sessionId, bool onBehalf);
 
     /// <summary>
     /// The money-out window for this shift: drawings, lunch, other
@@ -54,6 +62,7 @@ public interface ICashUpView : IView
     event EventHandler? ExportExcelRequested;
     event EventHandler? CountRequested;
     event EventHandler? PayoutsRequested;
+    event EventHandler? HistoryRequested;
 }
 
 /// <summary>
@@ -91,23 +100,36 @@ public sealed class CashUpPresenter : PresenterBase<ICashUpView>
     {
         View.ShiftChanged += (_, _) => Enqueue(LoadShiftAsync);
         View.DayChanged += (_, _) => Enqueue(InitialiseAsync);
-        View.RefreshRequested += (_, _) => Enqueue(InitialiseAsync);
+        View.RefreshRequested += (_, _) => Enqueue(() => GuardAsync(() => ListAsync(View.SelectedShiftId)));
         View.EveryTransactionChanged += (_, _) => View.ShowShift(_shift, _onBehalf);
         View.PrintRequested += (_, _) => Enqueue(PrintAsync);
         View.ExportPdfRequested += (_, _) => Enqueue(() => ExportAsync(pdf: true));
         View.ExportExcelRequested += (_, _) => Enqueue(() => ExportAsync(pdf: false));
         View.CountRequested += (_, _) => Enqueue(CountAsync);
         View.PayoutsRequested += (_, _) => Enqueue(PayoutsAsync);
+        View.HistoryRequested += (_, _) => Enqueue(HistoryAsync);
     }
 
-    public override Task InitialiseAsync() => GuardAsync(async () =>
+    /// This computer's till first, so it is the one shown.
+    public override Task InitialiseAsync() => GuardAsync(() => ListAsync(null));
+
+    private async Task ListAsync(Guid? select)
     {
-        // The list is shown with the first shift chosen; choosing raises
+        // The list is shown with a shift chosen; choosing raises
         // ShiftChanged, which loads it.
         _choices = await _shifts.ShiftsAsync(View.Day);
-        View.ShowShifts(_choices, _shifts.MayActForOthers);
+        View.ShowShifts(_choices, _shifts.MayActForOthers, select);
 
         if (_choices.Count == 0) View.ShowShift(null, false);
+    }
+
+    /// A past cash-up, shown here on the day it closed: its figures, its slip and the exports.
+    private Task HistoryAsync() => GuardAsync(async () =>
+    {
+        if (View.PickFromHistory() is not { ClosedAtLocal: DateTime closed } picked) return;
+
+        View.ShowDay(DateOnly.FromDateTime(closed));
+        await ListAsync(picked.SessionId);
     });
 
     private Task LoadShiftAsync() => GuardAsync(async () =>
@@ -216,8 +238,8 @@ public sealed class CashUpPresenter : PresenterBase<ICashUpView>
 
         if (!MayHandle()) return;
 
-        if (!View.CountAndClose(_shift.SessionId)) return;
+        if (!View.CountAndClose(_shift.SessionId, _onBehalf)) return;
 
-        await InitialiseAsync();
+        await ListAsync(_shift.SessionId);
     });
 }

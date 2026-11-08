@@ -13,7 +13,7 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
 {
     /// What the screen says a cash-up is, step by step.
     internal const string Guidance =
-        "1. Choose the day (today unless cashing up an earlier one) and the shift.  2. Check the totals; Money out records drawings, lunch and expenses.  "
+        "1. Choose the day (today unless cashing up an earlier one) and the shift; this PC's till comes first, and History finds past cash-ups.  2. Check the totals; Money out records drawings, lunch and expenses.  "
         + "3. Preview and print the slip (F9) and count the drawer against \"Cash in drawer\".  "
         + "4. Count cash and close till (over 20.00 out needs a reason). Scripts show by number only.";
 
@@ -84,7 +84,7 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         var bar = new TableLayoutPanel
         {
             AutoSize = true,
-            ColumnCount = 6,
+            ColumnCount = 7,
             Dock = DockStyle.Top,
             Padding = new Padding(10, 6, 10, 2)
         };
@@ -92,6 +92,7 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430F));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
@@ -105,6 +106,9 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
 
         var refresh = new Button { AutoSize = true, Name = "btnRefresh", Text = "&Refresh" };
         refresh.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+        var history = new Button { AutoSize = true, Name = "btnHistory", Text = "&History..." };
+        history.Click += (_, _) => HistoryRequested?.Invoke(this, EventArgs.Empty);
 
         _behalf.AutoSize = true;
         _behalf.Font = new Font(Font, FontStyle.Bold);
@@ -120,14 +124,18 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         _day.Name = "dtpDay";
         _day.Value = DateTime.Today;
         _day.MaxDate = DateTime.Today;
-        _day.ValueChanged += (_, _) => DayChanged?.Invoke(this, EventArgs.Empty);
+        _day.ValueChanged += (_, _) =>
+        {
+            if (!_filling) DayChanged?.Invoke(this, EventArgs.Empty);
+        };
 
         bar.Controls.Add(new Label { AutoSize = true, Margin = new Padding(3, 7, 6, 0), Text = "&Day" }, 0, 0);
         bar.Controls.Add(_day, 1, 0);
         bar.Controls.Add(new Label { AutoSize = true, Margin = new Padding(12, 7, 6, 0), Text = "&Shift" }, 2, 0);
         bar.Controls.Add(_shift, 3, 0);
         bar.Controls.Add(refresh, 4, 0);
-        bar.Controls.Add(_behalf, 5, 0);
+        bar.Controls.Add(history, 5, 0);
+        bar.Controls.Add(_behalf, 6, 0);
 
         // ---- Totals left, tenders right --------------------------------
         var totals = new TableLayoutPanel
@@ -317,7 +325,7 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    public void ShowShifts(IReadOnlyList<ShiftChoiceDto> shifts, bool forOthers)
+    public void ShowShifts(IReadOnlyList<ShiftChoiceDto> shifts, bool forOthers, Guid? select)
     {
         ArgumentNullException.ThrowIfNull(shifts);
 
@@ -333,12 +341,29 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
                   + "File > Till Session (Ctrl+T) to start one.")
             : "";
 
-        if (shifts.Count > 0) _shift.SelectedIndex = 0; // raises ShiftChanged
+        var index = shifts.ToList().FindIndex(s => s.SessionId == select);
+
+        if (shifts.Count > 0) _shift.SelectedIndex = Math.Max(0, index); // raises ShiftChanged
     }
 
     public Guid? SelectedShiftId => (_shift.SelectedItem as ShiftChoiceDto)?.SessionId;
 
     public DateOnly Day => DateOnly.FromDateTime(_day.Value);
+
+    public void ShowDay(DateOnly day)
+    {
+        _filling = true;
+        _day.Value = day.ToDateTime(TimeOnly.MinValue);
+        _filling = false;
+    }
+
+    public ShiftCashUpDto? PickFromHistory()
+    {
+        if (_views is null) return null;
+
+        using var history = _views.Create<frmCashUpHistory>();
+        return history.ShowDialog(this) == DialogResult.OK ? history.Picked : null;
+    }
 
     public bool EveryTransaction => _every.Checked;
 
@@ -417,12 +442,12 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         return save.ShowDialog(this) == DialogResult.OK ? save.FileName : null;
     }
 
-    public bool CountAndClose(Guid sessionId)
+    public bool CountAndClose(Guid sessionId, bool onBehalf)
     {
         if (_views is null) return false;
 
         using var till = _views.Create<frmTillSession>();
-        till.ForSession(sessionId);
+        till.ForSession(sessionId, onBehalf);
         till.ShowDialog(this);
         return till.DialogResult == DialogResult.OK;
     }
@@ -450,4 +475,5 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
     public event EventHandler? ExportExcelRequested;
     public event EventHandler? CountRequested;
     public event EventHandler? PayoutsRequested;
+    public event EventHandler? HistoryRequested;
 }

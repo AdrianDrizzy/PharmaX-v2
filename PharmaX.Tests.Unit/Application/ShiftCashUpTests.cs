@@ -423,7 +423,7 @@ public class ShiftCashUpTests
         var service = new ShiftCashUpService(sessions, sales, returns, accounts,
             new InMemoryUserRepository(), Substitute.For<IDispensingRepository>(),
             Substitute.For<IScriptRepository>(), new FakeCurrentUser { Id = Supervisor },
-            PermissionsOf(Role.Standard.Administrator), new FakeClock(Noon));
+            PermissionsOf(Role.Standard.Administrator), new FakeClock(Noon), new PharmaXOptions());
 
         var today = await service.EndOfDayAsync(DateOnly.FromDateTime(Noon.ToLocalTime()));
         today.SalesTotal.Should().Be(12m);
@@ -449,7 +449,7 @@ public class ShiftCashUpTests
             Substitute.For<IReturnRepository>(), Substitute.For<IAccountRepository>(),
             new InMemoryUserRepository(), Substitute.For<IDispensingRepository>(),
             Substitute.For<IScriptRepository>(), new FakeCurrentUser { Id = Cashier },
-            PermissionsOf(Role.Standard.Cashier), new FakeClock(Noon));
+            PermissionsOf(Role.Standard.Cashier), new FakeClock(Noon), new PharmaXOptions());
 
         var earlier = new DateOnly(2026, 10, 20);
         await service.ShiftsAsync(earlier);
@@ -527,6 +527,126 @@ public class ShiftCashUpTests
         theirs.ClosedBy.Should().Be(Supervisor);
     }
 
+    /// The one till is opened in the morning and the cashiers take turns:
+    /// whoever is signed in at it at the end cashes it up from Cash Up.
+    [Fact]
+    public async Task The_cashier_signed_in_at_the_till_closes_it_whoever_opened_it()
+    {
+        var till = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "1", Guid.NewGuid(),
+                                    Money.Of(50m), Noon);
+        var sessions = Substitute.For<ITillSessionRepository>();
+        sessions.GetAsync(till.Id, Arg.Any<CancellationToken>()).Returns(till);
+        sessions.PayoutsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<TillPayout>());
+
+        var sales = Substitute.For<ISaleRepository>();
+        sales.ForSessionAsync(till.Id, Arg.Any<CancellationToken>()).Returns(Array.Empty<Sale>());
+        var returns = Substitute.For<IReturnRepository>();
+        returns.ForSessionAsync(till.Id, Arg.Any<CancellationToken>()).Returns(Array.Empty<SaleReturn>());
+        var accounts = Substitute.For<IAccountRepository>();
+        accounts.PaymentsForSessionAsync(till.Id, Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<AccountTransaction>());
+
+        var cashier = PharmaX.Domain.Security.User.Create("john", "John", "x", mustChangePassword: false);
+        var atTheTill = new FakeCurrentUser { Id = cashier.Id, TillSessionId = till.Id };
+        var shifts = new ShiftCashUpService(sessions, sales, returns, accounts,
+            new InMemoryUserRepository(cashier), Substitute.For<IDispensingRepository>(),
+            Substitute.For<IScriptRepository>(), atTheTill,
+            PermissionsOf(Role.Standard.Cashier), new FakeClock(Noon), new PharmaXOptions());
+        sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                .Returns(new[] { till });
+
+        var listed = (await shifts.ShiftsAsync()).Should().ContainSingle().Subject;
+        listed.IsOwn.Should().BeTrue("they are on the till now");
+        listed.CurrentCashier.Should().Be("John");
+
+        var cashUp = new CashUpService(sessions, sales, returns, accounts,
+            Substitute.For<IJournalPoster>(), new FakeSessionContext(), new FakeAuditWriter(),
+            Substitute.For<IOutbox>(), new FakeUnitOfWork(), atTheTill,
+            new FakeClock(Noon), PermissionsOf(Role.Standard.Cashier));
+
+        var result = await cashUp.CloseAsync("Counted at the end of the day", till.Id);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error.Message : "");
+        till.Status.Should().Be(TillSessionStatus.Closed);
+    }
+
+    /// The picker starts on this PC's till, open before closed, named for
+    /// whoever is signed in here; every other till of the day follows.
+    [Fact]
+    public async Task Cash_up_starts_on_this_PCs_till_named_for_whoever_is_signed_in()
+    {
+        var options = new PharmaXOptions();
+        var thisPc = Guid.Parse(options.Workstation.WorkstationId);
+        var mary = PharmaX.Domain.Security.User.Create("mary", "Mary", "x", mustChangePassword: false);
+        var john = PharmaX.Domain.Security.User.Create("john", "John", "x", mustChangePassword: false);
+
+        var morning = TillSession.Open(Guid.NewGuid(), thisPc, "1", mary.Id, Money.Of(50m), Noon.AddHours(-3));
+        morning.Close(mary.Id, Money.Of(50m), Noon.AddHours(-1), null);
+        var here = TillSession.Open(Guid.NewGuid(), thisPc, "1", mary.Id, Money.Of(50m), Noon);
+        var johns = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "2", john.Id, Money.Of(50m), Noon);
+        var other = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "3", Guid.NewGuid(), Money.Of(50m), Noon);
+
+        var service = Over(new[] { other, johns, morning, here }, options,
+            new FakeCurrentUser { Id = john.Id, TillSessionId = null }, mary, john);
+
+        var shifts = await service.ShiftsAsync();
+
+        shifts.Select(s => s.SessionId).Should().Equal(here.Id, morning.Id, johns.Id, other.Id);
+        shifts[0].AtThisPc.Should().BeTrue();
+        shifts[0].ToString().Should().StartWith("Till 1 (this PC) - John (opened by Mary)");
+        shifts[2].AtThisPc.Should().BeFalse();
+        shifts[2].IsOwn.Should().BeTrue();
+    }
+
+    /// Every till closed in the range, whoever's, latest first, with what
+    /// was counted and why it was out; open ones and earlier ones left out.
+    [Fact]
+    public async Task The_history_lists_the_tills_closed_between_the_days_latest_first()
+    {
+        var mary = PharmaX.Domain.Security.User.Create("mary", "Mary", "x", mustChangePassword: false);
+
+        var before = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "1", Cashier, Money.Of(100m), Noon.AddDays(-5));
+        before.Close(Cashier, Money.Of(100m), Noon.AddDays(-3), null);
+        var yesterday = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "2", Cashier, Money.Of(100m), Noon.AddDays(-1));
+        yesterday.Close(mary.Id, Money.Of(95m), Noon.AddDays(-1).AddHours(6), "Change short");
+        var today = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "1", Cashier, Money.Of(100m), Noon.AddHours(-2));
+        today.Close(Cashier, Money.Of(100m), Noon, null);
+        var open = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "3", Cashier, Money.Of(100m), Noon);
+
+        var service = Over(new[] { before, yesterday, today, open }, new PharmaXOptions(),
+            new FakeCurrentUser { Id = Cashier }, mary);
+
+        var to = DateOnly.FromDateTime(Noon.ToLocalTime());
+        var history = await service.HistoryAsync(to.AddDays(-1), to);
+
+        history.Select(h => h.SessionId).Should().Equal(today.Id, yesterday.Id);
+        history[1].ClosedByName.Should().Be("Mary");
+        history[1].Declared.Should().Be(95m);
+        history[1].Variance.Should().Be(-5m);
+        history[1].VarianceReason.Should().Be("Change short");
+    }
+
+    /// A till opened last week and never cashed up is flagged at sign-in,
+    /// by the local date: one opened at 00:30 today is today's, though
+    /// its UTC time may fall on yesterday.
+    [Theory]
+    [InlineData(-7, 20, false, true)]   // opened 31/10 20:00, signed in on 07/11
+    [InlineData(-1, 23, false, true)]   // last night's till, the next morning
+    [InlineData(0, 0, true, false)]     // just after midnight, still today
+    [InlineData(0, 8, false, false)]
+    public void A_till_open_from_an_earlier_day_is_told_apart(int days, int hour,
+        bool halfPast, bool earlier)
+    {
+        var today = new DateOnly(2026, 11, 7);
+        var opened = today.AddDays(days).ToDateTime(new TimeOnly(hour, halfPast ? 30 : 0),
+            DateTimeKind.Local).ToUniversalTime();
+        var session = new PharmaX.Application.Tills.Dtos.TillSessionDto(
+            Guid.NewGuid(), "1", "Thandi", opened, 100m, "Open", 0);
+
+        session.OpenedBefore(today).Should().Be(earlier);
+    }
+
     [Theory]
     [InlineData(Role.Standard.Cashier, true, false)]
     [InlineData(Role.Standard.Pharmacist, true, true)]
@@ -573,9 +693,33 @@ public class ShiftCashUpTests
         var service = new ShiftCashUpService(sessions, sales, returns, accounts,
             new InMemoryUserRepository(), Substitute.For<IDispensingRepository>(),
             Substitute.For<IScriptRepository>(), new FakeCurrentUser { Id = Cashier },
-            permissions, new FakeClock(Noon));
+            permissions, new FakeClock(Noon), new PharmaXOptions());
 
         return (mine, theirs, service);
+    }
+
+    /// Over these sessions, none with a sale, refund, payment or payout.
+    private static ShiftCashUpService Over(IReadOnlyList<TillSession> tills, PharmaXOptions options,
+        ICurrentUser user, params PharmaX.Domain.Security.User[] users)
+    {
+        var sessions = Substitute.For<ITillSessionRepository>();
+        sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                .Returns(tills);
+        sessions.PayoutsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<TillPayout>());
+        var sales = Substitute.For<ISaleRepository>();
+        sales.ForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(Array.Empty<Sale>());
+        var returns = Substitute.For<IReturnRepository>();
+        returns.ForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+               .Returns(Array.Empty<SaleReturn>());
+        var accounts = Substitute.For<IAccountRepository>();
+        accounts.PaymentsForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<AccountTransaction>());
+
+        return new ShiftCashUpService(sessions, sales, returns, accounts,
+            new InMemoryUserRepository(users), Substitute.For<IDispensingRepository>(),
+            Substitute.For<IScriptRepository>(), user, PermissionsOf(Role.Standard.Cashier),
+            new FakeClock(Noon), options);
     }
 
     private static ReportProvenance Provenance() =>

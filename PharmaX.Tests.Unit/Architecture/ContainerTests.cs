@@ -37,6 +37,7 @@ public class ContainerTests
         typeof(Desktop.Features.Inventory.frmProductEdit),
         typeof(Desktop.Features.Tills.frmTillSession),
         typeof(Desktop.Features.Tills.frmCashUp),
+        typeof(Desktop.Features.Tills.frmCashUpHistory),
         typeof(Desktop.Features.Tills.frmEndOfDay),
         typeof(Desktop.Features.Reports.frmReports),
         typeof(Desktop.Features.Assistant.frmAssistant),
