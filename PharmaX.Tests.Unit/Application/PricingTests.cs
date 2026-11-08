@@ -39,4 +39,16 @@ public sealed class PricingTests
 
         (await Pricing.ReadAsync(settings)).Markup.Should().Be(0m, "set to nothing on purpose");
     }
+
+    [Fact]
+    public async Task Prices_round_up_to_a_cent_until_set()
+    {
+        var settings = Substitute.For<IPharmacySettings>();
+        settings.GetAsync(PharmacySettingKey.Rounding, Arg.Any<CancellationToken>()).Returns((string?)null);
+
+        var (markup, step) = await Pricing.ReadAsync(settings);
+
+        // 21.67 x 1.5 is 32.505: up to 32.51, as System setup's "Round up to 0.01" says.
+        Pricing.NewRetail(0m, 21.67m, markup, step).Should().Be(32.51m);
+    }
 }

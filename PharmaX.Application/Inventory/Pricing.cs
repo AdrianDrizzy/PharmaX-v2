@@ -14,6 +14,9 @@ public static class Pricing
 {
     private const decimal DefaultMarkup = 50m;
 
+    // What System setup shows when nothing is saved: "Round up to 0.01".
+    private const decimal DefaultStep = 0.01m;
+
     public static decimal RoundUp(decimal price, decimal step) =>
         step <= 0m ? Math.Round(price, 2) : Math.Ceiling(price / step) * step;
 
@@ -47,7 +50,7 @@ public static class Pricing
     }
 
     /// Markup percent and rounding step as set: a markup of 50 and a step of
-    /// zero where not set.
+    /// a cent where not set.
     public static async Task<(decimal Markup, decimal Step)> ReadAsync(
         IPharmacySettings settings, CancellationToken ct = default)
     {
@@ -57,8 +60,9 @@ public static class Pricing
             decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : 0m;
 
         var markup = await settings.GetAsync(PharmacySettingKey.Markup, ct).ConfigureAwait(false);
+        var step = await settings.GetAsync(PharmacySettingKey.Rounding, ct).ConfigureAwait(false);
 
         return (string.IsNullOrWhiteSpace(markup) ? DefaultMarkup : Parse(markup),
-                Parse(await settings.GetAsync(PharmacySettingKey.Rounding, ct).ConfigureAwait(false)));
+                string.IsNullOrWhiteSpace(step) ? DefaultStep : Parse(step));
     }
 }
