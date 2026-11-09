@@ -601,6 +601,10 @@ public sealed class TillSessionRepository : ITillSessionRepository
         CancellationToken ct = default) =>
         await _db.TillSessions.FirstOrDefaultAsync(s => s.Id == id, ct);
 
+    public async Task<TillSession?> ReadAsync(Guid id,
+        CancellationToken ct = default) =>
+        await _db.TillSessions.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
+
     public async Task AddAsync(TillSession session,
         CancellationToken ct = default) =>
         await _db.TillSessions.AddAsync(session, ct);

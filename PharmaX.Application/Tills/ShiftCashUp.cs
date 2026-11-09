@@ -540,7 +540,7 @@ public sealed class ShiftCashUpService : IShiftCashUpService
     {
         // Anyone may read a shift's totals; paying out of it and closing it
         // are TillPayoutService's and CashUpService's to allow.
-        var session = await _sessions.GetAsync(sessionId, ct)
+        var session = await _sessions.ReadAsync(sessionId, ct)
                       ?? throw new InvalidOperationException("That till shift was not found.");
 
         return await TallyAsync(session, ct);

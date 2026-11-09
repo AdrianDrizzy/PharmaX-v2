@@ -407,7 +407,7 @@ public class ShiftCashUpTests
         var sessions = Substitute.For<ITillSessionRepository>();
         sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                 .Returns(new[] { session });
-        sessions.GetAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        sessions.ReadAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
         sessions.PayoutsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
                 .Returns(Array.Empty<TillPayout>());
         var sales = Substitute.For<ISaleRepository>();
@@ -678,8 +678,8 @@ public class ShiftCashUpTests
         var sessions = Substitute.For<ITillSessionRepository>();
         sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                 .Returns(new[] { mine, theirs });
-        sessions.GetAsync(mine.Id, Arg.Any<CancellationToken>()).Returns(mine);
-        sessions.GetAsync(theirs.Id, Arg.Any<CancellationToken>()).Returns(theirs);
+        sessions.ReadAsync(mine.Id, Arg.Any<CancellationToken>()).Returns(mine);
+        sessions.ReadAsync(theirs.Id, Arg.Any<CancellationToken>()).Returns(theirs);
 
         var sales = Substitute.For<ISaleRepository>();
         sales.ForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(Array.Empty<Sale>());

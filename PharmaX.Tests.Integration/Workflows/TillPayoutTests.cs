@@ -193,6 +193,37 @@ public class TillPayoutTests : IClassFixture<PharmaXFixture>
         }
     }
 
+    /// <summary>
+    /// Cash Up left open while its count window closes the till - each
+    /// window with a scope of its own - shows the count on Refresh, not the
+    /// open till it read first. It read "not yet counted" (9 November 2026).
+    /// </summary>
+    [Fact]
+    public async Task Cash_up_shows_the_count_on_refresh_after_its_count_window_closes_the_till()
+    {
+        await _steps.OpenTillAsync();                       // float 500
+        await _steps.SignInAsync("refresh.pharm", Role.Standard.Pharmacist);
+
+        using var cashUpWindow = _steps.Fixture.NewScope();
+        var shifts = PharmaXFixture.Resolve<IShiftCashUpService>(cashUpWindow);
+        var sessionId = (await PharmaXFixture.Resolve<ITillSessionService>(cashUpWindow)
+            .CurrentAsync())!.Id;
+
+        (await shifts.ShiftAsync(sessionId)).Declared.Should().BeNull("the till is still open");
+
+        using (var countWindow = _steps.Fixture.NewScope())
+        {
+            var cashUp = PharmaXFixture.Resolve<ICashUpService>(countWindow);
+            await cashUp.DeclareAsync(Count(await cashUp.DenominationsAsync(), 500m));
+            (await cashUp.CloseAsync(null)).IsSuccess.Should().BeTrue();
+        }
+
+        var refreshed = await shifts.ShiftAsync(sessionId);
+
+        refreshed.IsOpen.Should().BeFalse();
+        refreshed.Declared.Should().Be(500m, "Refresh reads the till as it is now");
+    }
+
     /// The drawer counted note by note, largest first, to the amount.
     private static Dictionary<string, int> Count(
         IReadOnlyList<Application.Tills.Dtos.DenominationDto> denominations, decimal amount)
