@@ -22,6 +22,13 @@ public sealed class AssistantTasks
 
     public void Run(AppTask task) => _handler?.Invoke(task);
 
+    private Action<string>? _screen;
+
+    /// What opens a screen named on a how-to answer, by its menu key.
+    public void OpenScreenWith(Action<string> handler) => _screen = handler;
+
+    public void OpenScreen(string menuKey) => _screen?.Invoke(menuKey);
+
     private Action<Application.Assistant.Guided.GuidedResult>? _open;
 
     /// What opens a record a guided job saved (or chose instead).

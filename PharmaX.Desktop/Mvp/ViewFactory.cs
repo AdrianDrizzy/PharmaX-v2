@@ -62,10 +62,17 @@ public sealed class ViewFactory
                          .GetRequiredService<PharmaXOptions>()
                          .Database.IsShared);
 
-                // Ctrl+Shift+A on any screen: Ask PharmaX over it, in a
-                // scope of its own like any other screen.
+                // Ctrl+Shift+A on any screen: Ask PharmaX beside it, owned
+                // by the shell so it stays when that screen closes.
                 phx.UseAssistant(owner =>
-                    ShowDialog<Features.Assistant.frmAssistant>(owner));
+                {
+                    var shell = owner as Form;
+                    while (shell?.Owner is Form parent) shell = parent;
+                    if (shell is null)
+                        ShowDialog<Features.Assistant.frmAssistant>(owner);
+                    else
+                        Show<Features.Assistant.frmAssistant>("assistant", shell);
+                });
             }
 
             // The scope outlives this method and dies with the window.

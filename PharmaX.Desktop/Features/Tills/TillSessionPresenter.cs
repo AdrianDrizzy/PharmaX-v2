@@ -146,26 +146,36 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
     /// </summary>
     /// <remarks>
     /// Left out where nothing was entered, and the service then declares
-    /// EcoCash as nothing received: a blank is not a statement, and
+    /// that tender as nothing received: a blank is not a statement, and
     /// taking the till's own figure for it would balance every session
     /// whether or not the money arrived. Null, with the operator told,
-    /// for a statement below zero: the service refuses one, and that
+    /// for an amount below zero: the service refuses one, and that
     /// refusal reached the operator as "something went wrong".
     /// </remarks>
     private Dictionary<TenderType, decimal>? Statements()
     {
-        if (View.EcoCashStatement is not decimal ecoCash)
-            return new Dictionary<TenderType, decimal>();
+        var statements = new Dictionary<TenderType, decimal>();
 
-        if (ecoCash < 0m)
-        {
-            View.ShowError("The EcoCash statement cannot be less than "
-                           + "zero. Enter the amount it shows received, or "
-                           + "leave it blank if nothing came in.");
+        if (!Taken("The EcoCash statement", View.EcoCashStatement, out var ecoCash))
             return null;
-        }
+        if (ecoCash is decimal eco) statements[TenderType.EcoCash] = eco;
 
-        return new Dictionary<TenderType, decimal> { [TenderType.EcoCash] = ecoCash };
+        if (!Taken("The card amount", View.CardCollected, out var card))
+            return null;
+        if (card is decimal collected) statements[TenderType.Card] = collected;
+
+        return statements;
+    }
+
+    private bool Taken(string what, decimal? amount, out decimal? value)
+    {
+        value = amount;
+
+        if (amount is not < 0m) return true;
+
+        View.ShowError($"{what} cannot be less than zero. Enter what was "
+                       + "collected, or leave it blank if nothing came in.");
+        return false;
     }
 
     private Task CloseAsync() => GuardAsync(async () =>

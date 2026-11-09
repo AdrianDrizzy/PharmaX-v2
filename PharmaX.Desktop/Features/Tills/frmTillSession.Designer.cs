@@ -24,6 +24,8 @@ partial class frmTillSession
     private Label lblDeclaredValue = null!;
     private Label lblEcoCash = null!;
     private MoneyTextBox txtEcoCash = null!;
+    private Label lblCard = null!;
+    private MoneyTextBox txtCard = null!;
     private Label lblExpectedCaption = null!;
     private Label lblVarianceCaption = null!;
 
@@ -63,6 +65,8 @@ partial class frmTillSession
         lblDeclaredValue = new Label();
         lblEcoCash = new Label();
         txtEcoCash = new MoneyTextBox();
+        lblCard = new Label();
+        txtCard = new MoneyTextBox();
         lblExpectedCaption = new Label();
         lblVarianceCaption = new Label();
         grdDenominations = new DataGridView();
@@ -169,11 +173,10 @@ partial class frmTillSession
         pnlCountFooter.Height = 52;
         pnlCountFooter.Name = "pnlCountFooter";
 
-        // EcoCash is not in the drawer, so it cannot be counted with the
-        // notes. It is declared from the merchant statement on the phone
-        // - what EcoCash itself says it received for this till - which is
-        // the only figure that catches a payment the customer never
-        // actually sent.
+        // Neither is in the drawer, so neither can be counted with the
+        // notes. Each is what its own machine says was collected, which
+        // is the figure that catches a payment the till rang up and the
+        // machine never took.
         lblEcoCash.AutoSize = false;
         lblEcoCash.Location = new Point(8, 10);
         lblEcoCash.Name = "lblEcoCash";
@@ -188,10 +191,26 @@ partial class frmTillSession
         txtEcoCash.PlaceholderText = "From the merchant statement";
         txtEcoCash.Size = new Size(200, 26);
 
+        lblCard.AutoSize = false;
+        lblCard.Location = new Point(8, 42);
+        lblCard.Name = "lblCard";
+        lblCard.Size = new Size(220, 24);
+        lblCard.Text = "Car&d collected";
+        lblCard.TextAlign = ContentAlignment.MiddleLeft;
+
+        txtCard.AccessibleName = "Card collected";
+        txtCard.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        txtCard.Location = new Point(240, 40);
+        txtCard.Name = "txtCard";
+        txtCard.PlaceholderText = "From the card machine. Blank if none";
+        txtCard.Size = new Size(200, 26);
+
+        pnlStatement.Controls.Add(txtCard);
+        pnlStatement.Controls.Add(lblCard);
         pnlStatement.Controls.Add(txtEcoCash);
         pnlStatement.Controls.Add(lblEcoCash);
         pnlStatement.Dock = DockStyle.Top;
-        pnlStatement.Height = 44;
+        pnlStatement.Height = 76;
         pnlStatement.Name = "pnlStatement";
 
         // Added bottom-up: docking is resolved from the highest child

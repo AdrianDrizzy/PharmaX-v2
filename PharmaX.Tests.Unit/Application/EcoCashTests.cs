@@ -44,6 +44,8 @@ public class EcoCashTests
         TenderType.EcoCash.AffectsDrawer().Should().BeFalse();
         TenderType.EcoCash.IsDeclaredAgainstStatement().Should().BeTrue();
         TenderType.EcoCash.DisplayName().Should().Be("EcoCash");
+        TenderType.Card.IsDeclaredAgainstStatement().Should().BeTrue();
+        TenderType.Card.AffectsDrawer().Should().BeFalse();
     }
 
     /// <remarks>
@@ -238,6 +240,33 @@ public class EcoCashTests
         ecoCash.RequiresReason.Should().BeTrue();
     }
 
+    /// The card machine's total, not the till's. A blank is nothing
+    /// collected, the same as a blank EcoCash statement.
+    [Fact]
+    public async Task The_card_collected_is_what_the_machine_says()
+    {
+        var (_, _, cashUp) = await TradedSessionAsync(withCard: true);
+
+        var typed = await cashUp.DeclareAsync(
+            new Dictionary<string, int> { ["$1"] = 144 },
+            new Dictionary<TenderType, decimal>
+            {
+                [TenderType.EcoCash] = 24m,
+                [TenderType.Card] = 20m
+            });
+
+        var card = typed.Variances.Single(v => v.TenderType == "Card");
+        card.Expected.Should().Be(24m);
+        card.Declared.Should().Be(20m);
+        card.Variance.Should().Be(-4m);
+
+        var blank = await cashUp.DeclareAsync(
+            new Dictionary<string, int> { ["$1"] = 144 },
+            new Dictionary<TenderType, decimal> { [TenderType.EcoCash] = 24m });
+
+        blank.Variances.Single(v => v.TenderType == "Card").Declared.Should().Be(0m);
+    }
+
     [Fact]
     public async Task A_short_EcoCash_statement_comes_off_the_wallet_at_close()
     {
@@ -311,7 +340,7 @@ public class EcoCashTests
     /// sale and a 20.00 cash payment off an account.
     /// </summary>
     private static async Task<(SaleServiceBuilder, TillSession, CashUpService)>
-        TradedSessionAsync()
+        TradedSessionAsync(bool withCard = false)
     {
         var builder = new SaleServiceBuilder();
 
@@ -330,6 +359,15 @@ public class EcoCashTests
             var paid = await sut.FinaliseAsync(opened.Value.Id,
                 new[] { new PaymentDto(tender, 24m, null) });
 
+            paid.IsSuccess.Should().BeTrue(paid.Error.Message);
+        }
+
+        if (withCard)
+        {
+            var opened = await sut.OpenAsync();
+            await sut.AddLineAsync(opened.Value.Id, "PAR0500", 1m);
+            var paid = await sut.FinaliseAsync(opened.Value.Id,
+                new[] { new PaymentDto("Card", 24m, null) });
             paid.IsSuccess.Should().BeTrue(paid.Error.Message);
         }
 

@@ -22,8 +22,8 @@ public interface ICashUpService
 
     /// <param name="countedDenominations">The drawer, note by note.</param>
     /// <param name="statements">
-    /// What each tender declared off a statement - EcoCash - shows was
-    /// received. A tender missing here is declared as nothing received.
+    /// What each tender declared off a statement - EcoCash, card - shows
+    /// was received. A tender missing here is declared as nothing received.
     /// </param>
     /// <param name="sessionId">
     /// Another till's session, counted on somebody's behalf; null for
@@ -147,11 +147,10 @@ public sealed class CashUpService : ICashUpService
             var tender = Enum.Parse<TenderType>(expectation.TenderType);
             var expected = Money.Of(expectation.Expected);
 
-            // Cash is counted in the drawer and EcoCash declared off its
-            // merchant statement: both are money the till holds for the
-            // pharmacy, and both can come up short. Card and EFT settle
-            // through the bank against their own slips, so they declare
-            // as expected.
+            // Cash is counted in the drawer. EcoCash and card are declared
+            // off what their machines say was collected: both can come up
+            // short of what the till rang up. EFT settles through the bank
+            // and declares as expected.
             var declared = tender.AffectsDrawer()
                 ? cashDeclared
                 : tender.IsDeclaredAgainstStatement()
@@ -219,10 +218,11 @@ public sealed class CashUpService : ICashUpService
         var declaration = await _sessions.LatestDeclarationAsync(
             session.Id, ct);
 
-        // Tender by tender, because a short drawer and a short EcoCash
-        // statement come off different ledger accounts. A tender that
-        // was not declared - or took money after the declaration - has
-        // nothing better to record than what was expected of it.
+        // Tender by tender, because a short drawer, a short EcoCash
+        // statement and a short card total come off different ledger
+        // accounts. A tender that was not declared - or took money after
+        // the declaration - has nothing better to record than what was
+        // expected of it.
         var lines = expectations
             .Select(e =>
             {
@@ -252,8 +252,8 @@ public sealed class CashUpService : ICashUpService
                 ? varianceReason ?? "Closed without a cash declaration."
                 : varianceReason);
 
-        // The drawer and the EcoCash wallet against the books. Posts
-        // only where they differ.
+        // The drawer, the EcoCash wallet and the card total against the
+        // books. Posts only where they differ.
         foreach (var line in lines.Where(l => l.Declared != l.Expected))
             await _journals.PostCashUpAsync(session, line.Tender,
                 line.Expected, line.Declared, ct);

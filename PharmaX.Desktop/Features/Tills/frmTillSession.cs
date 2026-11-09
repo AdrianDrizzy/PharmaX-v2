@@ -99,6 +99,7 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
         btnCloseSession.Enabled = open;
         grdDenominations.Enabled = open;
         txtEcoCash.Enabled = open;
+        txtCard.Enabled = open;
 
         // Nothing to count against a closed till, so the grid reads as
         // unavailable rather than as an empty one somebody should fill.
@@ -183,6 +184,8 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
     /// null where the operator has not entered it.
     /// </summary>
     public decimal? EcoCashStatement => txtEcoCash.Amount;
+
+    public decimal? CardCollected => txtCard.Amount;
 
     public void ShowDenominationGrid(
         IReadOnlyList<DenominationDto> denominations)

@@ -140,6 +140,10 @@ foreach ($name in $overrides) {
     [Environment]::SetEnvironmentVariable($name, $null)
 }
 $env:Database__LocalConnection = "Data Source=$seedDb"
+# A space, not unset: unset leaves workstation.json's SharedConnection in
+# force, and on 08/11/2026 the import went into this machine's MariaDB.
+# Windows drops an empty variable; PharmaX reads a blank one as "none".
+$env:Database__SharedConnection = ' '
 $env:Pharmacy__TradingName = $TradingName
 $env:Pharmacy__Address = ($Address -split '\|' | ForEach-Object { $_.Trim() }) -join "`n"
 
