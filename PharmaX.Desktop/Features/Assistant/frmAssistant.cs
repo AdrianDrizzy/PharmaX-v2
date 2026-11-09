@@ -104,10 +104,47 @@ public partial class frmAssistant : PhxFormBase, IAssistantView
         Write(question + Environment.NewLine + Environment.NewLine, null, SystemColors.WindowText);
     }
 
-    public void BeginAnswer() =>
+    public void BeginAnswer()
+    {
+        ShowOpens(Array.Empty<(string, string)>());
         Write("PharmaX Assistant" + Environment.NewLine, _bold, SystemColors.Highlight);
+    }
 
-    public void AppendAnswer(string text) => Write(text, null, SystemColors.WindowText);
+    public void ShowOpens(IReadOnlyList<(string Key, string Caption)> opens)
+    {
+        ArgumentNullException.ThrowIfNull(opens);
+
+        pnlOpens.Controls.Clear();
+
+        foreach (var (key, caption) in opens)
+        {
+            var button = new Button
+            {
+                AutoSize = true,
+                Margin = new Padding(4, 4, 4, 4),
+                Padding = new Padding(8, 2, 8, 2),
+                Tag = key,
+                Text = caption
+            };
+            button.Click += (_, _) => OpenRequested?.Invoke((string)button.Tag!);
+            pnlOpens.Controls.Add(button);
+        }
+
+        var any = opens.Count > 0;
+        pnlOpens.Visible = any;
+        pnlOpens.Height = any ? 44 : 0;
+    }
+
+    public event Action<string>? OpenRequested;
+
+    public void AppendAnswer(string text)
+    {
+        // The guide marks a button with **double asterisks**, which is
+        // markdown. This box is not a markdown page, so those are drawn
+        // bold and each numbered step is given a line of its own.
+        foreach (var (part, bold) in AssistantText.Parts(text))
+            Write(part, bold ? _bold : null, SystemColors.WindowText);
+    }
 
     public void EndAnswer(string disclaimer) =>
         Write(Environment.NewLine + disclaimer + Environment.NewLine + Environment.NewLine,

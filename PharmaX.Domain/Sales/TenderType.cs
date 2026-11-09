@@ -47,10 +47,11 @@ public static class TenderTypeExtensions
 
     /// <summary>
     /// Declared at cash-up against an outside statement rather than
-    /// assumed to equal what the till expected.
+    /// assumed to equal what the till expected. EcoCash from its merchant
+    /// statement, card from the total the card machine collected.
     /// </summary>
     public static bool IsDeclaredAgainstStatement(this TenderType tender) =>
-        tender == TenderType.EcoCash;
+        tender is TenderType.EcoCash or TenderType.Card;
 
     /// <summary>The tender's name as the customer knows it.</summary>
     public static string DisplayName(this TenderType tender) => tender switch

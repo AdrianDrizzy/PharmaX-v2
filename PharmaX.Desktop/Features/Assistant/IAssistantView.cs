@@ -19,6 +19,13 @@ public interface IAssistantView : IView
     /// Ends the answer, with the disclaimer under it.
     void EndAnswer(string disclaimer);
 
+    /// Buttons under the answer, one per screen it names. Clicking one
+    /// opens that screen; several can be open at once.
+    void ShowOpens(IReadOnlyList<(string Key, string Caption)> opens);
+
+    /// The menu key of a screen button the operator clicked.
+    event Action<string>? OpenRequested;
+
     /// The line under the question box: what the assistant is doing.
     void ShowStatus(string message);
 

@@ -17,6 +17,10 @@ public interface ITillSessionView : Mvp.IView
     /// session, or null where nothing was entered.
     decimal? EcoCashStatement { get; }
 
+    /// What the card machine collected this session, or null where
+    /// nothing was entered.
+    decimal? CardCollected { get; }
+
     /// <summary>
     /// The money-out window for this session - the one being counted, or
     /// this till's own where null. True where anything was recorded.

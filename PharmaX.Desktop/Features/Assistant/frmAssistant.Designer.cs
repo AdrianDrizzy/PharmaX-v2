@@ -6,6 +6,7 @@ partial class frmAssistant
     private Label lblDisclaimer = null!;
     private RichTextBox rtbConversation = null!;
     private Panel pnlAsk = null!;
+    private FlowLayoutPanel pnlOpens = null!;
     private TextBox txtQuestion = null!;
     private Button btnAsk = null!;
     private Button btnClose = null!;
@@ -29,6 +30,7 @@ partial class frmAssistant
         lblDisclaimer = new Label();
         rtbConversation = new RichTextBox();
         pnlAsk = new Panel();
+        pnlOpens = new FlowLayoutPanel();
         txtQuestion = new TextBox();
         btnAsk = new Button();
         btnAsk.Name = "btnAsk";
@@ -86,11 +88,21 @@ partial class frmAssistant
         pnlAsk.Dock = DockStyle.Bottom;
         pnlAsk.Name = "pnlAsk";
 
+        // One button per screen the answer names. Hidden until there is one.
+        pnlOpens.AutoScroll = true;
+        pnlOpens.Dock = DockStyle.Bottom;
+        pnlOpens.Height = 0;
+        pnlOpens.Name = "pnlOpens";
+        pnlOpens.Padding = new Padding(8, 4, 8, 0);
+        pnlOpens.Visible = false;
+        pnlOpens.WrapContents = true;
+
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(760, 560);
         Controls.Add(rtbConversation);
         Controls.Add(lblDisclaimer);
+        Controls.Add(pnlOpens);
         Controls.Add(pnlAsk);
         KeyPreview = true;
         Name = "frmAssistant";

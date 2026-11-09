@@ -57,6 +57,7 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
         // A job asked of Ask PharmaX, from whichever screen it was opened over.
         _tasks.HandleWith(task => Enqueue(() => RunTaskAsync(task)));
         _tasks.OpenWith(saved => Enqueue(() => OpenSavedAsync(saved)));
+        _tasks.OpenScreenWith(key => Enqueue(() => OnMenuAsync(key)));
 
         // Kept for this till, and read back before the next sign-in.
         View.ThemeChosen += (_, id) => Enqueue(() =>
@@ -550,7 +551,9 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
                 Open<Features.Admin.frmReceiptTemplate>(key);
                 return;
             case "assistant":
-                _views.ShowDialog<Features.Assistant.frmAssistant>((Form)View);
+                // Beside the other screens, not over them: a how-to answer
+                // can open several of them while this one stays up.
+                _views.Show<Features.Assistant.frmAssistant>(key, (Form)View);
                 return;
             case "exit":
                 if (Confirmed("Close the application?")) View.CloseView(true);

@@ -59,6 +59,7 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
     {
         View.AskRequested += (_, _) => Enqueue(AskAsync);
         View.CloseRequested += (_, _) => Enqueue(CloseAsync);
+        View.OpenRequested += key => _tasks?.OpenScreen(key);
     }
 
     /// True while a guided job is part way: the window may not just close.
@@ -85,8 +86,9 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
     {
         if (!_chat.IsAvailable)
         {
-            View.ShowUnavailable("The assistant's model is not installed on this computer, so "
-                                 + "there is nothing to ask yet.");
+            // How-to answers come from the guide, which needs no model.
+            View.ShowStatus("Questions about how to use PharmaX work. Medicine questions need "
+                            + "the model, and it is not installed on this computer.");
             return Task.CompletedTask;
         }
 
@@ -153,6 +155,26 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
             _tasks.Run(task);
             return;
         }
+
+        // A question about using the program is answered from the guide,
+        // word for word, rather than by a model that has never seen it.
+        if (HowTo.Answer(question) is { } steps)
+        {
+            View.AppendAnswer(steps);
+            View.ShowOpens(AssistantOpens.In(steps));
+            View.EndAnswer("");
+            _turns.Add(new ChatTurn(question, steps));
+            return;
+        }
+
+        if (!_chat.IsAvailable)
+        {
+            View.AppendAnswer("That is not a question about how to use PharmaX, and the model "
+                              + "that answers the others is not installed on this computer.");
+            View.EndAnswer("");
+            return;
+        }
+
         View.ShowStatus(_chat.IsReady
             ? "Thinking..."
             : "Starting the assistant - the first answer takes a little longer...");

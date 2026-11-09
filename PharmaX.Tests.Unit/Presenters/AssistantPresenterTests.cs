@@ -69,14 +69,18 @@ public class AssistantPresenterTests
     }
 
     [Fact]
-    public async Task Without_a_model_there_is_nothing_to_ask()
+    public async Task Without_a_model_a_how_to_question_is_still_answered()
     {
         _chat.IsAvailable.Returns(false);
+        _view.QuestionText.Returns("How do I cash up?");
 
         await OpenAsync();
+        _view.AskRequested += Raise.EventWith(this, EventArgs.Empty);
 
-        _view.Received().ShowUnavailable(Arg.Is<string>(m => m.Contains("not installed", StringComparison.Ordinal)));
-        await _chat.DidNotReceive().WarmUpAsync(Arg.Any<CancellationToken>());
+        _view.DidNotReceive().ShowUnavailable(Arg.Any<string>());
+        await _chat.DidNotReceive().AskAsync(Arg.Any<IReadOnlyList<ChatTurn>>(), Arg.Any<string>(),
+            Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>());
+        _view.Received().AppendAnswer(Arg.Is<string>(a => a.Contains("Count cash and close", StringComparison.Ordinal)));
     }
 
     [Fact]
