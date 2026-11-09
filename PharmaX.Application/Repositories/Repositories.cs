@@ -271,6 +271,14 @@ public interface ITillSessionRepository
     Task<TillSession?> CurrentAsync(CancellationToken ct = default);
 
     Task<TillSession?> GetAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// A session read afresh and not tracked, for a screen that only shows
+    /// it: Cash Up stays open while its count window closes the till
+    /// through a scope of its own, and Refresh must see that close.
+    /// </summary>
+    Task<TillSession?> ReadAsync(Guid id, CancellationToken ct = default);
+
     Task AddAsync(TillSession session, CancellationToken ct = default);
 
     /// Null means the currency this installation trades in.
