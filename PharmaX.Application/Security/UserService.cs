@@ -36,6 +36,7 @@ public interface IUserService
 public sealed class UserService : IUserService
 {
     private readonly IUserRepository _users;
+    private readonly IRoleRepository _roles;
     private readonly IPermissionService _permissions;
     private readonly IPasswordHasher _hasher;
     private readonly IAuditWriter _audit;
@@ -43,11 +44,12 @@ public sealed class UserService : IUserService
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
 
-    public UserService(IUserRepository users, IPermissionService permissions,
-        IPasswordHasher hasher, IAuditWriter audit, IUnitOfWork uow,
-        ICurrentUser currentUser, IClock clock)
+    public UserService(IUserRepository users, IRoleRepository roles,
+        IPermissionService permissions, IPasswordHasher hasher, IAuditWriter audit,
+        IUnitOfWork uow, ICurrentUser currentUser, IClock clock)
     {
         _users = users;
+        _roles = roles;
         _permissions = permissions;
         _hasher = hasher;
         _audit = audit;
@@ -93,7 +95,7 @@ public sealed class UserService : IUserService
         if (Validate(edit, initialPassword) is Error problem)
             return Result<Guid>.Fail(problem.Code, problem.Message);
 
-        if (BeyondOwnAuthority(edit.Roles) is Error wider)
+        if (await BeyondOwnAuthority(edit.Roles, ct) is Error wider)
             return Result<Guid>.Fail(wider.Code, wider.Message);
 
         if (await _users.ByUsernameAsync(edit.Username, ct) is not null)
@@ -139,7 +141,7 @@ public sealed class UserService : IUserService
         // The roles the user has now count as well as the ones asked for:
         // changing an administrator's record is as much an administrator's
         // job as creating one.
-        if (BeyondOwnAuthority(edit.Roles.Concat(user.Roles)) is Error wider)
+        if (await BeyondOwnAuthority(edit.Roles.Concat(user.Roles), ct) is Error wider)
             return Result.Fail(wider.Code, wider.Message);
 
         // Losing your own administrator role locks you out of the screen
@@ -241,14 +243,19 @@ public sealed class UserService : IUserService
     /// Measured against permissions rather than role names, so it holds
     /// for a site that has renamed or widened a role.
     /// </remarks>
-    private Error? BeyondOwnAuthority(IEnumerable<string> roles)
+    private async Task<Error?> BeyondOwnAuthority(IEnumerable<string> roles,
+        CancellationToken ct)
     {
         foreach (var role in roles.Distinct(StringComparer.Ordinal))
         {
+            // What the role holds now, not the list it was installed with:
+            // an administrator may have widened it.
+            var stored = await _roles.CodesAsync(role, ct);
+
             // Cashing up is the cashier's own duty, which a manager does not
             // have (19 October 2026); it is no wider authority, so a manager
             // still takes cashiers on.
-            var missing = StandardRoleGrants.For(role)
+            var missing = (stored ?? StandardRoleGrants.For(role))
                 .Where(code => code != PermissionCode.SessionCashUp)
                 .FirstOrDefault(code => !_permissions.Has(code));
 

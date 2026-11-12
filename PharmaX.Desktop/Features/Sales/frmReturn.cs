@@ -54,12 +54,21 @@ public partial class frmReturn : PhxFormBase, IReturnView
     }
 
     /// Runtime. Resolved by the container.
-    public frmReturn(ReturnPresenter presenter, IAuthenticationService auth)
+    public frmReturn(ReturnPresenter presenter, IAuthenticationService auth,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
         _presenter = presenter;
         _auth = auth;
         _presenter.Attach(this);
+
+        // Part of the receipt number or the cashier, and the sale is found.
+        new SearchSuggestions(txtDocumentNumber, Suggest.Receipts(scopes)) { MinimumLength = 1 }
+            .Chosen += (_, chosen) =>
+            {
+                txtDocumentNumber.Text = (string)chosen.Value;
+                FindRequested?.Invoke(this, EventArgs.Empty);
+            };
     }
 
     protected override async void OnLoad(EventArgs e)

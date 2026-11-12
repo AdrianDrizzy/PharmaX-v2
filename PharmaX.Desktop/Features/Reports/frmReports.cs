@@ -72,11 +72,16 @@ public partial class frmReports : PhxFormBase, IReportsView
     }
 
     /// Runtime. Resolved by the container.
-    public frmReports(ReportsPresenter presenter, PharmaXOptions options)
+    public frmReports(ReportsPresenter presenter, PharmaXOptions options,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
         _presenter = presenter;
         txtBranch.Text = options.Workstation.BranchCode;
+
+        new SearchSuggestions(txtBranch, Suggest.Branches(scopes))
+            { MinimumLength = 1 }
+            .Chosen += (_, chosen) => txtBranch.Text = (string)chosen.Value;
         _presenter.Attach(this);
     }
 

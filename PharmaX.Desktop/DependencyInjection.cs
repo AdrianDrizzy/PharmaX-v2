@@ -65,6 +65,7 @@ public static class DependencyInjection
         s.AddTransient<Features.Inventory.frmAlerts>();
         s.AddTransient<Features.Inventory.AlertPresenter>();
         s.AddTransient<Features.Patients.frmAccountPicker>();
+        s.AddTransient<Features.Dispensing.frmScriptPicker>();
         s.AddTransient<Features.Patients.frmAccounts>();
         s.AddTransient<Features.Patients.AccountsPresenter>();
         s.AddTransient<frmQuotation>();
@@ -141,6 +142,8 @@ public static class DependencyInjection
         // Administration
         s.AddTransient<frmUserList>();
         s.AddTransient<UserListPresenter>();
+        s.AddTransient<frmRolePermissions>();
+        s.AddTransient<RolePermissionPresenter>();
         s.AddTransient<frmUserEdit>();
         s.AddTransient<UserEditPresenter>();
         s.AddTransient<frmPrinterSetup>();

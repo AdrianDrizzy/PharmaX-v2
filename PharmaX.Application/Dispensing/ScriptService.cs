@@ -79,6 +79,13 @@ public interface IScriptService
     Task<Result<ScriptDetailDto>> GetAsync(Guid id,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Scripts across every patient: those captured on a day, those whose
+    /// number has what is typed, or both. Newest first, with the patient.
+    /// </summary>
+    Task<Result<IReadOnlyList<ScriptDto>>> FindAsync(string term,
+        DateOnly? capturedOn, CancellationToken ct = default);
+
     Task<Result<Guid>> CaptureAsync(ScriptEditDto edit,
         CancellationToken ct = default);
 
@@ -166,6 +173,34 @@ public sealed class ScriptService : IScriptService
 
         IReadOnlyList<ScriptDto> items =
             scripts.Select(ScriptDto.From).ToList();
+
+        return Result<IReadOnlyList<ScriptDto>>.Ok(items);
+    }
+
+    /// The most one search lists: a busy day's scripts, comfortably.
+    public const int MostFound = 200;
+
+    public async Task<Result<IReadOnlyList<ScriptDto>>> FindAsync(string term,
+        DateOnly? capturedOn, CancellationToken ct = default)
+    {
+        DemandScriptAccess();
+
+        DateTime? from = null, to = null;
+        if (capturedOn is DateOnly day)
+            (from, to) = LabelReprintService.DayWindow(day);
+
+        var scripts = await _scripts.FindAsync(term ?? "", from, to, MostFound, ct);
+        var names = new Dictionary<Guid, string>();
+        var items = new List<ScriptDto>();
+
+        foreach (var script in scripts)
+        {
+            if (!names.TryGetValue(script.PatientId, out var name))
+                names[script.PatientId] = name =
+                    (await _patients.GetAsync(script.PatientId, ct))?.FullName ?? "";
+
+            items.Add(ScriptDto.From(script) with { Patient = name });
+        }
 
         return Result<IReadOnlyList<ScriptDto>>.Ok(items);
     }

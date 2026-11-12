@@ -72,6 +72,13 @@ public partial class frmQuotation : PhxFormBase
         // bar, as at the till. Without it a name typed slowly was sent as
         // a code a third of a second after the typing paused.
         scanBar.SuggestFrom(Suggest.Products(scopes, overTheCounter: true));
+
+        // A customer already on file, from the first letters of the name.
+        new SearchSuggestions(txtCustomer, Suggest.Patients(scopes)).Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is Application.Patients.Dtos.PatientListItemDto p)
+                txtCustomer.Text = $"{p.FirstNames} {p.Surname}".Trim();
+        };
     }
 
     private void ShowNoQuotation()

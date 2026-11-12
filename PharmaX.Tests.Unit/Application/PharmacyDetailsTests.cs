@@ -184,7 +184,7 @@ public class PharmacyDetailsTests
             .And.Contain("registered name: 'PharmaX (Pty) Ltd' -> "
                          + "'Riverside Health (Pvt) Ltd'")
             .And.Contain("'4000000000' -> '4123456789'");
-        _permissions.Received().Demand(PermissionCode.SettingsChange);
+        _permissions.Received().Demand(PermissionCode.SystemConsole);
     }
 
     [Fact]
@@ -222,7 +222,7 @@ public class PharmacyDetailsTests
     [Fact]
     public async Task A_user_without_the_settings_permission_cannot_save()
     {
-        _permissions.When(p => p.Demand(PermissionCode.SettingsChange))
+        _permissions.When(p => p.Demand(PermissionCode.SystemConsole))
             .Do(_ => throw new PermissionDeniedException(
                 "You do not have permission for this action."));
 

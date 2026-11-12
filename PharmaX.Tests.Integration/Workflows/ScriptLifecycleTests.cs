@@ -62,6 +62,33 @@ public class ScriptLifecycleTests : IClassFixture<PharmaXFixture>
     }
 
     [Fact]
+    public async Task A_script_is_found_by_its_number_and_by_the_day_it_was_captured()
+    {
+        await _steps.ProductAsync("SLFIND", "Findable tablets 28s", 28m,
+            schedule: 3, unitsPerPack: 28m);
+
+        await _steps.SignInAsync("sl.pharm5", Role.Standard.Pharmacist);
+        var patientId = await _steps.PatientAsync("Findable", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId, ("SLFIND", 28m, "One daily"));
+        var number = await NumberOfAsync(scriptId);
+
+        using var scope = _steps.Fixture.NewScope();
+        var scripts = PharmaXFixture.Resolve<IScriptService>(scope);
+        var captured = DateOnly.FromDateTime((await PharmaXFixture
+            .Resolve<PharmaXDbContext>(scope).Scripts.AsNoTracking()
+            .SingleAsync(s => s.Id == scriptId)).CreatedAtUtc.ToLocalTime());
+
+        var byNumber = (await scripts.FindAsync(number, null)).Value;
+        byNumber.Should().ContainSingle(s => s.Id == scriptId)
+            .Which.Patient.Should().ContainEquivalentOf("Findable");
+
+        (await scripts.FindAsync("", captured)).Value
+            .Should().Contain(s => s.Id == scriptId);
+        (await scripts.FindAsync("", captured.AddDays(-1))).Value
+            .Should().NotContain(s => s.Id == scriptId);
+    }
+
+    [Fact]
     public async Task A_captured_script_can_be_corrected_until_it_is_dispensed()
     {
         await _steps.OpenTillAsync();

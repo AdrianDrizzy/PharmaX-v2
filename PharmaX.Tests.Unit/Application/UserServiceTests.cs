@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PharmaX.Application.Repositories;
 using PharmaX.Application.Security;
 using PharmaX.Application.Security.Dtos;
 using PharmaX.Domain.Security;
@@ -258,6 +259,17 @@ internal sealed class UserServiceBuilder
     }
 
     public UserService Build() =>
-        new(Users, new PermissionService(_currentUser, _permissions, Audit),
+        new(Users, new NoRoles(),
+            new PermissionService(_currentUser, _permissions, Audit),
             Hasher, Audit, UnitOfWork, _currentUser, Clock);
+
+    private sealed class NoRoles : IRoleRepository
+    {
+        public Task<IReadOnlyList<Role>> ListAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Role>>(Array.Empty<Role>());
+
+        public Task<IReadOnlyList<string>?> CodesAsync(string role,
+            CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<string>?>(null);
+    }
 }

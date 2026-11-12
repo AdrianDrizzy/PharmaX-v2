@@ -90,6 +90,17 @@ public partial class frmDispensaryQuote : PhxFormBase
 
         // Found from the first letters of the name, as at the till.
         scanBar.SuggestFrom(Suggest.Products(scopes));
+
+        // A patient on file, from the first letters of the name: taking
+        // the quote up then needs no second search for them.
+        new SearchSuggestions(txtCustomer, Suggest.Patients(scopes)).Chosen += (_, chosen) =>
+        {
+            if (chosen.Value is not Application.Patients.Dtos.PatientListItemDto p) return;
+
+            txtCustomer.Text = $"{p.FirstNames} {p.Surname}".Trim();
+            _patientId = p.Id;
+            lblPatient.Text = $"Patient: {txtCustomer.Text}  ({p.FileNumber})";
+        };
     }
 
     /// <summary>

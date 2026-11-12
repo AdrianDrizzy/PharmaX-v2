@@ -508,6 +508,9 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
             case "users":
                 Open<frmUserList>(key);
                 break;
+            case "role-permissions":
+                Open<frmRolePermissions>(key);
+                break;
             case "patients":
                 Open<frmPatientList>(key);
                 break;

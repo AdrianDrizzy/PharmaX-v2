@@ -10,6 +10,13 @@ public partial class frmReferenceEdit : PhxFormBase, IReferenceEditView
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ReferenceMaintain;
 
+    /// Branches have their own permission; the service checks which kind.
+    protected override bool MayOpen(
+        Application.Security.IPermissionService permissions) =>
+        Application.Security.PermissionServiceExtensions.HasAny(permissions,
+            Domain.Security.PermissionCode.ReferenceMaintain,
+            Domain.Security.PermissionCode.BranchMaintain);
+
     /// Designer only. Never called at runtime.
     public frmReferenceEdit()
     {

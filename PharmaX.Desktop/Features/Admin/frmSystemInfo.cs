@@ -14,7 +14,7 @@ public partial class frmSystemInfo : PhxFormBase, ISystemInfoView
     private readonly SystemInfoPresenter? _presenter;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.SettingsChange;
+        Domain.Security.PermissionCode.SystemConsole;
 
     /// Designer only. Never called at runtime.
     public frmSystemInfo()

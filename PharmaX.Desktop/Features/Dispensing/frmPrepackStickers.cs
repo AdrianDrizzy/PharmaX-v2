@@ -327,10 +327,16 @@ public sealed class frmPrepackStickers : Form
         PharmacyImprint? pharmacy,
         IReadOnlyDictionary<string, string>? codes = null,
         IReadOnlyList<string>? suppliers = null,
-        PrepackLabelDto? again = null)
+        PrepackLabelDto? again = null,
+        Func<string, CancellationToken, Task<IReadOnlyList<Suggestion>>>? medicines = null)
     {
         using var dialog = new frmPrepackStickers(pharmacy,
             codes ?? DosageShorthand.Catalogue(), suppliers, again);
+
+        // Products on file offered by name; any wording may still be typed.
+        if (medicines is not null)
+            new SearchSuggestions(dialog._medicine, medicines).Chosen +=
+                (_, chosen) => dialog._medicine.Text = chosen.Text;
 
         return dialog.ShowDialog(owner) == DialogResult.OK
             ? (dialog.Sticker(), (int)dialog._stickers.Value)

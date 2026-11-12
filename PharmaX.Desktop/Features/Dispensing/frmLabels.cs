@@ -30,6 +30,7 @@ public partial class frmLabels : PhxFormBase
     private readonly ViewFactory? _views;
     private readonly IDispensingService? _dispensing;
     private readonly Application.Security.IPermissionService? _permissions;
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
     private readonly Application.Security.IAuthenticationService? _auth;
     private readonly IClaimFormService? _claimForms;
     private readonly IClaimFormPrinter? _claimFormPrinter;
@@ -153,14 +154,17 @@ public partial class frmLabels : PhxFormBase
                      Application.Suppliers.ISupplierService suppliers,
                      ICurrentUser user,
                      TemplateLabelHistory templates,
-                     Application.Security.IAuthenticationService auth)
+                     Application.Security.IAuthenticationService auth,
+                     Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
+        _scopes = scopes;
         _user = user;
         _auth = auth;
         _templates = templates;
 
-        if (!user.IsInRole(Role.Standard.Administrator))
+        if (!Application.Security.PermissionServiceExtensions
+                .Has(permissions, Domain.Security.PermissionCode.LabelTemplates))
             tabLabels.TabPages.Remove(pageTemplates);
         _reference = reference;
         _prepacks = prepacks;
@@ -409,7 +413,9 @@ public partial class frmLabels : PhxFormBase
 
         var suppliers = await SupplierNamesAsync();
 
-        if (frmPrepackStickers.Ask(this, _imprint, _dosage, suppliers) is not var (sticker, copies))
+        if (frmPrepackStickers.Ask(this, _imprint, _dosage, suppliers,
+                medicines: _scopes is null ? null : Suggest.Products(_scopes))
+            is not var (sticker, copies))
             return;
 
         await RememberAsync(sticker, copies);
@@ -445,7 +451,8 @@ public partial class frmLabels : PhxFormBase
 
         var suppliers = await SupplierNamesAsync();
 
-        if (frmPrepackStickers.Ask(this, _imprint, _dosage, suppliers, again)
+        if (frmPrepackStickers.Ask(this, _imprint, _dosage, suppliers, again,
+                _scopes is null ? null : Suggest.Products(_scopes))
             is not var (sticker, copies))
             return;
 

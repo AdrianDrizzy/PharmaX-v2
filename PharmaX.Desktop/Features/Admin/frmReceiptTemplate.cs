@@ -4,6 +4,9 @@ using PharmaX.Application.Inventory;
 using PharmaX.Application.Inventory.Dtos;
 using PharmaX.Application.Sales;
 using PharmaX.Application.Sales.Dtos;
+using PharmaX.Desktop.Controls;
+using PharmaX.Desktop.Features.Dispensing;
+using PharmaX.Desktop.Features.Inventory;
 using PharmaX.Desktop.Features.Sales;
 using PharmaX.Desktop.Mvp;
 
@@ -30,33 +33,30 @@ public sealed class frmReceiptTemplate : PhxFormBase
     private readonly TextBox _footer = new();
     private readonly Controls.ReceiptPreview _preview = new();
 
-    private readonly IProductService? _products;
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
+    private readonly ViewFactory? _views;
     private readonly TextBox _search = new();
-    private readonly ListBox _matches = new();
-    private readonly System.Windows.Forms.Timer _searchTimer = new();
+    private SearchSuggestions? _suggestions;
     private readonly List<SaleLineDto> _lines = DefaultLines();
     private string? _script = SampleScript;
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.SettingsChange;
+        Domain.Security.PermissionCode.ReceiptTemplate;
 
     /// Designer and tests only.
     public frmReceiptTemplate() => Build();
 
     public frmReceiptTemplate(IPharmacySettings settings, IReceiptPrinter printer,
-                              ReceiptHeaderFactory headers, IProductService products)
+                              ReceiptHeaderFactory headers,
+                              Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes,
+                              ViewFactory views)
     {
         _settings = settings;
         _printer = printer;
         _headers = headers;
-        _products = products;
+        _scopes = scopes;
+        _views = views;
         Build();
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) _searchTimer.Dispose();
-        base.Dispose(disposing);
     }
 
     /// The boxes, in the order the slip prints them, under their headings.
@@ -350,50 +350,55 @@ public sealed class frmReceiptTemplate : PhxFormBase
 
     // ---- Adding real products and scripts to the sample ------------------
 
-    private async Task SearchAsync()
+    /// Scripts first where a number is being typed, then products.
+    private async Task<IReadOnlyList<Suggestion>> SuggestAsync(string term, CancellationToken ct)
     {
-        _searchTimer.Stop();
-        var term = _search.Text.Trim();
+        var scripts = term.Any(char.IsDigit)
+            ? await Suggest.Scripts(_scopes!)(term, ct)
+            : Array.Empty<Suggestion>();
+        var products = await Suggest.ProductsInFull(_scopes!)(term, ct);
 
-        if (_products is null || term.Length < 2)
-        {
-            _matches.DataSource = null;
-            _matches.Visible = false;
-            return;
-        }
-
-        try
-        {
-            var found = await _products.SearchAsync(term, take: 20);
-            if (term != _search.Text.Trim()) return; // typed on since
-
-            var items = found.IsSuccess ? found.Value.Items.Where(p => p.IsActive).ToList() : new();
-            _matches.DisplayMember = nameof(ProductListItemDto.Description);
-            _matches.DataSource = items;
-            _matches.Visible = items.Count > 0;
-        }
-#pragma warning disable CA1031 // A failed lookup leaves the sample as it was.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorHandler.Log(ex);
-        }
+        return scripts.Take(4).Concat(products).Take(8).ToList();
     }
 
-    private void AddProduct()
+    private void Take(Suggestion chosen)
     {
-        if (_matches.SelectedItem is not ProductListItemDto p) return;
+        if (chosen.Value is ProductListItemDto product) AddProduct(product);
+        else if (chosen.Value is Application.Dispensing.Dtos.ScriptDto script)
+            AddScript(script.ScriptNumber);
+    }
 
+    private void AddProduct(ProductListItemDto p)
+    {
         _lines.Add(new SaleLineDto(_lines.Count + 1, p.Id, p.Description, 1m, p.RetailPrice,
             0m, "A", p.RetailPrice, null, null, p.Schedule > 0, false, 15m, p.Code));
         _search.Clear();
         Redraw();
     }
 
-    /// What is typed becomes the script number the slip prints.
-    private void AddScript()
+    /// The product list as a picker, opened on what is typed.
+    private async Task FindProductAsync()
     {
-        var number = _search.Text.Trim();
+        if (_views is null || _scopes is null) return;
+
+        if (frmProductList.Pick(_views, this, _search.Text) is not string code) return;
+        if (await Suggest.FindProductAsync(_scopes, code) is ProductListItemDto product)
+            AddProduct(product);
+    }
+
+    /// Every patient's scripts for a day, today first.
+    private void FindScript()
+    {
+        if (_views is null) return;
+
+        if (frmScriptPicker.Pick(_views, this, _search.Text) is { } script)
+            AddScript(script.ScriptNumber);
+    }
+
+    /// What is typed or chosen becomes the script number the slip prints.
+    private void AddScript(string typed)
+    {
+        var number = typed.Trim();
         if (number.Length == 0) return;
 
         _script = number;
@@ -416,61 +421,63 @@ public sealed class frmReceiptTemplate : PhxFormBase
         var panel = new TableLayoutPanel
         {
             AutoSize = true,
-            ColumnCount = 4,
+            ColumnCount = 5,
             Dock = DockStyle.Top,
             Padding = new Padding(12, 4, 12, 4)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        for (var i = 0; i < 4; i++) panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var label = new Label
         {
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
             Margin = new Padding(3, 3, 3, 2),
-            Text = "Add to the sample - type a product name or code, or a script number"
+            Text = "Add to the sample - type a product or a script number and pick from the list, or find one"
         };
 
         _search.Dock = DockStyle.Fill;
         _search.Name = "txtSampleSearch";
-        _search.PlaceholderText = "Search products, or type a script number";
-        _search.TextChanged += (_, _) => { _searchTimer.Stop(); _searchTimer.Start(); };
-        _search.KeyDown += (_, e) =>
-        {
-            if (e.KeyCode == Keys.Down && _matches.Visible) { _matches.Focus(); e.Handled = true; }
-            else if (e.KeyCode == Keys.Enter && _matches.Visible) { AddProduct(); e.SuppressKeyPress = true; }
-        };
-        _searchTimer.Interval = 300;
-        _searchTimer.Tick += async (_, _) => await SearchAsync();
+        _search.PlaceholderText = "Product name or code, or script number";
 
-        var product = new Button { AutoSize = true, Name = "btnAddProduct", Text = "Add &product" };
-        product.Click += (_, _) => AddProduct();
-        var script = new Button { AutoSize = true, Name = "btnAddScript", Text = "Add as sc&ript no." };
-        script.Click += (_, _) => AddScript();
+        if (_scopes is not null)
+        {
+            _suggestions = new SearchSuggestions(_search, SuggestAsync);
+            _suggestions.Chosen += (_, chosen) => Take(chosen);
+        }
+
+        // Enter with nothing picked: a name opens the product list on it,
+        // digits are taken as the script number. Kept from Save, the
+        // window's own Enter.
+        _search.PreviewKeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter && _search.Text.Trim().Length > 0) e.IsInputKey = true;
+        };
+        _search.KeyDown += async (_, e) =>
+        {
+            if (e.Handled || e.KeyCode != Keys.Enter || _search.Text.Trim().Length == 0) return;
+            e.SuppressKeyPress = true;
+
+            if (Suggest.IsName(_search.Text)) await FindProductAsync();
+            else AddScript(_search.Text);
+        };
+
+        var product = new Button { AutoSize = true, Name = "btnFindProduct", Text = "Find &product..." };
+        product.Click += async (_, _) => await FindProductAsync();
+        var script = new Button { AutoSize = true, Name = "btnFindScript", Text = "Find sc&ript..." };
+        script.Click += (_, _) => FindScript();
+        var typed = new Button { AutoSize = true, Name = "btnAddScript", Text = "&Use as script no." };
+        typed.Click += (_, _) => AddScript(_search.Text);
         var reset = new Button { AutoSize = true, Name = "btnResetSample", Text = "Reset sa&mple" };
         reset.Click += (_, _) => ResetSample();
 
-        _matches.Dock = DockStyle.Fill;
-        _matches.Height = 110;
-        _matches.IntegralHeight = false;
-        _matches.Name = "lstSampleMatches";
-        _matches.Visible = false;
-        _matches.DoubleClick += (_, _) => AddProduct();
-        _matches.KeyDown += (_, e) =>
-        {
-            if (e.KeyCode == Keys.Enter) { AddProduct(); e.SuppressKeyPress = true; }
-        };
-
         panel.Controls.Add(label, 0, 0);
-        panel.SetColumnSpan(label, 4);
+        panel.SetColumnSpan(label, 5);
         panel.Controls.Add(_search, 0, 1);
         panel.Controls.Add(product, 1, 1);
         panel.Controls.Add(script, 2, 1);
-        panel.Controls.Add(reset, 3, 1);
-        panel.Controls.Add(_matches, 0, 2);
-        panel.SetColumnSpan(_matches, 4);
+        panel.Controls.Add(typed, 3, 1);
+        panel.Controls.Add(reset, 4, 1);
         return panel;
     }
 

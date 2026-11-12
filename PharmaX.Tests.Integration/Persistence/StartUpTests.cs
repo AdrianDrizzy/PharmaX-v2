@@ -4,6 +4,7 @@ using PharmaX.Application.Abstractions;
 using PharmaX.Domain.Security;
 using PharmaX.Domain.Primitives;
 using PharmaX.Persistence;
+using PharmaX.Persistence.Seeding;
 
 namespace PharmaX.Tests.Integration.Persistence;
 
@@ -229,5 +230,49 @@ public class StartUpTests : IClassFixture<PharmaXFixture>
         admin.IsLockedOut.Should().BeFalse();
         admin.IsActive.Should().BeTrue();
         admin.Roles.Should().Contain(Role.Standard.Administrator);
+    }
+
+    [Fact]
+    public async Task A_narrowed_role_stays_narrowed_when_the_pharmacy_starts_again()
+    {
+        try
+        {
+            using (var scope = _fixture.NewScope())
+            {
+                var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+                var cashier = await db.Roles.SingleAsync(
+                    r => r.Name == Role.Standard.Cashier);
+
+                cashier.SetGrants(new[] { PermissionCode.SaleCreate });
+                await db.SaveChangesAsync();
+            }
+
+            using (var scope = _fixture.NewScope())
+            {
+                await PharmaXFixture
+                    .Resolve<ReferenceDataSeeder>(scope)
+                    .SeedAsync();
+            }
+
+            using (var scope = _fixture.NewScope())
+            {
+                var cashier = await PharmaXFixture.Resolve<PharmaXDbContext>(scope)
+                    .Roles.AsNoTracking()
+                    .SingleAsync(r => r.Name == Role.Standard.Cashier);
+
+                cashier.Has(PermissionCode.SaleCreate).Should().BeTrue();
+                cashier.Has(PermissionCode.ProductRead).Should().BeFalse();
+            }
+        }
+        finally
+        {
+            using var scope = _fixture.NewScope();
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var cashier = await db.Roles.SingleAsync(
+                r => r.Name == Role.Standard.Cashier);
+
+            cashier.SetGrants(StandardRoleGrants.For(Role.Standard.Cashier));
+            await db.SaveChangesAsync();
+        }
     }
 }

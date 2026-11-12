@@ -550,6 +550,17 @@ Words: add a user, reset a password, unlock a user, deactivate a user, discount 
 4. **Unlock** clears a lock from too many wrong passwords.
 5. **Deactivate** takes the account off. It reads **Reactivate** on an account already off. A person cannot deactivate the account they are signed in with.
 
+### Role permissions
+
+Words: permissions, role permissions, tick a permission
+
+**Administration > Role permissions.** Administrator only, until they tick this for someone else.
+
+1. Each row is a permission. Each column is a role, including Administrator. A tick is what that role may do.
+2. A person gets the permissions of the roles on their user, not a list of their own. Change the role here, then give them that role under Users.
+3. **Save.** Sign out and back in before it applies. Leave **Role permissions** ticked for a role you hold, or you cannot open this screen again.
+4. Each administration screen has its own row: System setup, Branches, Receipt template, Import data, Back up now, System console (with control variables and pharmacy details) and Label templates (the Templates tab on Labels). Tick one for a role to hand over that screen alone.
+
 ### System setup
 
 Words: system setup, markup, rounding, currency, logo
@@ -574,6 +585,8 @@ Words: branch, add a branch
 Words: receipt template, what the receipt prints
 
 **Administration > Receipt Template.** This is the layout every till's receipt uses. Change the lines, **Save**. It is not Printer Setup, which only chooses which printer.
+
+To try the layout on real items, type a few letters of a product or the digits of a script number above the preview and pick one from the list. **Find product...** opens the product list. **Find script...** lists every patient's scripts captured on the day shown, today first. Untick the day to search them all.
 
 ### Import data
 

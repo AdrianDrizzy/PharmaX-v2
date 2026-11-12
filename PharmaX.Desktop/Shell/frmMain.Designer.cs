@@ -156,6 +156,7 @@ partial class frmMain
             Menu("&Administration", "admin",
                 Item("VAT Summary", "vat-codes"),
                 Item("Users", "users"),
+                Item("Role permissions", "role-permissions"),
                 Item("Branches", "branches"),
                 Item("Stock Transactions", "transaction-types"),
                 Item("System Setup", "system-setup"),
