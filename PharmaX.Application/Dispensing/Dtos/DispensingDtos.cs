@@ -30,7 +30,7 @@ public sealed record PatientSummaryDto(
 public sealed record ScriptDto(
     Guid Id, string ScriptNumber, Guid PatientId, string PrescriberName,
     DateOnly PrescribedOn, DateOnly? ValidUntil, int RepeatsAuthorised,
-    int RepeatsRemaining, string Status, string Items = "")
+    int RepeatsRemaining, string Status, string Items = "", string Patient = "")
 {
     public static ScriptDto From(Script s)
     {

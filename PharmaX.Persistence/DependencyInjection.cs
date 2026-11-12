@@ -143,6 +143,7 @@ public static class DependencyInjection
         services.AddScoped<IBatchRepository, BatchRepository>();
         services.AddScoped<IPatientRepository, PatientRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<ITillSessionRepository, TillSessionRepository>();
         services.AddScoped<IPermissionRepository, PermissionRepository>();
         services.AddScoped<IDispensingRepository, DispensingRepository>();

@@ -144,16 +144,14 @@ public static class ScreenAccess
 
             // Administration.
             ["users"] = p => p.Has(PermissionCode.UserRoleAssign),
-            ["branches"] = p => p.Has(PermissionCode.SettingsChange),
+            ["role-permissions"] = p => p.Has(PermissionCode.RolePermissions),
+            ["branches"] = p => p.Has(PermissionCode.BranchMaintain),
             ["system-setup"] = p => p.Has(PermissionCode.SettingsChange),
-
-            // What every till's receipt prints: the administrator's.
-            ["receipt-template"] = p => p.Has(PermissionCode.SettingsChange),
-            ["data-import"] = p => p.Has(PermissionCode.SettingsChange),
-            ["backup"] = p => p.Has(PermissionCode.SettingsChange),
-            ["system-console"] = p => p.Has(PermissionCode.SettingsChange),
-            ["control-variables"] = p =>
-                p.Has(PermissionCode.SettingsChange)
+            ["receipt-template"] = p => p.Has(PermissionCode.ReceiptTemplate),
+            ["data-import"] = p => p.Has(PermissionCode.DataImport),
+            ["backup"] = p => p.Has(PermissionCode.Backup),
+            ["system-console"] = p => p.Has(PermissionCode.SystemConsole),
+            ["control-variables"] = p => p.Has(PermissionCode.SystemConsole)
         };
 
     /// Every menu key the policy knows.

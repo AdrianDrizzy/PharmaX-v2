@@ -148,6 +148,10 @@ public sealed class SearchSuggestions : IDisposable
         _settledFor = _box.Text.Trim();
         Hide();
         Chosen?.Invoke(this, suggestion);
+
+        // A screen that writes the choice into the box has answered it.
+        _debounce.Stop();
+        if (!_disposed) _settledFor = _box.Text.Trim();
     }
 
     private void Open(IReadOnlyList<Suggestion> matches)

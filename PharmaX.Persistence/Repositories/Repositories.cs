@@ -575,6 +575,30 @@ public sealed class UserRepository : IUserRepository
     }
 }
 
+public sealed class RoleRepository : IRoleRepository
+{
+    private readonly PharmaXDbContext _db;
+
+    public RoleRepository(PharmaXDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<Role>> ListAsync(
+        CancellationToken ct = default) =>
+        await _db.Roles.OrderBy(r => r.Name).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<string>?> CodesAsync(string role,
+        CancellationToken ct = default)
+    {
+        var found = await _db.Roles.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Name == role, ct);
+
+        if (found is null) return null;
+
+        return found.PermissionCodes
+            .Where(code => code != Role.EditedMark)
+            .ToList();
+    }
+}
+
 public sealed class TillSessionRepository : ITillSessionRepository
 {
     private readonly PharmaXDbContext _db;
@@ -775,6 +799,20 @@ public sealed class ScriptRepository : IScriptRepository
             .OrderByDescending(s => s.PrescribedOn)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Script>> FindAsync(string term,
+        DateTime? fromUtc, DateTime? toUtc, int take,
+        CancellationToken ct = default)
+    {
+        var query = _db.Scripts.AsNoTracking().Include(s => s.Items).AsQueryable();
+        var wanted = (term ?? "").Trim();
+
+        if (wanted.Length > 0) query = query.Where(s => s.ScriptNumber.Contains(wanted));
+        if (fromUtc is DateTime from) query = query.Where(s => s.CreatedAtUtc >= from);
+        if (toUtc is DateTime to) query = query.Where(s => s.CreatedAtUtc < to);
+
+        return await query.OrderByDescending(s => s.CreatedAtUtc).Take(take).ToListAsync(ct);
+    }
+
     public async Task AddAsync(Script script, CancellationToken ct = default) =>
         await _db.Scripts.AddAsync(script, ct);
 }
@@ -826,6 +864,7 @@ public sealed class PermissionRepository : IPermissionRepository
         var granted = roles
             .Where(r => user.IsInRole(r.Name))
             .SelectMany(r => r.PermissionCodes)
+            .Where(code => code != Role.EditedMark)
             .Distinct(StringComparer.Ordinal)
             .ToList();
 

@@ -28,7 +28,7 @@ public sealed class frmDataImport : PhxFormBase
     private readonly TextBox _report = new();
 
     protected override string? RequiredPermission =>
-        Domain.Security.PermissionCode.SettingsChange;
+        Domain.Security.PermissionCode.DataImport;
 
     public frmDataImport(IDataImporter importer)
     {

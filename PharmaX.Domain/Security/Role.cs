@@ -18,6 +18,12 @@ public sealed class Role : Entity
 
     public IReadOnlyList<string> PermissionCodes => _permissionCodes;
 
+    /// <summary>
+    /// In the grant list once an administrator has saved a set that is
+    /// not the standard one. Startup then leaves the role alone.
+    /// </summary>
+    public const string EditedMark = "adm.role.grants.edited";
+
     private Role() { }
 
     public static Role Create(string name, string? description = null,
@@ -47,6 +53,40 @@ public sealed class Role : Entity
                 $"The {Name} role is a system role and cannot be narrowed.");
 
         _permissionCodes.Remove(permissionCode);
+    }
+
+    /// <summary>
+    /// Replaces the grants, including on a system role. The administration
+    /// screen is the one place a system role may be narrowed.
+    /// </summary>
+    public void SetGrants(IEnumerable<string> codes)
+    {
+        ArgumentNullException.ThrowIfNull(codes);
+
+        var wanted = new List<string>();
+
+        foreach (var code in codes)
+        {
+            if (code == EditedMark) continue;
+
+            if (!PermissionCode.All.Contains(code, StringComparer.Ordinal))
+                throw new DomainException($"Unknown permission {code}.");
+
+            if (!wanted.Contains(code, StringComparer.Ordinal))
+                wanted.Add(code);
+        }
+
+        var standard = new HashSet<string>(
+            StandardRoleGrants.For(Name), StringComparer.Ordinal);
+
+        var same = wanted.Count == standard.Count
+                   && wanted.TrueForAll(standard.Contains);
+
+        _permissionCodes.Clear();
+
+        foreach (var code in wanted) _permissionCodes.Add(code);
+
+        if (!same) _permissionCodes.Add(EditedMark);
     }
 
     public bool Has(string permissionCode) =>

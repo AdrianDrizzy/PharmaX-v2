@@ -264,6 +264,19 @@ public interface IUserRepository
                                         CancellationToken ct = default);
 }
 
+public interface IRoleRepository
+{
+    /// <summary>Tracked, so a saved grant list is the one just edited.</summary>
+    Task<IReadOnlyList<Role>> ListAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The role's grants, or null when the pharmacy has no such role.
+    /// The edited mark is not a permission and is left out.
+    /// </summary>
+    Task<IReadOnlyList<string>?> CodesAsync(string role,
+                                            CancellationToken ct = default);
+}
+
 public interface ITillSessionRepository
 {
     /// The open session for this workstation, or null. Null is the normal

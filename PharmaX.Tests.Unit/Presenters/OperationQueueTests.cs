@@ -1,5 +1,6 @@
 using FluentAssertions;
 using NSubstitute;
+using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Sales;
 using PharmaX.Application.Sales.Dtos;
@@ -194,6 +195,7 @@ public class RoleAssignmentTests
 
         var users = new PharmaX.Application.Security.UserService(
             new InMemoryUserRepository(),
+            new StoredRoles(),
             new PermissionService(manager,
                 new FakePermissionRepository(
                     StandardRoleGrants.For(Role.Standard.Manager)),
@@ -219,5 +221,16 @@ public class RoleAssignmentTests
             "Starting#1");
 
         cashier.IsSuccess.Should().BeTrue(cashier.Error.Message);
+    }
+
+    /// <summary>No roles stored, so assignment is checked against the standard grants.</summary>
+    private sealed class StoredRoles : IRoleRepository
+    {
+        public Task<IReadOnlyList<Role>> ListAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Role>>(Array.Empty<Role>());
+
+        public Task<IReadOnlyList<string>?> CodesAsync(string role,
+            CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<string>?>(null);
     }
 }

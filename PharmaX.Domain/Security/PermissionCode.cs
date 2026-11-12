@@ -194,7 +194,28 @@ public static class PermissionCode
     public const string LedgerPost = "fin.journal.post";
 
     public const string UserRoleAssign = "adm.user.role.assign";
+
+    /// <summary>
+    /// Changing which permissions each role holds. The administrator,
+    /// and whoever they tick this for.
+    /// </summary>
+    public const string RolePermissions = "adm.role.permissions";
+
+    /// <summary>System Setup: currency, logo, colours, markup and rounding.</summary>
     public const string SettingsChange = "adm.settings.change";
+
+    // Each administration screen on its own, so one can be handed to a
+    // role without the rest (12 November 2026). They were all System settings.
+    public const string BranchMaintain = "adm.branches";
+    public const string ReceiptTemplate = "adm.receipt.template";
+    public const string DataImport = "adm.data.import";
+    public const string Backup = "adm.backup";
+
+    /// <summary>System Console, Control Variables and the pharmacy's particulars.</summary>
+    public const string SystemConsole = "adm.system.console";
+
+    /// <summary>The Templates tab on Labels: saved sticker layouts.</summary>
+    public const string LabelTemplates = "dsp.label.templates";
 
     public static IReadOnlyList<string> All { get; } = new[]
     {
@@ -206,9 +227,59 @@ public static class PermissionCode
         ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
         ReportClinical, LedgerRead, LedgerPost,
-        UserRoleAssign, SettingsChange, DispensingAmend, StockPrepack,
+        UserRoleAssign, RolePermissions, SettingsChange, DispensingAmend, StockPrepack,
         StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust,
-        ReceiptHide
+        ReceiptHide, BranchMaintain, ReceiptTemplate, DataImport, Backup,
+        SystemConsole, LabelTemplates
+    };
+
+    /// <summary>What the role-permissions screen shows beside the code.</summary>
+    public static string Label(string code) => code switch
+    {
+        SaleCreate => "Sell",
+        SaleTakePayment => "Take payment",
+        SaleDiscountAboveLimit => "Discount over the limit",
+        ReturnAuthorise => "Authorise a refund",
+        SessionCloseOtherUser => "Close someone else's till",
+        SessionCashUp => "Cash up and close",
+        SessionPayOut => "Pay money out of the till",
+        ReceiptHide => "Hide a receipt",
+        ScriptAuthorise => "Clinical authority",
+        ScriptReverse => "Reverse a script",
+        ScriptCapture => "Capture a script",
+        ScriptDispense => "Dispense",
+        DispensingAmend => "Correct a dispensed item",
+        DispensingChargeAdjust => "Charge other than the price",
+        PatientMaintain => "Patients",
+        ProductRead => "Look up products",
+        ProductDispensary => "Dispensary stock",
+        ProductMaintain => "Maintain products",
+        PriceChange => "Change a price",
+        StockTakeCapture => "Count stock",
+        StockTakePost => "Post a stocktake",
+        StockPrepack => "Pre-pack stock",
+        StockRemove => "Clear expired or out-of-stock lines",
+        StockCorrect => "Correct stock on hand",
+        SupplierMaintain => "Suppliers",
+        ReferenceMaintain => "Departments and lists",
+        PurchaseOrderRaise => "Raise a purchase order",
+        GoodsReceive => "Receive stock",
+        ReportOperational => "Operational reports",
+        ReportManagement => "Management reports",
+        ReportFinancial => "Financial reports",
+        ReportClinical => "Clinical reports",
+        LedgerRead => "Read the books",
+        LedgerPost => "Post a journal",
+        UserRoleAssign => "Users and roles",
+        RolePermissions => "Role permissions",
+        SettingsChange => "System setup",
+        BranchMaintain => "Branches",
+        ReceiptTemplate => "Receipt template",
+        DataImport => "Import data",
+        Backup => "Back up now",
+        SystemConsole => "System console, control variables and pharmacy details",
+        LabelTemplates => "Label templates",
+        _ => code
     };
 }
 

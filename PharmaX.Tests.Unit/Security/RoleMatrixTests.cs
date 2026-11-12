@@ -32,6 +32,7 @@ public class RoleMatrixTests
         { Role.Standard.Administrator, "dispensing" },
         { Role.Standard.Administrator, "patients" },
         { Role.Standard.Administrator, "users" },
+        { Role.Standard.Administrator, "role-permissions" },
         { Role.Standard.Administrator, "system-setup" },
         { Role.Standard.Administrator, "control-variables" },
         { Role.Standard.Administrator, "goods-receipt" },
@@ -82,14 +83,17 @@ public class RoleMatrixTests
     public static TheoryData<string, string> MustRefuse => new()
     {
         { Role.Standard.Manager, "system-setup" },
+        { Role.Standard.Manager, "role-permissions" },
         { Role.Standard.Manager, "dispensing" },
 
         { Role.Standard.Pharmacist, "users" },
+        { Role.Standard.Pharmacist, "role-permissions" },
         { Role.Standard.Pharmacist, "price-changes" },
         { Role.Standard.Pharmacist, "system-setup" },
         { Role.Standard.Pharmacist, "day-end" },
 
         { Role.Standard.PharmacistAssistant, "users" },
+        { Role.Standard.PharmacistAssistant, "role-permissions" },
         { Role.Standard.PharmacistAssistant, "price-changes" },
         { Role.Standard.PharmacistAssistant, "system-setup" },
         { Role.Standard.PharmacistAssistant, "day-end" },
@@ -112,12 +116,14 @@ public class RoleMatrixTests
         { Role.Standard.Cashier, "price-changes" },
         { Role.Standard.Cashier, "reports" },
         { Role.Standard.Cashier, "users" },
+        { Role.Standard.Cashier, "role-permissions" },
         { Role.Standard.Cashier, "system-setup" },
         { Role.Standard.Cashier, "control-variables" },
         { Role.Standard.Cashier, "day-end" },
         { Role.Standard.Cashier, "trial-balance" },
 
         { Role.Standard.StockController, "users" },
+        { Role.Standard.StockController, "role-permissions" },
         { Role.Standard.StockController, "system-setup" },
         { Role.Standard.StockController, "day-end" },
         { Role.Standard.StockController, "dispensing" },

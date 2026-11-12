@@ -133,12 +133,13 @@ public sealed class ReferenceDataSeeder
                 _db.Roles.Add(role);
             }
 
-            // Additive, on an existing role as well as a new one. A
-            // permission added in a later release would otherwise only
-            // ever reach installations seeded after it, and the sites
-            // that have been running longest would be the ones missing
-            // it. Grant is idempotent, and nothing is revoked here: a
-            // site that has narrowed a role keeps its decision.
+            // shortcut: an edited role does not gain permissions added in
+            // a later release, tick those on Role permissions (or drop the
+            // mark for a column) if an upgrade must fill them in.
+            if (role.Has(Role.EditedMark)) continue;
+
+            // Additive until the pharmacy edits the role. A permission
+            // added in a later release then reaches sites already running.
             foreach (var code in StandardRoleGrants.For(name))
                 role.Grant(code);
         }

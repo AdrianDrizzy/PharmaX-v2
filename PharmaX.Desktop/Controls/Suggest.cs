@@ -181,6 +181,128 @@ public static class Suggest
     }
 
     /// <summary>
+    /// A script by its number, then whose it is, when it was written and
+    /// what is on it. The value is the script itself.
+    /// </summary>
+    public static Suggestion Script(Application.Dispensing.Dtos.ScriptDto script)
+    {
+        ArgumentNullException.ThrowIfNull(script);
+
+        return new Suggestion(script, script.ScriptNumber,
+            Details(script.Patient,
+                script.PrescribedOn.ToString("dd/MM/yyyy",
+                    System.Globalization.CultureInfo.CurrentCulture),
+                script.Items.Replace(Environment.NewLine, ", ", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// Every patient's scripts whose number has what is typed, newest
+    /// first. Nothing for someone who may not read scripts.
+    /// </summary>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> Scripts(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            try
+            {
+                var found = await scope.ServiceProvider
+                    .GetRequiredService<Application.Dispensing.IScriptService>()
+                    .FindAsync(term, capturedOn: null, ct);
+
+                return found.IsSuccess
+                    ? found.Value.Take(8).Select(Script).ToList()
+                    : Array.Empty<Suggestion>();
+            }
+            catch (Application.Security.PermissionDeniedException)
+            {
+                return Array.Empty<Suggestion>();
+            }
+        };
+    }
+
+    /// <summary>
+    /// The past year's receipts whose number or cashier has what is
+    /// typed, newest first; the value is the receipt number.
+    /// </summary>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> Receipts(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var page = await scope.ServiceProvider
+                .GetRequiredService<Application.Sales.IReceiptHistoryService>()
+                .PageAsync(new Application.Sales.ReceiptQuery(today.AddYears(-1), today,
+                    term, IncludeHidden: false, Skip: 0, Take: 8), ct);
+
+            return page.Items
+                .Select(r => new Suggestion(r.DocumentNumber, r.DocumentNumber,
+                    Details(r.OccurredAtLocal.ToString("dd/MM/yyyy HH:mm",
+                                System.Globalization.CultureInfo.CurrentCulture),
+                            r.Operator, Format.Money(r.Total))))
+                .ToList();
+        };
+    }
+
+    /// <summary>
+    /// Branches from the Branches list, by code or name; the value is
+    /// the branch's code.
+    /// </summary>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> Branches(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            var found = await scope.ServiceProvider
+                .GetRequiredService<PharmaX.Application.Reference.IReferenceRepository>()
+                .ListAsync(PharmaX.Application.Reference.ReferenceKind.Branch, term,
+                           includeInactive: false, ct);
+
+            return found.Take(8)
+                .Select(b => new Suggestion(b.Code, b.Name, Details(b.Code, b.Detail)))
+                .ToList();
+        };
+    }
+
+    /// <summary>
+    /// Patients by name, file number or telephone, for a box that takes
+    /// a name; the value is the patient.
+    /// </summary>
+    public static Func<string, CancellationToken,
+        Task<IReadOnlyList<Suggestion>>> Patients(IServiceScopeFactory scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+
+        return async (term, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+
+            var found = await scope.ServiceProvider
+                .GetRequiredService<IPatientService>()
+                .SearchAsync(term, ct: ct);
+
+            return found.IsSuccess
+                ? found.Value.Take(8)
+                    .Select(p => Patient(p) with { Value = p })
+                    .ToList()
+                : Array.Empty<Suggestion>();
+        };
+    }
+
+    /// <summary>
     /// A supplier as an order is raised to one: its name, then its code,
     /// who to speak to and the telephone.
     /// </summary>

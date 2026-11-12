@@ -1491,5 +1491,10 @@ public interface IScriptRepository
     Task<IReadOnlyList<Script>> ForPatientAsync(Guid patientId,
         CancellationToken ct = default);
 
+    /// Every patient's scripts captured in the window and whose number
+    /// has the text in it, newest first. Either may be left open.
+    Task<IReadOnlyList<Script>> FindAsync(string term, DateTime? fromUtc,
+        DateTime? toUtc, int take, CancellationToken ct = default);
+
     Task AddAsync(Script script, CancellationToken ct = default);
 }

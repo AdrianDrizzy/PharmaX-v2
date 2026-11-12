@@ -87,7 +87,7 @@ public sealed class PharmacyDetailsService : IPharmacyDetailsService
     {
         ArgumentNullException.ThrowIfNull(details);
 
-        _permissions.Demand(PermissionCode.SettingsChange);
+        _permissions.Demand(PermissionCode.SystemConsole);
 
         var clean = new PharmacyDetails(
             TradingName: details.TradingName?.Trim() ?? "",

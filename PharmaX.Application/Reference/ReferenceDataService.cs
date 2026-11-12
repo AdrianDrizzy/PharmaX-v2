@@ -93,7 +93,7 @@ public sealed class ReferenceDataService : IReferenceDataService
         ArgumentNullException.ThrowIfNull(edit);
 
         // Maintaining a list is a supervisor's job, not a cashier's.
-        _permissions.Demand(PermissionCode.ReferenceMaintain);
+        _permissions.Demand(MaintainedBy(kind));
 
         var clash = await _repository.FindByCodeAsync(kind, edit.Code, ct);
 
@@ -117,7 +117,7 @@ public sealed class ReferenceDataService : IReferenceDataService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(PermissionCode.ReferenceMaintain);
+        _permissions.Demand(MaintainedBy(kind));
 
         var entry = await _repository.GetAsync(kind, id, ct);
         if (entry is null) return Result.Fail("REF-000", NotFound(kind));
@@ -135,7 +135,7 @@ public sealed class ReferenceDataService : IReferenceDataService
     public async Task<Result> SetActiveAsync(ReferenceKind kind, Guid id,
         bool active, CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.ReferenceMaintain);
+        _permissions.Demand(MaintainedBy(kind));
 
         var entry = await _repository.GetAsync(kind, id, ct);
         if (entry is null) return Result.Fail("REF-000", NotFound(kind));
@@ -174,6 +174,12 @@ public sealed class ReferenceDataService : IReferenceDataService
 
     private static string NotFound(ReferenceKind kind) =>
         $"That {ReferenceLabels.For(kind).Singular} no longer exists.";
+
+    // Branches are an administrator's list; the rest a supervisor's.
+    private static string MaintainedBy(ReferenceKind kind) =>
+        kind == ReferenceKind.Branch
+            ? PermissionCode.BranchMaintain
+            : PermissionCode.ReferenceMaintain;
 
     private static string Slug(ReferenceKind kind) =>
         kind.ToString().ToLowerInvariant();
