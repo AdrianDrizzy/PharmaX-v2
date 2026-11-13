@@ -248,6 +248,18 @@ public class PhxFormBase : Form, IView
         if (ShowsWatermark) Watermark.Attach(this);
     }
 
+    /// <summary>
+    /// The screen as it looks when it opens - theme, function keys, icons -
+    /// without opening it, so it can be drawn for Ask PharmaX. Nothing is
+    /// loaded: OnLoad, which fills the screen, does not run.
+    /// </summary>
+    internal void DressWithoutShowing()
+    {
+        PhxTheme.Apply(this);
+        AssignFunctionKeys();
+        PhxIcons.Decorate(this);
+    }
+
     /// Whether the logo is laid faintly across this screen. Off where the
     /// screen shows the logo itself.
     protected virtual bool ShowsWatermark => true;

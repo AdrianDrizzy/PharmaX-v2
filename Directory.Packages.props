@@ -25,6 +25,11 @@
     <PackageVersion Include="QuestPDF" Version="2024.7.3" />
     <PackageVersion Include="ClosedXML" Version="0.104.1" />
     <PackageVersion Include="CsvHelper" Version="33.0.1" />
+    <!-- The text of a PDF attached to a question for Ask PharmaX. -->
+    <PackageVersion Include="PdfPig" Version="0.1.9" />
+    <!-- Words in a picture attached for Ask PharmaX, where Windows has no
+         text recognition of its own installed. -->
+    <PackageVersion Include="Tesseract" Version="5.2.0" />
     <PackageVersion Include="Polly" Version="8.4.1" />
 
     <!-- The reports assistant's inference engine (llama.cpp) and its CPU

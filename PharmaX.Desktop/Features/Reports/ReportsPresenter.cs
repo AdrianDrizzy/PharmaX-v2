@@ -91,7 +91,15 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
     /// once when the screen opens so the assistant knows this pharmacy's
     /// departments and staff by name.
     /// </summary>
-    private async Task PrepareAskAsync(IReadOnlyList<ReportPresetDto> presets)
+    private async Task PrepareAskAsync(IReadOnlyList<ReportPresetDto> presets) =>
+        _askContext = await AskContextAsync(_presets, _lookups, presets);
+
+    /// <summary>
+    /// The reports given, with their slicers' choices filled in, for the
+    /// assistant to choose from. Ask PharmaX builds the same.
+    /// </summary>
+    internal static async Task<ReportSuggestionContext> AskContextAsync(IPresetCatalogue catalogue,
+        IReportLookups lookups, IReadOnlyList<ReportPresetDto> presets)
     {
         var read = new Dictionary<string, IReadOnlyList<SlicerOptionDto>>(StringComparer.Ordinal);
         var slicers = new Dictionary<string, IReadOnlyList<SlicerDto>>(StringComparer.Ordinal);
@@ -100,14 +108,13 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
         {
             var filled = new List<SlicerDto>();
 
-            foreach (var slicer in _presets.SlicersFor(preset.Key))
-                filled.Add(await FillAsync(slicer, read));
+            foreach (var slicer in catalogue.SlicersFor(preset.Key))
+                filled.Add(await FillAsync(lookups, slicer, read));
 
             slicers[preset.Key] = filled;
         }
 
-        _askContext = new ReportSuggestionContext(presets, slicers,
-            DateOnly.FromDateTime(DateTime.Today));
+        return new ReportSuggestionContext(presets, slicers, DateOnly.FromDateTime(DateTime.Today));
     }
 
     /// <summary>
@@ -283,8 +290,10 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
     /// </summary>
     /// <param name="read">Lists already read this time, so a department
     /// list shared by many reports is read once.</param>
-    private async Task<SlicerDto> FillAsync(SlicerDto slicer,
-        Dictionary<string, IReadOnlyList<SlicerOptionDto>>? read = null)
+    private Task<SlicerDto> FillAsync(SlicerDto slicer) => FillAsync(_lookups, slicer, null);
+
+    private static async Task<SlicerDto> FillAsync(IReportLookups lookups, SlicerDto slicer,
+        Dictionary<string, IReadOnlyList<SlicerOptionDto>>? read)
     {
         // A slicer that already carries its own choices is a fixed
         // list - tenders, tax codes - and the database has nothing
@@ -293,7 +302,7 @@ public sealed class ReportsPresenter : PresenterBase<IReportsView>
 
         if (read is null || !read.TryGetValue(slicer.Key, out var options))
         {
-            options = await _lookups.OptionsForAsync(slicer.Key);
+            options = await lookups.OptionsForAsync(slicer.Key);
             read?.TryAdd(slicer.Key, options);
         }
 

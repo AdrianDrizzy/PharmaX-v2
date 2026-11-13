@@ -45,6 +45,43 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
                               Application.Assistant.Guided.IGuidedFlows guided)
         : this(chat, products, permissions, tasks) => _guided = guided;
 
+    /// <remarks>
+    /// With files: a question can come with pictures, PDFs, workbooks and
+    /// documents attached, and any answer can be saved as one.
+    /// </remarks>
+    public AssistantPresenter(IChatAssistant chat, IProductService products,
+                              IPermissionService permissions, AssistantTasks tasks,
+                              Application.Assistant.Guided.IGuidedFlows guided,
+                              IAttachmentReader reader, IAnswerWriter writer)
+        : this(chat, products, permissions, tasks, guided)
+    {
+        _reader = reader;
+        _writer = writer;
+    }
+
+    /// <remarks>
+    /// With reports: "sales for March 2026" runs the report here, asking
+    /// for the period first where the request named none.
+    /// </remarks>
+    public AssistantPresenter(IChatAssistant chat, IProductService products,
+                              IPermissionService permissions, AssistantTasks tasks,
+                              Application.Assistant.Guided.IGuidedFlows guided,
+                              IAttachmentReader reader, IAnswerWriter writer, AssistantReports reports)
+        : this(chat, products, permissions, tasks, guided, reader, writer) => _reports = reports;
+
+    private readonly IAttachmentReader? _reader;
+    private readonly IAnswerWriter? _writer;
+    private readonly AssistantReports? _reports;
+
+    /// The last answer's report, saved as the reports screen saves one.
+    private Application.Reporting.ReportResult? _report;
+
+    /// A report asked for with no period, waiting for the next answer to name one.
+    private string? _reportAsked;
+
+    /// What the last answer was to, as the title of a saved one.
+    private string _asked = "";
+
     private readonly AssistantTasks? _tasks;
     private readonly IPermissionService? _permissions;
     private readonly Application.Assistant.Guided.IGuidedFlows? _guided;
@@ -60,10 +97,54 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
         View.AskRequested += (_, _) => Enqueue(AskAsync);
         View.CloseRequested += (_, _) => Enqueue(CloseAsync);
         View.OpenRequested += key => _tasks?.OpenScreen(key);
+        View.SaveRequested += format => Enqueue(() => GuardAsync(() =>
+        {
+            View.ShowStatus(Save(format, _asked, View.LastAnswer));
+            return Task.CompletedTask;
+        }));
+    }
+
+    /// <summary>
+    /// Saves an answer where the operator says, and says how that went.
+    /// </summary>
+    private string Save(AnswerFormat format, string asked, IReadOnlyList<AnswerPiece> answer)
+    {
+        if (_writer is null) return "Answers cannot be saved here.";
+        if (answer.Count == 0) return "There is no answer to save yet - ask something first.";
+
+        var title = asked.Length == 0 ? "Ask PharmaX" : asked;
+        var name = string.Concat(title.Where(c => !Path.GetInvalidFileNameChars().Contains(c)));
+        if (name.Length > 60) name = name[..60];
+
+        if (View.AskSavePath(format, name.Trim()) is not { } path) return "Not saved.";
+
+        // A report as the reports screen exports it: every row, the letterhead, the graph.
+        if (_report is { } report && _reports is not null && format != AnswerFormat.Word)
+            _reports.Save(report, format == AnswerFormat.Pdf, path);
+        else
+            _writer.WriteTo(title, answer, format, path);
+
+        View.OfferToOpen(path);
+        return $"Saved: {path}";
     }
 
     /// True while a guided job is part way: the window may not just close.
     public bool HasWorkUnderWay => _flow is { IsFinished: false };
+
+    /// <summary>
+    /// Another chat on show: what this one said is no longer the context
+    /// for a follow-up. False, and nothing forgotten, while a guided job is part way.
+    /// </summary>
+    public bool StartOver()
+    {
+        if (HasWorkUnderWay) return false;
+
+        _turns.Clear();
+        _asked = "";
+        _report = null;
+        _reportAsked = null;
+        return true;
+    }
 
     /// <summary>
     /// Closes the window, stopping a guided job part way first so an open
@@ -130,11 +211,63 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
             return;
         }
 
-        if (question.Length == 0) return;
+        var files = View.AttachedFiles.ToList();
+        if (question.Length == 0 && files.Count == 0) return;
+
+        var wanted = AnswerExport.Requested(question);
+
+        // "Save that as a PDF": the last answer, not a new one.
+        if (wanted is { } format && files.Count == 0 && AnswerExport.OnlyAsksToSave(question))
+        {
+            var last = View.LastAnswer.ToList();
+            var asked = _asked;
+
+            View.ClearQuestion();
+            View.ShowQuestion(question);
+            View.BeginAnswer();
+            View.AppendAnswer(Save(format, asked, last));
+            View.EndAnswer("");
+            return;
+        }
 
         View.ClearQuestion();
         View.ShowQuestion(question);
+        View.ClearAttachments();
         View.BeginAnswer();
+        _report = null;
+        _asked = question.Length > 0 ? question : string.Join(", ", files.Select(Path.GetFileName));
+
+        if (files.Count > 0)
+        {
+            _reportAsked = null;
+            await AnswerAboutFilesAsync(question, files);
+            if (wanted is { } asFile) View.ShowStatus(Save(asFile, _asked, View.LastAnswer));
+            return;
+        }
+
+        // "March 2026", answering "which period?" for the report asked for last.
+        if (_reportAsked is { } pending)
+        {
+            _reportAsked = null;
+
+            if (AssistantReports.NamesPeriod(question))
+            {
+                var request = $"{pending} for {question}";
+                _asked = request;
+                await AnswerReportAsync(request);
+                if (AnswerExport.Requested(request) is { } reportAsFile && _report is not null)
+                    View.ShowStatus(Save(reportAsFile, _asked, View.LastAnswer));
+                return;
+            }
+        }
+
+        if (Sums.Answer(question) is { } sum)
+        {
+            View.AppendAnswer(sum);
+            View.EndAnswer("");
+            _turns.Add(new ChatTurn(question, sum));
+            return;
+        }
 
         // A job rather than a question: talked through here where it has
         // a guided flow; otherwise the screen for it opens, filled in, and
@@ -156,14 +289,34 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
             return;
         }
 
+        // A document made on its own screen: a quotation, labels, a receipt template.
+        if (_tasks?.CanRun == true && AssistantOpens.ForDocument(question) is { } document)
+        {
+            View.AppendAnswer($"Opening **{document.Caption}** for you. Fill in what it asks for there, then save "
+                              + "or print it - nothing is saved until you do. Ask here if anything on it is unclear.");
+            View.ShowOpens(new[] { document });
+            View.EndAnswer("");
+            _tasks.OpenScreen(document.Key);
+            return;
+        }
+
+        if (_reports?.IsAvailable == true && AssistantReports.Looks(question) && await AnswerReportAsync(question))
+        {
+            if (wanted is { } reportAsFile && _report is not null)
+                View.ShowStatus(Save(reportAsFile, _asked, View.LastAnswer));
+            return;
+        }
+
         // A question about using the program is answered from the guide,
         // word for word, rather than by a model that has never seen it.
         if (HowTo.Answer(question) is { } steps)
         {
-            View.AppendAnswer(steps);
+            View.NameChat(steps.Replace("\r", "", StringComparison.Ordinal).Split('\n')[0].Trim());
+            View.AppendGuide(steps);
             View.ShowOpens(AssistantOpens.In(steps));
             View.EndAnswer("");
             _turns.Add(new ChatTurn(question, steps));
+            if (wanted is { } guideAsFile) View.ShowStatus(Save(guideAsFile, _asked, View.LastAnswer));
             return;
         }
 
@@ -209,7 +362,141 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
             View.EndAnswer(ChatDisclaimer.Text);
             View.ShowStatus("");
         }
+
+        if (wanted is { } answerAsFile) View.ShowStatus(Save(answerAsFile, _asked, View.LastAnswer));
     });
+
+    /// <summary>
+    /// A report asked for: run and shown here, or the period asked for
+    /// where it named none. False where the request is not for a report.
+    /// </summary>
+    private async Task<bool> AnswerReportAsync(string request)
+    {
+        View.ShowStatus(_reports!.IsReady
+            ? "Finding the report..."
+            : "Starting the report assistant - the first report takes a little longer...");
+
+        ReportAnswer answer;
+        try
+        {
+            answer = await _reports.AskAsync(request);
+        }
+        finally
+        {
+            View.ShowStatus("");
+        }
+
+        var reports = new[] { ("reports", "Reports") };
+
+        switch (answer.Outcome)
+        {
+            case ReportOutcome.NotAReport:
+                return false;
+
+            case ReportOutcome.Unclear:
+                View.AppendAnswer("I could not work out which report that is. Say it another way, for example "
+                                  + "\"sales for March 2026\", or choose it on Reports.");
+                break;
+
+            case ReportOutcome.NeedsPeriod:
+                _reportAsked = request;
+                View.AppendAnswer($"Which period should **{answer.Name}** cover? For example \"yesterday\", "
+                                  + "\"last week\", \"March 2026\" or \"2025\".");
+                View.EndAnswer("");
+                return true;
+
+            case ReportOutcome.Ran when answer.Result!.RowCount == 0:
+                View.AppendAnswer($"**{answer.Name}** has nothing for {answer.Result.Provenance.ParameterSummary}.");
+                break;
+
+            default:
+                var result = answer.Result!;
+
+                // "Sales Summary | Branch 001 | 01/03/2026 to 31/03/2026 | no filters"
+                var parts = result.Provenance.ParameterSummary.Split(" | ");
+                View.NameChat(parts.Length > 2 ? $"{answer.Name}, {parts[2]}" : answer.Name);
+                View.AppendAnswer($"**{result.Title}**{Environment.NewLine}");
+                if (_reports.Chart(result) is { } chart) View.AppendPicture(chart);
+                View.AppendAnswer(AssistantReports.Describe(result));
+                View.AppendAnswer(Environment.NewLine + "Save answer saves the whole report as a PDF or Excel, "
+                                  + "with the letterhead and every row. Reports opens it to change the filters.");
+                _report = result;
+                _turns.Add(new ChatTurn(request, $"Ran {answer.Name}: {result.Provenance.ParameterSummary}"));
+                break;
+        }
+
+        View.ShowOpens(reports);
+        View.EndAnswer("");
+        return true;
+    }
+
+    /// <summary>
+    /// A question about attached files: each read here, then put to the
+    /// model with the question. Without the model, what was read is shown.
+    /// </summary>
+    private async Task AnswerAboutFilesAsync(string question, IReadOnlyList<string> files)
+    {
+        if (_reader is null)
+        {
+            View.AppendAnswer("Attached files cannot be read here.");
+            View.EndAnswer("");
+            return;
+        }
+
+        var read = new List<(string Name, string Text)>();
+
+        foreach (var file in files)
+        {
+            var name = Path.GetFileName(file);
+            View.ShowStatus($"Reading {name}...");
+
+            try
+            {
+                read.Add((name, await _reader.ReadAsync(file)));
+            }
+#pragma warning disable CA1031 // A file that will not open is said so; the others are still read.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                ErrorHandler.Log(ex);
+                View.AppendAnswer($"{name} could not be read: {ex.Message}{Environment.NewLine}{Environment.NewLine}");
+            }
+        }
+
+        if (read.Count == 0)
+        {
+            View.EndAnswer("");
+            View.ShowStatus("");
+            return;
+        }
+
+        if (!_chat.IsAvailable)
+        {
+            View.AppendAnswer("The model that answers questions about a file is not installed on this computer. "
+                              + "This is what the file says:" + Environment.NewLine + Environment.NewLine);
+            foreach (var (name, text) in read)
+                View.AppendAnswer($"**{name}**{Environment.NewLine}{text.Trim()}{Environment.NewLine}{Environment.NewLine}");
+            View.EndAnswer("");
+            View.ShowStatus("");
+            return;
+        }
+
+        View.ShowStatus(_chat.IsReady ? "Thinking..." : "Starting the assistant - the first answer takes a little longer...");
+
+        try
+        {
+            var answer = await _chat.AskAsync(_turns.ToArray(), Attachments.Question(question, read),
+                                              new Progress<string>(View.AppendAnswer));
+
+            // The files' text is not kept: a follow-up would not fit beside it.
+            _turns.Add(new ChatTurn($"{question} (attached: {string.Join(", ", read.Select(r => r.Name))})", answer));
+        }
+        finally
+        {
+            View.EndAnswer(ChatDisclaimer.Text);
+            View.ShowStatus("");
+        }
+    }
 
     private async Task AnswerFlowAsync(string answer)
     {
@@ -218,6 +505,7 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
         View.ClearQuestion();
         View.ShowQuestion(answer.Length == 0 ? "(Enter)" : answer);
         View.BeginAnswer();
+        _report = null;
 
         try
         {

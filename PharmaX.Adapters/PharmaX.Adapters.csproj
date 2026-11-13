@@ -2,9 +2,12 @@
 
   <!-- net8.0-windows because printing and device interop need Windows-only
        APIs (Section 3.3). Keeping that dependency out of Application and
-       Domain is the reason this project exists at all. -->
+       Domain is the reason this project exists at all. Windows 10's
+       (19041) for its text recognition, which reads a picture attached
+       to a question; Desktop and the unit tests follow, as nothing may
+       reference a newer Windows than its own. -->
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>PharmaX.Adapters</RootNamespace>
   </PropertyGroup>
@@ -13,5 +16,36 @@
     <ProjectReference Include="..\PharmaX.Domain\PharmaX.Domain.csproj" />
     <ProjectReference Include="..\PharmaX.Application\PharmaX.Application.csproj" />
   </ItemGroup>
+
+  <!-- Reading what is attached to a question for Ask PharmaX. -->
+  <ItemGroup>
+    <PackageReference Include="PdfPig" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="Tesseract" />
+  </ItemGroup>
+
+  <!-- Tesseract's English, for reading words in a picture on a computer
+       whose Windows has no text recognition installed - English (South
+       Africa) has none. Downloaded once, by the first build, from a
+       pinned release and checked against its hash; from then on it ships
+       beside PharmaX, so a pharmacy PC needs no internet for it. -->
+  <PropertyGroup>
+    <TessData>$(MSBuildThisFileDirectory)tessdata\eng.traineddata</TessData>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(TessData)" Link="tessdata\eng.traineddata" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="DownloadTessData" BeforeTargets="BeforeBuild" Condition="!Exists('$(TessData)')">
+    <DownloadFile SourceUrl="https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata"
+                  DestinationFolder="$(MSBuildThisFileDirectory)tessdata" />
+  </Target>
+
+  <!-- Every build, not only the one that downloads: a bad file once kept would never be fetched again. -->
+  <Target Name="CheckTessData" AfterTargets="DownloadTessData" BeforeTargets="BeforeBuild">
+    <VerifyFileHash File="$(TessData)" Algorithm="SHA256"
+                    Hash="7D4322BD2A7749724879683FC3912CB542F19906C83BCC1A52132556427170B2" />
+  </Target>
 
 </Project>

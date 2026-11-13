@@ -46,6 +46,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IReportExporter, PdfExporter>();
         services.AddScoped<IPdfWriter, PdfExporter>();
+        services.AddScoped<Application.Assistant.IAnswerWriter, AnswerWriter>();
         services.AddSingleton<IChartRenderer, ReportCharts>();
         services.AddSingleton<IReportExporter, ExcelExporter>();
         services.AddSingleton<IReportExporter, CsvExporter>();

@@ -52,6 +52,44 @@ internal static class AssistantOpens
         ("Users", "users", "Users")
     };
 
+    /// The documents a request can ask to be made, and the screen that makes each.
+    private static readonly (string Word, string Key, string Caption)[] Documents =
+    {
+        ("dispensary quote", "dispensary-quote", "Dispensary quote"),
+        ("receipt template", "receipt-template", "Receipt template"),
+        ("receipt layout", "receipt-template", "Receipt template"),
+        ("quotation", "quotation", "Quotation"),
+        ("quote", "quotation", "Quotation"),
+        ("label", "labels", "Labels"),
+        ("credit note", "returns", "Returns"),
+        ("refund", "returns", "Returns"),
+        ("stock take", "stocktake-new", "Stock take"),
+        ("stocktake", "stocktake-new", "Stock take"),
+        ("transfer", "transfers", "Transfers"),
+        ("journal", "journal", "Journal entry"),
+        ("statement", "accounts-receivable", "Patient accounts"),
+        ("medical aid claim", "claims", "Medical aid claims"),
+        ("receipt", "receipts", "Receipts")
+    };
+
+    /// <summary>
+    /// "Create a quotation", "print labels", "make me a receipt template":
+    /// the screen that makes that document; null for anything else.
+    /// </summary>
+    public static (string Key, string Caption)? ForDocument(string request)
+    {
+        var text = (request ?? "").Trim().ToLowerInvariant();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(text,
+                @"^(please\s+|can you\s+|could you\s+|i want to\s+|i need to\s+|help me\s+)*(create|make|print|generate|prepare|draw up|do|design|set up|start|open|new|reprint)\b"))
+            return null;
+
+        foreach (var (word, key, caption) in Documents)
+            if (System.Text.RegularExpressions.Regex.IsMatch(text, $@"\b{word}s?\b"))
+                return (key, caption);
+
+        return null;
+    }
+
     public static IReadOnlyList<(string Key, string Caption)> In(string text)
     {
         var found = new List<(string Key, string Caption)>();
