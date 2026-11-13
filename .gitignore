@@ -22,3 +22,6 @@ installer/redist/
 
 # Downloaded by the first build of PharmaX.Adapters
 PharmaX.Adapters/tessdata/
+
+# Demo recordings: over GitHub's 100 MB file limit, kept on the recording PC
+evidence/demo-videos-*/
