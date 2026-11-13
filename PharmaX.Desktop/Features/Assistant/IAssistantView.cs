@@ -16,6 +16,10 @@ public interface IAssistantView : IView
     void BeginAnswer();
     void AppendAnswer(string text);
 
+    /// A section of the how-to guide, with pictures of the screen it is
+    /// about where the window can draw them.
+    void AppendGuide(string section);
+
     /// Ends the answer, with the disclaimer under it.
     void EndAnswer(string disclaimer);
 
@@ -34,6 +38,28 @@ public interface IAssistantView : IView
     /// authorisation box; their id, or null where nobody signed in.
     /// </summary>
     Guid? PromptAuthorisation(string reason, string permissionCode);
+
+    /// The files attached to the next question, shown under it once asked.
+    IReadOnlyList<string> AttachedFiles { get; }
+    void ClearAttachments();
+
+    /// The last answer as the conversation shows it, pictures and all.
+    IReadOnlyList<Application.Assistant.AnswerPiece> LastAnswer { get; }
+
+    /// Where to save the answer, from the save box; null where cancelled.
+    string? AskSavePath(Application.Assistant.AnswerFormat format, string suggestedName);
+
+    /// A better name for the chat than its first question, once: a guide section's title, a report's.
+    void NameChat(string title);
+
+    /// A picture in the answer, as PNG: a report's graph.
+    void AppendPicture(byte[] png);
+
+    /// Just saved: asks whether to open it, and opens it if so.
+    void OfferToOpen(string path);
+
+    /// Save answer, and the format chosen.
+    event Action<Application.Assistant.AnswerFormat>? SaveRequested;
 
     event EventHandler? AskRequested;    // Enter, or Ask
     event EventHandler? CloseRequested;

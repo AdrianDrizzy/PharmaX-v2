@@ -20,8 +20,10 @@ namespace PharmaX.Desktop.Features.Admin;
 /// <remarks>
 /// The preview is drawn from a made-up sale - two counter items, a
 /// collected script, cash with change - through the same layout the
-/// printer uses, so what is shown is what prints. Only the receipt
-/// number is not offered: without it a slip cannot be found again.
+/// printer uses, so what is shown is what prints. Every made-up part of
+/// it - items, script, patient, medical aid - can be taken off and real
+/// products and scripts put on instead. Only the receipt number is not
+/// offered: without it a slip cannot be found again.
 /// </remarks>
 public sealed class frmReceiptTemplate : PhxFormBase
 {
@@ -39,6 +41,9 @@ public sealed class frmReceiptTemplate : PhxFormBase
     private SearchSuggestions? _suggestions;
     private readonly List<SaleLineDto> _lines = DefaultLines();
     private string? _script = SampleScript;
+    private (string Name, string? File)? _patient = SamplePatient;
+    private bool _medicalAid = true;
+    private readonly ListBox _items = new();
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ReceiptTemplate;
@@ -121,22 +126,20 @@ public sealed class frmReceiptTemplate : PhxFormBase
         right.Controls.Add(previewTitle);
 
         // ---- Bottom: closing message and the buttons ----------------------
+        // The message the full width and the buttons under it: beside it,
+        // on a narrow window, the buttons were drawn over the message.
         var bottom = new TableLayoutPanel
         {
             AutoSize = true,
-            ColumnCount = 4,
+            ColumnCount = 1,
             Dock = DockStyle.Bottom,
             Padding = new Padding(12, 6, 12, 10)
         };
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var footerLabel = new Label { AutoSize = true, Margin = new Padding(3, 3, 3, 0), Text = "Closing &message" };
         _footer.Dock = DockStyle.Fill;
-        _footer.Height = 48;
-        _footer.MinimumSize = new Size(280, 48);
+        _footer.MinimumSize = new Size(0, 40);
         _footer.Multiline = true;
         _footer.Name = "txtFooter";
         _footer.Text = ReceiptTemplate.Default.FooterText;
@@ -149,18 +152,29 @@ public sealed class frmReceiptTemplate : PhxFormBase
         var cancel = new Button { AutoSize = true, DialogResult = DialogResult.Cancel, Name = "btnCancel", Padding = new Padding(8, 2, 8, 2), Text = "Cancel" };
         cancel.Click += (_, _) => Close();
 
-        bottom.Controls.Add(footerLabel, 0, 0);
-        bottom.SetColumnSpan(footerLabel, 4);
-        bottom.Controls.Add(_footer, 0, 1);
-        bottom.Controls.Add(test, 1, 1);
-        bottom.Controls.Add(save, 2, 1);
-        bottom.Controls.Add(cancel, 3, 1);
+        var buttons = new FlowLayoutPanel
+        {
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 4, 0, 0),
+            WrapContents = false
+        };
+        buttons.Controls.AddRange(new Control[] { test, save, cancel });
+
+        bottom.Controls.Add(footerLabel);
+        bottom.Controls.Add(_footer);
+        bottom.Controls.Add(buttons);
 
         // ---- Left: the boxes, in sections that flow ------------------------
+        // Under the sample, the two scrolling as one: on a short window the
+        // boxes had a strip of their own a couple of lines high.
+        var left = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
         var boxes = new FlowLayoutPanel
         {
-            AutoScroll = true,
-            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
             FlowDirection = FlowDirection.LeftToRight,
             Padding = new Padding(8, 4, 8, 4),
             WrapContents = true
@@ -214,8 +228,10 @@ public sealed class frmReceiptTemplate : PhxFormBase
             Text = "Tick what every till's receipt prints. The receipt number always prints."
         };
 
-        Controls.Add(boxes);
-        Controls.Add(BuildSearch());
+        left.Controls.Add(boxes);
+        left.Controls.Add(BuildSearch());
+
+        Controls.Add(left);
         Controls.Add(intro);
         Controls.Add(bottom);
         Controls.Add(right);
@@ -305,6 +321,9 @@ public sealed class frmReceiptTemplate : PhxFormBase
     }
 
     private const string SampleScript = "12345";
+    private static readonly (string Name, string? File) SamplePatient = ("Sample Patient", "F00001");
+    private const string SampleScheme = "Sample Medical Aid";
+    private const decimal SampleSchemeShare = 120.00m;
 
     /// What the sample starts with: two counter items and a collected script.
     private static List<SaleLineDto> DefaultLines() => new()
@@ -321,10 +340,15 @@ public sealed class frmReceiptTemplate : PhxFormBase
             45.00m, null, null, true, false, 0m, IsScript: true);
 
     /// A made-up sale with something for every box to switch off.
-    internal static SaleDto SampleSale() => SampleSale(DefaultLines(), SampleScript);
+    internal static SaleDto SampleSale() =>
+        SampleSale(DefaultLines(), SampleScript, SamplePatient, medicalAid: true);
 
-    private static SaleDto SampleSale(IReadOnlyList<SaleLineDto> lines, string? script)
+    internal static SaleDto SampleSale(IReadOnlyList<SaleLineDto> lines, string? script,
+                                       (string Name, string? File)? patient, bool medicalAid)
     {
+        // A share of nothing still prints "Claimed from", so none at all
+        // unless there is a script for the medical aid to pay towards.
+        var claimed = medicalAid && lines.Any(l => l.IsScript);
         var total = lines.Sum(l => l.LineTotal);
         var vat = Math.Round(lines.Where(l => !l.IsScript)
             .Sum(l => l.LineTotal * l.VatRatePercent / (100m + l.VatRatePercent)), 2);
@@ -334,11 +358,11 @@ public sealed class frmReceiptTemplate : PhxFormBase
             new SaleTotalsDto(total, 0m, vat, total, tendered, tendered - total),
             new[] { new PaymentDto("Cash", total, null) },
             "Finalised", OccurredAtUtc: DateTime.UtcNow,
-            Particulars: new ReceiptParticularsDto(null, null, "Sample Patient", "F00001",
-                script, "Sample Medical Aid", lines.Any(l => l.IsScript) ? 120.00m : 0m));
+            Particulars: new ReceiptParticularsDto(null, null, patient?.Name, patient?.File,
+                script, claimed ? SampleScheme : null, claimed ? SampleSchemeShare : null));
     }
 
-    private SaleDto Sample() => SampleSale(_lines, _script);
+    internal SaleDto Sample() => SampleSale(_lines, _script, _patient, _medicalAid);
 
     private void Redraw()
     {
@@ -365,16 +389,17 @@ public sealed class frmReceiptTemplate : PhxFormBase
     {
         if (chosen.Value is ProductListItemDto product) AddProduct(product);
         else if (chosen.Value is Application.Dispensing.Dtos.ScriptDto script)
-            AddScript(script.ScriptNumber);
+            AddScript(script);
     }
 
     private void AddProduct(ProductListItemDto p)
     {
-        _lines.Add(new SaleLineDto(_lines.Count + 1, p.Id, p.Description, 1m, p.RetailPrice,
+        _lines.Add(new SaleLineDto(NextLineNo(), p.Id, p.Description, 1m, p.RetailPrice,
             0m, "A", p.RetailPrice, null, null, p.Schedule > 0, false, 15m, p.Code));
-        _search.Clear();
-        Redraw();
+        SampleChanged();
     }
+
+    private int NextLineNo() => _lines.Count == 0 ? 1 : _lines.Max(l => l.LineNo) + 1;
 
     /// The product list as a picker, opened on what is typed.
     private async Task FindProductAsync()
@@ -392,7 +417,14 @@ public sealed class frmReceiptTemplate : PhxFormBase
         if (_views is null) return;
 
         if (frmScriptPicker.Pick(_views, this, _search.Text) is { } script)
-            AddScript(script.ScriptNumber);
+            AddScript(script);
+    }
+
+    /// A real script prints its own patient.
+    private void AddScript(Application.Dispensing.Dtos.ScriptDto script)
+    {
+        if (!string.IsNullOrWhiteSpace(script.Patient)) _patient = (script.Patient.Trim(), null);
+        AddScript(script.ScriptNumber);
     }
 
     /// What is typed or chosen becomes the script number the slip prints.
@@ -402,9 +434,8 @@ public sealed class frmReceiptTemplate : PhxFormBase
         if (number.Length == 0) return;
 
         _script = number;
-        if (!_lines.Any(l => l.IsScript)) _lines.Add(ScriptLine(_lines.Count + 1));
-        _search.Clear();
-        Redraw();
+        if (!_lines.Any(l => l.IsScript)) _lines.Add(ScriptLine(NextLineNo()));
+        SampleChanged();
     }
 
     private void ResetSample()
@@ -412,25 +443,92 @@ public sealed class frmReceiptTemplate : PhxFormBase
         _lines.Clear();
         _lines.AddRange(DefaultLines());
         _script = SampleScript;
+        _patient = SamplePatient;
+        _medicalAid = true;
+        SampleChanged();
+    }
+
+    /// Nothing made up left on the slip, for the administrator to fill.
+    internal void ClearSample()
+    {
+        _lines.Clear();
+        _script = null;
+        _patient = null;
+        _medicalAid = false;
+        SampleChanged();
+    }
+
+    /// One thing on the sample that can be taken off it.
+    private sealed record SampleItem(string Text, Action Remove)
+    {
+        public override string ToString() => Text;
+    }
+
+    /// What is on the sample now, each with how to take it off.
+    private IEnumerable<SampleItem> SampleItems()
+    {
+        foreach (var line in _lines.Where(l => !l.IsScript).ToList())
+            yield return new SampleItem(
+                $"{line.ProductCode} {line.Description}  {line.Quantity:0.###} @ {line.UnitPrice:N2}".Trim(),
+                () => _lines.Remove(line));
+
+        if (_lines.Any(l => l.IsScript))
+            yield return new SampleItem($"Script charge {_script}".Trim(), () =>
+            {
+                _lines.RemoveAll(l => l.IsScript);
+                _script = null;
+            });
+
+        if (_patient is { } patient)
+            yield return new SampleItem(
+                patient.File is null ? $"Patient: {patient.Name}" : $"Patient: {patient.Name} ({patient.File})",
+                () => _patient = null);
+
+        if (_medicalAid && _lines.Any(l => l.IsScript))
+            yield return new SampleItem($"Medical aid: {SampleScheme} pays {SampleSchemeShare:N2}",
+                () => _medicalAid = false);
+    }
+
+    internal IReadOnlyList<string> SampleItemTexts() => SampleItems().Select(i => i.Text).ToList();
+
+    internal void RemoveSampleItem(int index)
+    {
+        var items = SampleItems().ToList();
+        if (index < 0 || index >= items.Count) return;
+
+        items[index].Remove();
+        SampleChanged();
+        if (_items.Items.Count > 0) _items.SelectedIndex = Math.Min(index, _items.Items.Count - 1);
+    }
+
+    private void SampleChanged()
+    {
         _search.Clear();
+        _items.BeginUpdate();
+        _items.Items.Clear();
+        _items.Items.AddRange(SampleItems().ToArray<object>());
+        _items.EndUpdate();
         Redraw();
     }
 
     private Control BuildSearch()
     {
+        // One column, the box and the list the full width and the buttons
+        // wrapping under them: beside them, on a narrow window, the buttons
+        // left the box and the list a few letters wide.
         var panel = new TableLayoutPanel
         {
             AutoSize = true,
-            ColumnCount = 5,
+            ColumnCount = 1,
             Dock = DockStyle.Top,
             Padding = new Padding(12, 4, 12, 4)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        for (var i = 0; i < 4; i++) panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var label = new Label
         {
             AutoSize = true,
+            Dock = DockStyle.Fill,
             Font = new Font(Font, FontStyle.Bold),
             Margin = new Padding(3, 3, 3, 2),
             Text = "Add to the sample - type a product or a script number and pick from the list, or find one"
@@ -471,14 +569,55 @@ public sealed class frmReceiptTemplate : PhxFormBase
         var reset = new Button { AutoSize = true, Name = "btnResetSample", Text = "Reset sa&mple" };
         reset.Click += (_, _) => ResetSample();
 
-        panel.Controls.Add(label, 0, 0);
-        panel.SetColumnSpan(label, 5);
-        panel.Controls.Add(_search, 0, 1);
-        panel.Controls.Add(product, 1, 1);
-        panel.Controls.Add(script, 2, 1);
-        panel.Controls.Add(typed, 3, 1);
-        panel.Controls.Add(reset, 4, 1);
+        var onSample = new Label
+        {
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            Font = new Font(Font, FontStyle.Bold),
+            Margin = new Padding(3, 8, 3, 2),
+            Text = "On the sample - select one and press Delete to take it off, or clear it all and add your own"
+        };
+
+        _items.Dock = DockStyle.Fill;
+        _items.HorizontalScrollbar = true;
+        _items.IntegralHeight = false;
+        _items.MinimumSize = new Size(0, 84);
+        _items.Name = "lstSampleItems";
+        _items.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Delete) return;
+            e.Handled = true;
+            RemoveSampleItem(_items.SelectedIndex);
+        };
+
+        var remove = new Button { AutoSize = true, Name = "btnRemoveSampleItem", Text = "Remo&ve from sample" };
+        remove.Click += (_, _) => RemoveSampleItem(_items.SelectedIndex);
+        var clear = new Button { AutoSize = true, Name = "btnClearSample", Text = "C&lear sample" };
+        clear.Click += (_, _) => ClearSample();
+
+        panel.Controls.Add(label);
+        panel.Controls.Add(_search);
+        panel.Controls.Add(Buttons(product, script, typed, reset));
+        panel.Controls.Add(onSample);
+        panel.Controls.Add(_items);
+        panel.Controls.Add(Buttons(remove, clear));
+
+        SampleChanged();
         return panel;
+
+        static FlowLayoutPanel Buttons(params Button[] buttons)
+        {
+            var row = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 2, 0, 0),
+                WrapContents = true
+            };
+            row.Controls.AddRange(buttons);
+            return row;
+        }
     }
 
     private async Task SaveAsync()

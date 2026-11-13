@@ -29,6 +29,8 @@ public static class DependencyInjection
 
         services.AddSingleton<IAttachmentStore, Files.AttachmentStore>();
 
+        services.AddSingleton<Application.Assistant.IAttachmentReader, Files.AttachmentReader>();
+
 
         return services;
     }

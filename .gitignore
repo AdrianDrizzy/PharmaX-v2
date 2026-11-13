@@ -19,3 +19,6 @@ __pycache__/
 
 # Downloaded by installer/build.ps1
 installer/redist/
+
+# Downloaded by the first build of PharmaX.Adapters
+PharmaX.Adapters/tessdata/

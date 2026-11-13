@@ -4,6 +4,8 @@ Click paths and the words on the buttons, for every menu. Written from the scree
 
 Each section's `Words:` line is what the question is matched on. Keep those words to what staff actually type.
 
+Ask PharmaX draws the screen a section's menu path opens (**Dispensary > Dispensing**), or a window that screen opens (payment, edit, count), under every line whose **bold** name is a button, tick box, tab or heading on it, with it outlined in red. Write a button's name in bold exactly as the screen shows it, without its F-key, or its step gets no picture.
+
 **How to read a step.** "Point of Sale > Sell (F3)" means the menu, then the entry. The keys in brackets are the menu shortcuts. On a button, the underlined letter is Alt plus that letter. On most screens the function keys are handed out from the button words when the window opens, so follow the button name, not a remembered F-key. The till (Sell) is the exception: its keys are fixed and are listed in that section. A button whose caption already writes a key ("X-read Ctrl+X", "Preview (F12)") keeps that key.
 
 **Who sees a menu.** A menu entry this person may not use is grey, and the home tile says "Not permitted for this user". The same check applies to the home tiles, the shortcuts, and the "Go to any screen" box.
@@ -671,7 +673,7 @@ Words: about, which version
 
 ## 10. Ask PharmaX
 
-Words: ask pharmax, how do I ask
+Words: ask pharmax, how do I ask, attach, attachment, upload a file, save answer, save the answer, export answer, chat history, calculate
 
 **Help > Ask PharmaX** (Ctrl+Shift+A), from any screen.
 
@@ -685,6 +687,12 @@ Words: ask pharmax, how do I ask
    - "order 20 panado from Pharmanova"
    - "dispense amoxicillin for Mary Banda"
 4. A question about a medicine, with no matching section here, is answered by the offline model. That answer can be wrong. The line at the top of the window says to check it against an approved reference or with a pharmacist. The model does not know today's prices or today's stock. How-to answers still work when the model is not installed.
+5. **Attach** a picture, PDF, Excel workbook, CSV, Word document or text file, or drop it on the window, then ask about it. Videos cannot be attached. The file is read on this computer and nothing is sent anywhere, and no internet is needed: the words in a picture are read by Windows where it has text recognition installed, and otherwise by the reader installed with PharmaX.
+6. **Save answer** saves the last answer, pictures and all, as a PDF, an Excel workbook or a Word document. Typing "save that as a PDF" does the same. Once it is saved, **Open file** opens it.
+7. Ask for a report in your own words, such as "sales for March 2026" or "cash-up report for yesterday". It runs here, and if no period was given it asks which one. **Save answer** saves the whole report with the letterhead. **Reports** opens the reports screen to change the filters.
+8. Ask for a document: "create an invoice" or "create a purchase order" talks you through it here, while "create a quotation", "print labels" or "make a receipt template" opens its screen to fill in. Nothing is saved until you finish it.
+9. Type a sum, such as "230 + 15%" or "15% of 480", to have it worked out exactly.
+10. Today's chats are listed on the left. **New chat** starts another, and clicking a chat opens it again. Chats are kept for today only and deleted after midnight, so save anything you want to keep.
 
 ---
 

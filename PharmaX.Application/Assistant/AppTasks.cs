@@ -137,8 +137,9 @@ public static partial class AppTasks
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Receive();
 
-    // "sell 2 panado", "create a sale for 3 x ibuprofen to John Moyo", "ring up vitamin c"
-    [GeneratedRegex(@"^((create|make|start|new|open)\s+(an?\s+)?(sale|sell)\b\s*(for|of)?|sell|ring up)\s*(?<qty>\d+(\.\d+)?)?\s*(x\s+)?(?<item>.*?)(\s*\bto\s+(?<person>.+))?$",
+    // "sell 2 panado", "create a sale for 3 x ibuprofen to John Moyo", "ring up vitamin c",
+    // "create an invoice for 2 panado" - a sale's receipt is its tax invoice.
+    [GeneratedRegex(@"^((create|make|start|new|open|do|generate|prepare)\s+(an?\s+)?(sale|sell|(tax\s+)?invoice)\b\s*(for|of)?|sell|ring up)\s*(?<qty>\d+(\.\d+)?)?\s*(x\s+)?(?<item>.*?)(\s*\bto\s+(?<person>.+))?$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Sell();
 }

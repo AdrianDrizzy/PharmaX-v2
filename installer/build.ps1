@@ -64,6 +64,25 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed." }
 $exe = Join-Path $publish 'PharmaX.Desktop.exe'
 if (-not (Test-Path $exe)) { throw "Published executable not found at $exe." }
 
+# Tesseract, which reads the words in a picture attached to Ask PharmaX,
+# and llama.cpp, which runs its model, need the Visual C++ runtime, which a
+# fresh Windows does not have. Shipped beside PharmaX, as Microsoft allows,
+# so a pharmacy PC needs neither the internet nor an install for them.
+foreach ($dll in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') {
+    $from = Join-Path $env:windir "System32\$dll"
+    if (-not (Test-Path $from)) {
+        throw "$dll is not on this machine. Install the Visual C++ 2015-2022 " +
+              "x64 redistributable and build again."
+    }
+    Copy-Item $from $publish
+}
+
+foreach ($shipped in 'x64\tesseract50.dll', 'x64\leptonica-1.82.0.dll', 'tessdata\eng.traineddata') {
+    if (-not (Test-Path (Join-Path $publish $shipped))) {
+        throw "The publish output has no $shipped, so Ask PharmaX could not read pictures."
+    }
+}
+
 $total = (Get-ChildItem $publish -Recurse -File |
     Measure-Object -Property Length -Sum).Sum
 

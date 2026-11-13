@@ -80,7 +80,7 @@ public class AssistantPresenterTests
         _view.DidNotReceive().ShowUnavailable(Arg.Any<string>());
         await _chat.DidNotReceive().AskAsync(Arg.Any<IReadOnlyList<ChatTurn>>(), Arg.Any<string>(),
             Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>());
-        _view.Received().AppendAnswer(Arg.Is<string>(a => a.Contains("Count cash and close", StringComparison.Ordinal)));
+        _view.Received().AppendGuide(Arg.Is<string>(a => a.Contains("Count cash and close", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -360,6 +360,170 @@ public class AssistantPresenterTests
         ran.Should().BeNull();
         await _chat.DidNotReceive().AskAsync(Arg.Any<IReadOnlyList<ChatTurn>>(), Arg.Any<string>(),
             Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task An_attached_file_is_read_and_put_to_the_model_with_the_question()
+    {
+        var reader = Substitute.For<IAttachmentReader>();
+        reader.ReadAsync(@"C:\in\invoice.pdf", Arg.Any<CancellationToken>()).Returns("Amoxicillin 500mg x 3 boxes");
+        Answers("Three boxes of amoxicillin.");
+        _view.QuestionText.Returns("What was ordered?");
+        _view.AttachedFiles.Returns(new[] { @"C:\in\invoice.pdf" });
+
+        await OpenWithFilesAsync(reader, Substitute.For<IAnswerWriter>());
+        _view.AskRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        await _chat.Received().AskAsync(Arg.Any<IReadOnlyList<ChatTurn>>(),
+            Arg.Is<string>(q => q.Contains("invoice.pdf") && q.Contains("Amoxicillin 500mg") && q.EndsWith("What was ordered?")),
+            Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>());
+        _view.Received().ClearAttachments();
+        _view.Received().EndAnswer(ChatDisclaimer.Text);
+    }
+
+    [Fact]
+    public async Task Save_that_as_a_PDF_saves_the_last_answer_where_the_operator_says()
+    {
+        var writer = Substitute.For<IAnswerWriter>();
+        var answer = new[] { new AnswerPiece("Ankle swelling.") };
+        Answers("Ankle swelling.");
+        _view.QuestionText.Returns("Side effects of amlodipine?", "save that as a PDF");
+        _view.LastAnswer.Returns(answer);
+        _view.AskSavePath(AnswerFormat.Pdf, Arg.Any<string>()).Returns(@"C:\out\answer.pdf");
+
+        await OpenWithFilesAsync(Substitute.For<IAttachmentReader>(), writer);
+        _view.AskRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.AskRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        writer.Received(1).WriteTo("Side effects of amlodipine?",
+            Arg.Is<IReadOnlyList<AnswerPiece>>(a => a.SequenceEqual(answer)), AnswerFormat.Pdf, @"C:\out\answer.pdf");
+        await _chat.Received(1).AskAsync(Arg.Any<IReadOnlyList<ChatTurn>>(), Arg.Any<string>(),
+            Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("save that as a PDF", AnswerFormat.Pdf, true)]
+    [InlineData("Export it to Excel please", AnswerFormat.Excel, true)]
+    [InlineData("give me the answer in word", AnswerFormat.Word, true)]
+    [InlineData("Give me a list of antibiotics in Excel", AnswerFormat.Excel, false)]
+    [InlineData("How do I export to Excel?", null, false)]
+    [InlineData("What is in this spreadsheet?", null, false)]
+    public void A_file_asked_for_is_told_from_one_asked_about(string question, AnswerFormat? format, bool only)
+    {
+        AnswerExport.Requested(question).Should().Be(format);
+        AnswerExport.OnlyAsksToSave(question).Should().Be(only);
+    }
+
+    [Theory]
+    [InlineData("scan.PNG", true)]
+    [InlineData("invoice.pdf", true)]
+    [InlineData("stock.xlsx", true)]
+    [InlineData("letter.docx", true)]
+    [InlineData("clip.mp4", false)]
+    [InlineData("setup.exe", false)]
+    public void Pictures_and_documents_can_be_attached_and_videos_cannot(string file, bool can) =>
+        Attachments.CanAttach(file).Should().Be(can);
+
+    [Theory]
+    [InlineData("What is 230 + 15%?", "264.5")]
+    [InlineData("15% of 480", "72")]
+    [InlineData("calculate (12 x 35.50) / 3", "142")]
+    [InlineData("R100 - 10%", "90")]
+    [InlineData("2 * 3 + 4", "10")]
+    [InlineData("10 - 2 - 3", "5")]
+    public void Sums_are_worked_out_exactly(string question, string result) =>
+        Sums.Answer(question).Should().EndWith($"**{decimal.Parse(result, System.Globalization.CultureInfo.InvariantCulture).ToString("#,##0.####", System.Globalization.CultureInfo.CurrentCulture)}**");
+
+    [Theory]
+    [InlineData("Side effects of amlodipine?")]
+    [InlineData("2025")]
+    [InlineData("sell 2 panado")]
+    [InlineData("12,5 + 1")]
+    public void Anything_else_is_not_a_sum(string question) => Sums.Answer(question).Should().BeNull();
+
+    [Theory]
+    [InlineData("Please create a quotation for Mary", "quotation")]
+    [InlineData("print labels", "labels")]
+    [InlineData("make me a receipt template", "receipt-template")]
+    [InlineData("create a dispensary quote", "dispensary-quote")]
+    [InlineData("What is a quotation?", null)]
+    [InlineData("create a purchase order for 10 panado", null)]
+    public void A_document_asked_for_opens_the_screen_that_makes_it(string request, string? key) =>
+        AssistantOpens.ForDocument(request)?.Key.Should().Be(key);
+
+    [Theory]
+    [InlineData("create an invoice for 2 panado", "panado")]
+    [InlineData("make a tax invoice", null)]
+    public void An_invoice_is_a_sale(string request, string? item)
+    {
+        var task = AppTasks.Read(request);
+        task!.Kind.Should().Be(AppTaskKind.Sell);
+        task.Item.Should().Be(item);
+    }
+
+    [Theory]
+    [InlineData("Sales for March 2026", true)]
+    [InlineData("give me the cash-up report", true)]
+    [InlineData("how much did we take yesterday in sales", true)]
+    [InlineData("How do I run a report?", false)]
+    [InlineData("What do we have in stock for a cough?", false)]
+    [InlineData("Give me a list of antibiotics in Excel", false)]
+    public void A_report_is_told_from_other_questions(string question, bool looks) =>
+        AssistantReports.Looks(question).Should().Be(looks);
+
+    [Fact]
+    public async Task A_report_with_no_period_asks_for_one_then_runs_for_the_answer()
+    {
+        var suggester = Substitute.For<PharmaX.Application.Reporting.IReportSuggester>();
+        var runner = Substitute.For<PharmaX.Application.Reporting.IReportRunner>();
+        var catalogue = Substitute.For<PharmaX.Application.Reporting.IPresetCatalogue>();
+        var permissions = Substitute.For<PharmaX.Application.Security.IPermissionService>();
+        permissions.Check(Arg.Any<string>()).Returns(PharmaX.Application.Security.PermissionOutcome.Granted);
+        catalogue.All().Returns(new[] { new PharmaX.Application.Reporting.ReportPresetDto("sales", "Sales Summary", "Sales", "rpt") });
+        catalogue.SlicersFor("sales").Returns(Array.Empty<PharmaX.Application.Reporting.SlicerDto>());
+        catalogue.Resolve("sales").Returns(new PharmaX.Application.Reporting.ReportPreset("sales", "Sales Summary", "SalesSummary",
+            new Dictionary<string, string?>(), Array.Empty<string>(), "rpt"));
+        suggester.IsAvailable.Returns(true);
+        var none = new Dictionary<string, string>();
+        var march = (new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31));
+        suggester.SuggestAsync("sales report", Arg.Any<PharmaX.Application.Reporting.ReportSuggestionContext>(), Arg.Any<CancellationToken>())
+            .Returns(new PharmaX.Application.Reporting.ReportSuggestion("sales", null, null, none));
+        suggester.SuggestAsync("sales report for March 2026", Arg.Any<PharmaX.Application.Reporting.ReportSuggestionContext>(), Arg.Any<CancellationToken>())
+            .Returns(new PharmaX.Application.Reporting.ReportSuggestion("sales", march.Item1, march.Item2, none));
+        runner.RunAsync(Arg.Any<PharmaX.Application.Reporting.ReportRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new PharmaX.Application.Reporting.ReportResult("Sales Summary",
+                new[] { new PharmaX.Application.Reporting.ReportColumn("net", "Net", "N2") },
+                new[] { (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?> { ["net"] = 1234.5m } },
+                new Dictionary<string, object?>(),
+                new PharmaX.Application.Reporting.ReportProvenance("admin", DateTime.Now, "Sales Summary | March", "")));
+        var reports = new AssistantReports(suggester, runner, catalogue,
+            Substitute.For<PharmaX.Application.Reporting.IReportLookups>(), permissions,
+            Substitute.For<PharmaX.Application.Reporting.IPdfWriter>(), Substitute.For<PharmaX.Application.Reporting.IWorkbookWriter>(),
+            Substitute.For<PharmaX.Application.Reporting.IChartRenderer>(), new PharmaX.Application.Abstractions.PharmaXOptions());
+        _view.QuestionText.Returns("sales report", "March 2026");
+        _view.AttachedFiles.Returns(Array.Empty<string>());
+
+        var presenter = new AssistantPresenter(_chat, Substitute.For<PharmaX.Application.Inventory.IProductService>(),
+            permissions, new AssistantTasks(), Substitute.For<PharmaX.Application.Assistant.Guided.IGuidedFlows>(),
+            Substitute.For<IAttachmentReader>(), Substitute.For<IAnswerWriter>(), reports);
+        presenter.Attach(_view);
+        await presenter.InitialiseAsync();
+        _view.AskRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.AskRequested += Raise.EventWith(this, EventArgs.Empty);
+
+        _view.Received().AppendAnswer(Arg.Is<string>(s => s.StartsWith("Which period should **Sales Summary** cover?")));
+        await runner.Received(1).RunAsync(Arg.Is<PharmaX.Application.Reporting.ReportRequest>(r =>
+            r.PresetKey == "sales" && r.From == march.Item1 && r.To == march.Item2), Arg.Any<CancellationToken>());
+        _view.Received().AppendAnswer(Arg.Is<string>(s => s.Contains(1234.5m.ToString("N2", System.Globalization.CultureInfo.CurrentCulture))));
+    }
+
+    private async Task OpenWithFilesAsync(IAttachmentReader reader, IAnswerWriter writer)
+    {
+        var presenter = new AssistantPresenter(_chat, Substitute.For<PharmaX.Application.Inventory.IProductService>(),
+            Substitute.For<PharmaX.Application.Security.IPermissionService>(), new AssistantTasks(),
+            Substitute.For<PharmaX.Application.Assistant.Guided.IGuidedFlows>(), reader, writer);
+        presenter.Attach(_view);
+        await presenter.InitialiseAsync();
     }
 
     private static PharmaX.Application.Inventory.Dtos.ProductListItemDto Product(string code, string name, decimal onHand) =>
