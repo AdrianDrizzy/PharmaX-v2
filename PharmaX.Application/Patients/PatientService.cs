@@ -256,7 +256,7 @@ public sealed class PatientService : IPatientService
     public async Task<Result> DeactivateAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.PatientMaintain);
+        _permissions.Demand(PermissionCode.PatientDeactivate);
 
         var patient = await _patients.GetAsync(id, ct);
         if (patient is null) return Result.Fail("PAT-000", "Patient not found.");
@@ -274,7 +274,7 @@ public sealed class PatientService : IPatientService
     public async Task<Result> ReactivateAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.PatientMaintain);
+        _permissions.Demand(PermissionCode.PatientDeactivate);
 
         var patient = await _patients.GetAsync(id, ct);
         if (patient is null) return Result.Fail("PAT-000", "Patient not found.");

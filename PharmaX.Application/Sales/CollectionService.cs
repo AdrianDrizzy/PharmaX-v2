@@ -50,6 +50,7 @@ public interface ICollectionService
     /// Deletes scripts from the queue that nobody is coming to pay for:
     /// each is reversed, so its medicine goes back into stock, and any
     /// payment a till had begun on it is voided. Returns how many went.
+    /// Needs dsp.script.delete (administrator by default).
     /// </summary>
     Task<Result<int>> RemoveAsync(IReadOnlyCollection<Guid> dispensingIds,
                                   CancellationToken ct = default);
@@ -222,7 +223,7 @@ public sealed class CollectionService : ICollectionService
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(dispensingIds);
-        _permissions.Demand(PermissionCode.SaleCreate);
+        _permissions.Demand(PermissionCode.ScriptDelete);
 
         if (dispensingIds.Count == 0)
             return Result<int>.Fail("DSP-059", "Choose the scripts to delete first.");

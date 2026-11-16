@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Dispensing;
 using PharmaX.Application.Reporting;
+using PharmaX.Application.Security;
 using PharmaX.Domain.Dispensing;
 using PharmaX.Domain.Security;
 using PharmaX.Persistence;
@@ -264,10 +265,51 @@ public class ScriptLifecycleTests : IClassFixture<PharmaXFixture>
             .NotContain(stored.DocumentNumber);
     }
 
-    /// A cashier cannot reverse a script, but may delete one nobody came
-    /// to pay for from Collect - and its medicine goes back on the shelf.
+    /// Only someone with dsp.script.delete (administrator by default) may
+    /// clear an uncollected script from Collect. A cashier is refused.
     [Fact]
-    public async Task A_cashier_deletes_an_uncollected_script_back_onto_the_shelf()
+    public async Task A_cashier_cannot_delete_an_uncollected_script()
+    {
+        await _steps.OpenTillAsync();
+
+        await _steps.ProductAsync("SLDELX",
+            "Protected tablets 30s", 60m, schedule: 3, unitsPerPack: 30m,
+            batches: new[] { ("SLDELX-A", 12, 4m) });
+
+        await _steps.SignInAsync("sl.pharm5x", Role.Standard.Pharmacist);
+        var patientId = await _steps.PatientAsync("Kept", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId,
+            ("SLDELX", 45m, "One daily"));
+
+        Guid dispensingId;
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+
+            dispensingId = (await dispensing.BeginAsync(scriptId)).Value.Id;
+            (await dispensing.AddScriptItemsAsync(dispensingId))
+                .IsSuccess.Should().BeTrue();
+            (await dispensing.IssueAsync(dispensingId))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        await _steps.SignInAsync("sl.cash5x", Role.Standard.Cashier);
+
+        using var till = _steps.Fixture.NewScope();
+        var collect = PharmaXFixture.Resolve<PharmaX.Application.Sales.ICollectionService>(till);
+
+        var act = () => collect.RemoveAsync(new[] { dispensingId });
+        await act.Should().ThrowAsync<PermissionDeniedException>();
+
+        (await collect.WaitingAsync()).Value
+            .Should().Contain(w => w.DispensingId == dispensingId);
+    }
+
+    /// An administrator deletes one nobody came to pay for - medicine
+    /// goes back on the shelf, and the script leaves the queue at once.
+    [Fact]
+    public async Task An_administrator_deletes_an_uncollected_script_back_onto_the_shelf()
     {
         await _steps.OpenTillAsync();
 
@@ -293,7 +335,7 @@ public class ScriptLifecycleTests : IClassFixture<PharmaXFixture>
                 .IsSuccess.Should().BeTrue();
         }
 
-        await _steps.SignInAsync("sl.cash5", Role.Standard.Cashier);
+        await _steps.SignInAsync("sl.admin5", Role.Standard.Administrator);
 
         using (var scope = _steps.Fixture.NewScope())
         {

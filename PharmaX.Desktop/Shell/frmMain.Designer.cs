@@ -57,7 +57,9 @@ partial class frmMain
         lblAssistant = new ToolStripStatusLabel();
         tmrWaiting = new System.Windows.Forms.Timer(components)
         {
-            Interval = 15000
+            // A deleted or paid script must leave the home waiting count
+            // without waiting a quarter of a minute.
+            Interval = 3000
         };
 
         tmrWaiting.Tick += (_, _) => WaitingTick?.Invoke(this, EventArgs.Empty);
@@ -70,6 +72,7 @@ partial class frmMain
         {
             Menu("&File", null,
                 Item("Printer Setup", "printer-setup"),
+                Item("Print Sizes", "print-sizes"),
                 Item("Till Session", "till", Keys.Control | Keys.T),
                 Item("Cash Up", "cash-up", Keys.Control | Keys.U),
                 Item("End-of-Day Cash-Up", "end-of-day"),

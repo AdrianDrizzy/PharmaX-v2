@@ -18,18 +18,19 @@ public partial class frmCollect : PhxFormBase, ICollectView
 {
     private readonly CollectPresenter? _presenter;
     private readonly ViewFactory? _views;
+    private readonly bool _mayDelete;
 
     /// <summary>
     /// Re-reads the queue while the screen is open.
     /// </summary>
     /// <remarks>
-    /// Five seconds: fast enough that a patient walking from the
-    /// dispensary counter to the till finds themselves already on the
-    /// screen, slow enough to be nothing against a handful of indexed
-    /// rows. Stopped whenever the till is taking a payment.
+    /// Two seconds: a script deleted on another till must leave this
+    /// one straight away, and a patient walking from the dispensary
+    /// still finds themselves already listed. Stopped whenever the till
+    /// is taking a payment.
     /// </remarks>
     private readonly System.Windows.Forms.Timer _poll =
-        new() { Interval = 5000 };
+        new() { Interval = 2000 };
 
     private readonly System.Windows.Forms.Timer _debounce =
         new() { Interval = 200 };
@@ -74,21 +75,28 @@ public partial class frmCollect : PhxFormBase, ICollectView
             CollectRequested?.Invoke(this, EventArgs.Empty);
 
         btnDelete.Click += (_, _) =>
+        {
+            if (!_mayDelete) return;
             DeleteRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         grdWaiting.KeyDown += (_, e) =>
         {
-            if (e.KeyCode != Keys.Delete) return;
+            if (e.KeyCode != Keys.Delete || !_mayDelete) return;
             e.Handled = true;
             DeleteRequested?.Invoke(this, EventArgs.Empty);
         };
     }
 
     /// Runtime. Resolved by the container.
-    public frmCollect(CollectPresenter presenter, ViewFactory views) : this()
+    public frmCollect(CollectPresenter presenter, ViewFactory views,
+        Application.Security.IPermissionService permissions) : this()
     {
         _presenter = presenter;
         _views = views;
+        _mayDelete = Application.Security.PermissionServiceExtensions
+            .Has(permissions, Domain.Security.PermissionCode.ScriptDelete);
+        btnDelete.Visible = _mayDelete;
         _presenter.Attach(this);
     }
 
@@ -164,7 +172,7 @@ public partial class frmCollect : PhxFormBase, ICollectView
                     row.Selected = true;
 
         btnCollect.Enabled = waiting.Count > 0;
-        btnDelete.Enabled = waiting.Count > 0;
+        btnDelete.Enabled = _mayDelete && waiting.Count > 0;
 
         _suggestions.Offer(waiting.Select(w => new Suggestion(w.DispensingId,
             w.PatientName, Suggest.Details(w.ScriptNumber,

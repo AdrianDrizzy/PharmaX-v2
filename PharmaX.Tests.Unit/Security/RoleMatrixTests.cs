@@ -179,6 +179,17 @@ public class RoleMatrixTests
     }
 
     /// <summary>
+    /// Deleting from Scripts to collect puts medicine back on the shelf.
+    /// Administrator only by default; tick it on for another role on Role
+    /// permissions (16 November 2026).
+    /// </summary>
+    [Fact]
+    public void Only_the_administrator_deletes_an_uncollected_script() =>
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.ScriptDelete))
+            .Should().BeEquivalentTo(Role.Standard.Administrator);
+
+    /// <summary>
     /// What a till asks a second person for - a refund, a discount over the
     /// cashier's limit, another person's till - any of the senior roles can
     /// give, and nobody below them (16 October 2026).

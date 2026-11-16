@@ -34,6 +34,7 @@ internal static class AssistantOpens
         ("Journal Entry", "journal", "Journal entry"),
         ("System Setup", "system-setup", "System setup"),
         ("Printer Setup", "printer-setup", "Printer setup"),
+        ("Print Sizes", "print-sizes", "Print sizes"),
         ("Receipt Template", "receipt-template", "Receipt template"),
         ("Import Data", "data-import", "Import data"),
         ("Till Session", "till", "Till session"),

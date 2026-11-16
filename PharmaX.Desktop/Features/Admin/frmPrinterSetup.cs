@@ -38,6 +38,7 @@ public sealed class frmPrinterSetup : PhxFormBase
     private readonly Button _save = new();
     private readonly Button _cancel = new();
     private readonly Button _testReceipt = new();
+    private readonly Button _printSizes = new();
 
     // Printers found by asking a computer PharmaX is not running on.
     private readonly List<NetworkPrinter> _found = new();
@@ -121,9 +122,14 @@ public sealed class frmPrinterSetup : PhxFormBase
         _status.Size = new Size(520, 72);
 
         _testReceipt.Location = new Point(24, below + 122);
-        _testReceipt.Size = new Size(150, 32);
+        _testReceipt.Size = new Size(120, 32);
         _testReceipt.Text = "&Test receipt";
         _testReceipt.Click += async (_, _) => await PrintTestPageAsync();
+
+        _printSizes.Location = new Point(152, below + 122);
+        _printSizes.Size = new Size(140, 32);
+        _printSizes.Text = "Print si&zes...";
+        _printSizes.Click += (_, _) => OpenPrintSizes();
 
         _save.Location = new Point(378, below + 122);
         _save.Size = new Size(80, 32);
@@ -136,7 +142,7 @@ public sealed class frmPrinterSetup : PhxFormBase
         _cancel.Text = "Cancel";
 
         Controls.AddRange(new Control[]
-            { _share, _find, _status, _testReceipt, _save, _cancel });
+            { _share, _find, _status, _testReceipt, _printSizes, _save, _cancel });
         Controls.Add(header);
 
         AcceptButton = _save;
@@ -594,6 +600,12 @@ public sealed class frmPrinterSetup : PhxFormBase
             _status.ForeColor = PhxTheme.ProblemText;
             _status.Text = "The test page did not print: " + ex.Message;
         }
+    }
+
+    private void OpenPrintSizes()
+    {
+        using var sizes = new frmPrintSizes(_settings);
+        sizes.ShowDialog(this);
     }
 
     private void Field(string caption, Control input, int row)

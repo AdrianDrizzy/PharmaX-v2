@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using PharmaX.Application.Reporting;
+using PharmaX.Domain.Patients;
 using PharmaX.Domain.Sales;
 using PharmaX.Persistence;
 using PharmaX.Reporting.Engine;
@@ -258,6 +259,27 @@ public sealed class SalesAnalysisReport : IReportDefinition
             _ => "Sales Analysis"
         };
 
+        var salesTotal = rows.Sum(x => (decimal)x["Sales"]!);
+
+        // Account payments at the till are not product lines, but the
+        // cash-up counts them in net takings. Named on Daily Sales so
+        // the day's figure is not short of the till cash-up.
+        var accountPayments = 0m;
+        if (groupBy == "day")
+        {
+            accountPayments = (await _db.AccountTransactions
+                .AsNoTracking()
+                .Where(t => t.Kind == AccountEntryKind.Payment
+                            && t.Tender != null
+                            && t.TillSessionId != null)
+                .Where(t => t.CreatedAtUtc >= r.FromUtc
+                            && t.CreatedAtUtc < r.ToExclusiveUtc)
+                .Select(t => t.Amount.Amount)
+                .ToListAsync(ct)
+                .ConfigureAwait(false))
+                .Sum();
+        }
+
         var result = ReportBuilder
             .For(title)
             .Column("Group", GroupHeader(groupBy))
@@ -279,13 +301,30 @@ public sealed class SalesAnalysisReport : IReportDefinition
             .Column("Margin", "Profit", "N2", rightAlign: true)
             .Column("MarginPercent", "Profit %", "N1", rightAlign: true)
             .Rows(rows)
-            .Total("Sales", rows.Sum(x => (decimal)x["Sales"]!))
+            .Total("Sales", salesTotal)
             .Total("Counter", rows.Sum(x => (decimal)x["Counter"]!))
             .Total("Scripts", rows.Sum(x => (decimal)x["Scripts"]!))
             .Total("Cost", rows.Sum(x => (decimal)x["Cost"]!))
             .Total("Margin", rows.Sum(x => (decimal)x["Margin"]!))
             .Total("Count", rows.Count)
+            .Total("AccountPayments", accountPayments)
+            .Total("NetTakings", salesTotal + accountPayments)
             .Build(r.Provenance);
+
+        if (accountPayments != 0m)
+        {
+            result = result with
+            {
+                Figures = new[]
+                {
+                    new ReportFigure("Account payments",
+                        accountPayments.ToString("N2", CultureInfo.CurrentCulture)),
+                    new ReportFigure("Net takings",
+                        (salesTotal + accountPayments)
+                            .ToString("N2", CultureInfo.CurrentCulture))
+                }
+            };
+        }
 
         // A profit report graphs the profit; the others the sales.
         return string.Equals(r.String("chart"), "profit", StringComparison.Ordinal)

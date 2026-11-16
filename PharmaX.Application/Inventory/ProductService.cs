@@ -483,11 +483,7 @@ public sealed partial class ProductService : IProductService
     public async Task<Result> DeactivateAsync(Guid id,
         CancellationToken ct = default)
     {
-        // The catalogue's own keepers, and the dispensary: administrator,
-        // pharmacist and assistant. A cashier is refused.
-        if (!_permissions.Has(PermissionCode.ProductMaintain)
-            && !_permissions.Has(PermissionCode.ProductDispensary))
-            _permissions.Demand(PermissionCode.ProductMaintain);
+        _permissions.Demand(PermissionCode.ProductDeactivate);
 
         var product = await _products.GetAsync(id, ct);
         if (product is null) return Result.Fail("INV-000", "Product not found.");

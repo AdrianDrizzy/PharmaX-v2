@@ -103,10 +103,22 @@ public sealed class CollectPresenter : PresenterBase<ICollectView>
             return;
 
         var result = await _collections.RemoveAsync(ids);
-        await RefreshQuietlyAsync();
 
-        if (result.IsFailure) View.ShowError(result.Error.Message);
-        else View.ShowInfo($"{result.Value} script(s) deleted. Their medicine is back in stock.");
+        if (result.IsFailure)
+        {
+            View.ShowError(result.Error.Message);
+            await RefreshQuietlyAsync();
+            return;
+        }
+
+        // Off this till at once - do not wait for the next poll - and
+        // then re-read so every other till's next tick agrees.
+        var gone = ids.ToHashSet();
+        _waiting = _waiting.Where(w => !gone.Contains(w.DispensingId)).ToList();
+        Show();
+
+        await RefreshQuietlyAsync();
+        View.ShowInfo($"{result.Value} script(s) deleted. Their medicine is back in stock.");
     });
 
     private void Show()

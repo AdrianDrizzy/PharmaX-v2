@@ -162,10 +162,8 @@ public partial class frmProductList : PhxFormBase, IProductListView
         bool Holds(string code) =>
             Application.Security.PermissionServiceExtensions.Has(_permissions, code);
 
-        // Admin, pharmacist and assistant, and whoever already maintains
-        // the catalogue. A cashier looks products up and does not retire them.
-        btnDeactivate.Visible = Holds(Domain.Security.PermissionCode.ProductMaintain)
-            || Holds(Domain.Security.PermissionCode.ProductDispensary);
+        // Its own permission: maintain without deactivate is allowed.
+        btnDeactivate.Visible = Holds(Domain.Security.PermissionCode.ProductDeactivate);
 
         var maintains = Holds(Domain.Security.PermissionCode.ProductMaintain);
 

@@ -263,7 +263,10 @@ internal sealed class LedgerBuilder
 
     public FakePermissionRepository Permissions { get; set; } =
         new(granted: new[]
-            { PermissionCode.LedgerRead, PermissionCode.LedgerPost });
+        {
+            PermissionCode.LedgerRead, PermissionCode.LedgerPost,
+            PermissionCode.AccountDeactivate
+        });
 
     public LedgerService Build() =>
         new(Ledger, Numbering,
