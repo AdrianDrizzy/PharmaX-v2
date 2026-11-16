@@ -409,12 +409,14 @@ internal sealed class CollectionServiceBuilder
     public FakeClock Clock { get; } = new(Noon);
     public FakeCurrentUser User { get; } = new();
 
-    /// A cashier's: sells and takes the money.
+    /// A cashier who also deletes from Collect (administrator grant in
+    /// production; the tests need the delete path itself).
     public FakePermissionRepository Permissions { get; set; } =
         new(granted: new[]
         {
             PharmaX.Domain.Security.PermissionCode.SaleCreate,
-            PharmaX.Domain.Security.PermissionCode.SaleTakePayment
+            PharmaX.Domain.Security.PermissionCode.SaleTakePayment,
+            PharmaX.Domain.Security.PermissionCode.ScriptDelete
         });
 
     /// <summary>

@@ -62,11 +62,23 @@ public sealed class ReceiptDocument : PrintDocument
 {
     internal const int CharactersPerLine = 32;
 
-    /// 75 mm, in hundredths of an inch.
+    /// 75 mm, in hundredths of an inch — used when no layout is saved.
     internal const int RollWidthHundredths = 295;
 
     /// The same inset both sides, about 1 mm, so the type fills the roll.
     internal const int MarginHundredths = 4;
+
+    internal static int ActiveRollWidthHundredths
+    {
+        get
+        {
+            var width = PrintLayouts.Receipt.WidthHundredths;
+            return width > 0 ? width : RollWidthHundredths;
+        }
+    }
+
+    internal static Margins ActiveMargins =>
+        PrintLayouts.Receipt.ToMargins(MarginHundredths);
 
     /// Where every amount ends: three columns short of the edge, so "NV"
     /// fits after an item's amount and the totals line up under it.
@@ -136,9 +148,17 @@ public sealed class ReceiptDocument : PrintDocument
     {
         ArgumentNullException.ThrowIfNull(page);
 
+        var width = ActiveRollWidthHundredths;
+        var margins = ActiveMargins;
+        // Keep a small top/bottom feed when the operator left those sides
+        // on the document default.
+        if (!PrintLayouts.Receipt.HasCustomPadding)
+            margins = new Margins(margins.Left, margins.Right, 8, 8);
+
         page.Landscape = false;
-        page.Margins = new Margins(MarginHundredths, MarginHundredths, 8, 8);
-        page.PaperSize = new PaperSize("Roll 75 mm", RollWidthHundredths,
+        page.Margins = margins;
+        page.PaperSize = new PaperSize(
+            $"Roll {PrintLayouts.Describe(PrintLayouts.Receipt)}", width,
             RollHeight(lines))
         {
             RawKind = 256

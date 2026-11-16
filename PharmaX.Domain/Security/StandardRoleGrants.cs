@@ -44,6 +44,7 @@ public static class StandardRoleGrants
             // The branch manager looks patients up for account queries
             // and complaints, but does not capture or dispense scripts.
             PermissionCode.PatientMaintain,
+            PermissionCode.PatientDeactivate,
 
             // Charging a dispensed item at something other than its
             // price, as the pharmacist and the assistant do (24 October
@@ -54,6 +55,7 @@ public static class StandardRoleGrants
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
             PermissionCode.ProductMaintain,
+            PermissionCode.ProductDeactivate,
             PermissionCode.PriceChange,
             PermissionCode.StockTakeCapture,
             PermissionCode.StockTakePost,
@@ -74,6 +76,7 @@ public static class StandardRoleGrants
             // adjustment.
             PermissionCode.LedgerRead,
             PermissionCode.LedgerPost,
+            PermissionCode.AccountDeactivate,
 
             // Staff come and go at branch level. UserService stops a
             // manager handing out a role wider than their own, so this
@@ -86,6 +89,7 @@ public static class StandardRoleGrants
             PermissionCode.SaleCreate,
             PermissionCode.SaleTakePayment,
             PermissionCode.PatientMaintain,
+            PermissionCode.PatientDeactivate,
 
             // The authorisations a till asks for - a refund, a discount
             // over the cashier's limit, another person's till - are given
@@ -100,6 +104,7 @@ public static class StandardRoleGrants
             PermissionCode.ScriptDispense,
             PermissionCode.ScriptAuthorise,
             PermissionCode.ScriptReverse,
+            PermissionCode.LabelDeactivate,
 
             // Correcting what was handed over and charged, after the
             // issue, and pre-packing bulk stock: the dispensary's own.
@@ -128,6 +133,7 @@ public static class StandardRoleGrants
             // with a reason, as an adjustment; stocktakes, write-offs
             // and transfers stay with inv.stocktake.post.
             PermissionCode.ProductMaintain,
+            PermissionCode.ProductDeactivate,
             PermissionCode.PriceChange,
             PermissionCode.StockCorrect,
 
@@ -145,6 +151,7 @@ public static class StandardRoleGrants
         {
             PermissionCode.SaleCreate,
             PermissionCode.PatientMaintain,
+            PermissionCode.PatientDeactivate,
 
             // The till's authorisations, as the pharmacist has them.
             PermissionCode.ReturnAuthorise,
@@ -157,11 +164,13 @@ public static class StandardRoleGrants
             PermissionCode.DispensingChargeAdjust,
             PermissionCode.StockPrepack,
             PermissionCode.StockRemove,
+            PermissionCode.LabelDeactivate,
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
 
             // The products, as the pharmacist keeps them.
             PermissionCode.ProductMaintain,
+            PermissionCode.ProductDeactivate,
             PermissionCode.PriceChange,
             PermissionCode.StockCorrect,
 
@@ -192,6 +201,7 @@ public static class StandardRoleGrants
             // which is the one thing a stock controller is deliberately
             // not given.
             PermissionCode.ProductMaintain,
+            PermissionCode.ProductDeactivate,
 
             PermissionCode.StockTakeCapture,
             PermissionCode.StockTakePost,

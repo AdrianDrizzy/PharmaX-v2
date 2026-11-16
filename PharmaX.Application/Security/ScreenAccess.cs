@@ -31,6 +31,7 @@ public static class ScreenAccess
         {
             // Every signed-in user.
             ["printer-setup"] = _ => true,
+            ["print-sizes"] = _ => true,
             ["change-password"] = _ => true,
             ["logoff"] = _ => true,
             ["exit"] = _ => true,

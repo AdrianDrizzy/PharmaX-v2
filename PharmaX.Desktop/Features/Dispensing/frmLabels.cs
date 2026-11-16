@@ -159,7 +159,7 @@ public partial class frmLabels : PhxFormBase
         : this()
     {
         _scopes = scopes;
-        _user = user;
+        _ = user;
         _auth = auth;
         _templates = templates;
 
@@ -201,7 +201,6 @@ public partial class frmLabels : PhxFormBase
     private readonly IReferenceRepository? _reference;
     private readonly PrepackLabelHistory? _prepacks;
     private readonly TemplateLabelHistory? _templates;
-    private readonly ICurrentUser? _user;
     private readonly Application.Suppliers.ISupplierService? _suppliers;
     private IReadOnlyDictionary<string, string> _dosage = DosageShorthand.Catalogue();
     private bool _mayRepeatScripts;
@@ -275,15 +274,13 @@ public partial class frmLabels : PhxFormBase
     }
 
     /// <summary>
-    /// Administrator, pharmacist and pharmacist assistant. A cashier does
-    /// not open this screen. Deactivating a dispensed label is not offered:
-    /// that record is the dispensing itself.
+    /// Whoever holds dsp.label.deactivate. Deactivating a dispensed label
+    /// is not offered: that record is the dispensing itself.
     /// </summary>
     private bool MayDeactivate() =>
-        _user is not null
-        && (_user.IsInRole(Role.Standard.Administrator)
-            || _user.IsInRole(Role.Standard.Pharmacist)
-            || _user.IsInRole(Role.Standard.PharmacistAssistant));
+        _permissions is not null
+        && Application.Security.PermissionServiceExtensions
+            .Has(_permissions, Domain.Security.PermissionCode.LabelDeactivate);
 
     private Task UseSelectedAgainAsync() =>
         tabLabels.SelectedTab == pagePrepacks

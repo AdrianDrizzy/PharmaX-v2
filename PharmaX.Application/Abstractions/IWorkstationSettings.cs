@@ -33,6 +33,15 @@ public static class WorkstationSettingKey
     /// form - which a receipt roll cannot print.
     public const string DocumentPrinter = "printer.document";
 
+    /// Label paper size and type scale for this computer (JSON DocumentLayout).
+    public const string LabelLayout = "print.label.layout";
+
+    /// Receipt roll width and type scale for this computer.
+    public const string ReceiptLayout = "print.receipt.layout";
+
+    /// Claim form page size and type scale for this computer.
+    public const string ClaimLayout = "print.claim.layout";
+
     /// "off" where this computer prints no labels when a script is
     /// issued; anything else, or nothing, prints them. Reprint still
     /// prints (DispensePresenter).

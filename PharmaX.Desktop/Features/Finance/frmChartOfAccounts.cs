@@ -50,11 +50,14 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
 
     /// Runtime. Resolved by the container.
     public frmChartOfAccounts(ChartPresenter presenter, IWorkbookWriter workbooks,
-                       ICurrentUser user) : this()
+                       ICurrentUser user,
+                       Application.Security.IPermissionService permissions) : this()
     {
         _presenter = presenter;
         _workbooks = workbooks;
         _user = user;
+        btnDeactivate.Visible = Application.Security.PermissionServiceExtensions
+            .Has(permissions, Domain.Security.PermissionCode.AccountDeactivate);
         _presenter.Attach(this);
     }
 

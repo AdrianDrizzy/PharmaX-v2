@@ -385,6 +385,66 @@ public class ShiftCashUpTests
             ("Mary", 2, 65m, 20m));
     }
 
+    /// A till cashed up today after opening yesterday must match the
+    /// cash-up slip on today's end of day: the whole shift, not only
+    /// today's slice.
+    [Fact]
+    public async Task The_end_of_day_matches_the_cash_up_slip_for_a_shift_closed_today()
+    {
+        var yesterday = Noon.AddDays(-1);
+        var session = TillSession.Open(Guid.NewGuid(), Guid.NewGuid(), "3", Cashier,
+                                       Money.Of(50m), yesterday);
+
+        Sale Sell(decimal price, DateTime at)
+        {
+            var sale = Sale.Open(session.BranchId, session.WorkstationId, session.Id, Cashier, at);
+            sale.AddLine(SaleLine.Create(Guid.NewGuid(), "Panado 500mg 20s", 1m, Money.Of(price), 15m,
+                "A", PriceSource.StandardRetail));
+            sale.TakePayments(new[] { SalePayment.Create(TenderType.Cash, Money.Of(price)) });
+            sale.Finalise("R" + price, at);
+            return sale;
+        }
+
+        var sales = new[] { Sell(30m, yesterday), Sell(12m, Noon) };
+        session.Close(Cashier, Money.Of(92m), Noon.AddHours(2), "Balanced");
+
+        var sessions = Substitute.For<ITillSessionRepository>();
+        sessions.ActiveBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                .Returns(new[] { session });
+        sessions.ReadAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        sessions.PayoutsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<TillPayout>());
+        var saleRepo = Substitute.For<ISaleRepository>();
+        saleRepo.ForSessionAsync(session.Id, Arg.Any<CancellationToken>()).Returns(sales);
+        var returns = Substitute.For<IReturnRepository>();
+        returns.ForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+               .Returns(Array.Empty<SaleReturn>());
+        var accounts = Substitute.For<IAccountRepository>();
+        accounts.PaymentsForSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<AccountTransaction>());
+
+        var service = new ShiftCashUpService(sessions, saleRepo, returns, accounts,
+            new InMemoryUserRepository(), Substitute.For<IDispensingRepository>(),
+            Substitute.For<IScriptRepository>(), new FakeCurrentUser { Id = Supervisor },
+            PermissionsOf(Role.Standard.Administrator), new FakeClock(Noon), new PharmaXOptions());
+
+        var slip = await service.ShiftAsync(session.Id);
+        var today = await service.EndOfDayAsync(DateOnly.FromDateTime(Noon.ToLocalTime()));
+        var before = await service.EndOfDayAsync(DateOnly.FromDateTime(yesterday.ToLocalTime()));
+
+        today.Shifts.Should().ContainSingle();
+        // Today's sales only - yesterday's stay on yesterday's End-of-Day.
+        today.SalesTotal.Should().Be(12m);
+        before.SalesTotal.Should().Be(30m);
+        (today.SalesTotal + before.SalesTotal).Should().Be(slip.SalesTotal);
+
+        // Counted / Expected match the cash-up slip (whole shift).
+        today.Shifts[0].Declared.Should().Be(slip.Declared);
+        today.Shifts[0].ExpectedTotal.Should().Be(slip.ExpectedTotal);
+        today.Shifts[0].Variance.Should().Be(slip.Variance);
+        before.Shifts[0].Declared.Should().BeNull();
+    }
+
     /// A dispensary till left open from yesterday brought yesterday's
     /// takings into today's end of day too, so the day never added up.
     [Fact]

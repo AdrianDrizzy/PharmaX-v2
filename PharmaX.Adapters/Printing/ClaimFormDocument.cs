@@ -55,11 +55,26 @@ public sealed class ClaimFormDocument : PrintDocument
     public ClaimFormDocument(ClaimFormDto form)
     {
         _form = form;
+        ApplyClaimPage(DefaultPageSettings);
+    }
 
-        // A4 portrait, in hundredths of an inch.
-        DefaultPageSettings.PaperSize = new PaperSize("A4", 827, 1169);
-        DefaultPageSettings.Landscape = false;
-        DefaultPageSettings.Margins = new Margins(40, 40, 35, 35);
+    /// <summary>
+    /// The chosen claim-form page size. Defaults to A4.
+    /// </summary>
+    internal static void ApplyClaimPage(PageSettings page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        var layout = PrintLayouts.Claim;
+        var width = layout.WidthHundredths > 0 ? layout.WidthHundredths : 827;
+        var height = layout.HeightHundredths > 0 ? layout.HeightHundredths : 1169;
+
+        page.PaperSize = new PaperSize(
+            $"Claim {PrintLayouts.Describe(layout)}", width, height);
+        page.Landscape = false;
+        page.Margins = layout.HasCustomPadding
+            ? layout.ToMargins(40)
+            : new Margins(40, 40, 35, 35);
     }
 
     public const int Pages = 2;
@@ -68,19 +83,31 @@ public sealed class ClaimFormDocument : PrintDocument
     {
         base.OnBeginPrint(e);
         _page = 0;
+        ApplyClaimPage(DefaultPageSettings);
 
-        // The printer's own A4 where it lists one. A custom size of the
-        // same dimensions is scaled, or refused, by some drivers.
+        // Prefer the driver's named A4 / Letter when the layout matches
+        // those stock sizes, so drivers that refuse a custom paper still
+        // print. Custom sizes keep the layout's own paper.
         try
         {
-            var a4 = PrinterSettings.PaperSizes.Cast<PaperSize>()
-                .FirstOrDefault(p => p.Kind == PaperKind.A4);
+            var layout = PrintLayouts.Claim;
+            PaperKind? kind = layout.PresetId switch
+            {
+                "claim-a4" => PaperKind.A4,
+                "claim-letter" => PaperKind.Letter,
+                _ => null
+            };
 
-            if (a4 is not null) DefaultPageSettings.PaperSize = a4;
+            if (kind is null) return;
+
+            var match = PrinterSettings.PaperSizes.Cast<PaperSize>()
+                .FirstOrDefault(p => p.Kind == kind);
+
+            if (match is not null) DefaultPageSettings.PaperSize = match;
         }
         catch (InvalidPrinterException)
         {
-            // Printed on the size set in the constructor instead.
+            // Printed on the size ApplyClaimPage set.
         }
     }
 

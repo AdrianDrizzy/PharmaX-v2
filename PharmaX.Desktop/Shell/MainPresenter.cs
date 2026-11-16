@@ -95,9 +95,12 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
     public override async Task InitialiseAsync()
     {
         using (var scope = _scopes.CreateScope())
-            View.UseWindowSize(await scope.ServiceProvider
-                .GetRequiredService<IWorkstationSettings>()
-                .GetAsync(WorkstationSettingKey.WindowSize));
+        {
+            var settings = scope.ServiceProvider
+                .GetRequiredService<IWorkstationSettings>();
+            View.UseWindowSize(await settings.GetAsync(WorkstationSettingKey.WindowSize));
+            await PharmaX.Adapters.Printing.PrintLayouts.LoadAsync(settings);
+        }
 
         ShowPharmacy();
         View.SetUser(_user.Username, string.Join(", ", RolesOf(_user)));
@@ -519,6 +522,9 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
                 break;
             case "printer-setup":
                 _views.ShowDialog<Features.Admin.frmPrinterSetup>((Form)View);
+                break;
+            case "print-sizes":
+                _views.ShowDialog<Features.Admin.frmPrintSizes>((Form)View);
                 return;
             case "backup":
                 BackUpNow();

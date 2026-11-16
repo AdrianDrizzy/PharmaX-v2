@@ -511,6 +511,7 @@ public sealed class LabelDocument : PrintDocument
     private readonly LabelDto _label;
     private readonly PharmacyImprint? _pharmacy;
     private readonly int _copies;
+    private readonly DocumentLayout? _layout;
     private int _printed;
 
     /// <param name="pharmacy">
@@ -523,51 +524,66 @@ public sealed class LabelDocument : PrintDocument
     /// How many of the same label, one after another on the stock: the
     /// stickers for a run of pre-packs.
     /// </param>
+    /// <param name="layout">
+    /// A draft size for the print-sizes preview. Live printing leaves this
+    /// null and reads the saved <see cref="PrintLayouts.Label"/>.
+    /// </param>
     public LabelDocument(LabelDto label, PharmacyImprint? pharmacy = null,
-                         int copies = 1)
+                         int copies = 1, DocumentLayout? layout = null)
     {
         _label = label;
         _pharmacy = pharmacy;
         _copies = Math.Max(1, copies);
+        _layout = layout;
 
-        ApplyItemStock(DefaultPageSettings);
+        ApplyItemStock(DefaultPageSettings, Layout);
     }
 
+    private DocumentLayout Layout => _layout ?? PrintLayouts.Label;
+
     /// <summary>
-    /// 77 mm by 39 mm, put back on after the printer is chosen. Choosing
-    /// the printer resets the page to the driver's own paper, and a driver
-    /// then scales the sticker so one line of type comes out sheared.
+    /// The chosen label stock, put back on after the printer is chosen.
+    /// Choosing the printer resets the page to the driver's own paper, and
+    /// a driver then scales the sticker so one line of type comes out sheared.
+    /// Defaults to 77 mm by 39 mm when no layout has been saved.
     /// </summary>
-    internal static void ApplyStock(PageSettings page)
+    internal static void ApplyStock(PageSettings page, DocumentLayout? layout = null)
     {
         ArgumentNullException.ThrowIfNull(page);
 
+        layout ??= PrintLayouts.Label;
+        var width = layout.WidthHundredths > 0 ? layout.WidthHundredths : WidthHundredths;
+        var height = layout.HeightHundredths > 0 ? layout.HeightHundredths : HeightHundredths;
+
         page.Landscape = false;
-        page.PaperSize = new PaperSize("Label 77x39 mm",
-            WidthHundredths, HeightHundredths);
-        page.Margins = new Margins(6, 6, 4, 4);
+        page.PaperSize = new PaperSize(
+            $"Label {PrintLayouts.Describe(layout)}", width, height);
+        // Trailer labels keep a small inset; item labels override below.
+        page.Margins = layout.ToMargins(6);
     }
 
     /// <summary>
-    /// The item labels use the whole sticker. The trailer keeps the
-    /// inset above, which already fits its address.
+    /// The item labels use the whole sticker, less any padding the
+    /// operator set. The trailer keeps the inset above.
     /// </summary>
-    private static void ApplyItemStock(PageSettings page)
+    private static void ApplyItemStock(PageSettings page, DocumentLayout layout)
     {
-        ApplyStock(page);
-        page.Margins = new Margins(0, 0, 0, 0);
+        ApplyStock(page, layout);
+        page.Margins = layout.HasCustomPadding
+            ? layout.ToMargins(0)
+            : new Margins(0, 0, 0, 0);
     }
 
     protected override void OnQueryPageSettings(QueryPageSettingsEventArgs e)
     {
         base.OnQueryPageSettings(e);
-        ApplyItemStock(e.PageSettings);
+        ApplyItemStock(e.PageSettings, Layout);
     }
 
     protected override void OnBeginPrint(PrintEventArgs e)
     {
         base.OnBeginPrint(e);
-        ApplyItemStock(DefaultPageSettings);
+        ApplyItemStock(DefaultPageSettings, Layout);
         _printed = 0;
     }
 
@@ -870,7 +886,9 @@ public sealed class LabelDocument : PrintDocument
         // printer reaches - over six lines at the least, so a short label
         // is not set in lines twice the usual height.
         var rows = Rows();
-        LabelPrint.Draw(g, bounds, rows, Columns, lines: 6);
+        var layout = Layout;
+        LabelPrint.Draw(g, bounds, rows, Columns, lines: 6,
+            layout.FontScale, layout.LineSpacingScale);
 
         return ++_printed < _copies;
     }

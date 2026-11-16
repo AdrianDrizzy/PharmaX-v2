@@ -98,13 +98,16 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     /// Runtime. Resolved by the container.
     public frmPatientList(PatientListPresenter presenter, ViewFactory views,
         Application.Reporting.IWorkbookWriter workbooks,
-        Application.Abstractions.ICurrentUser user)
+        Application.Abstractions.ICurrentUser user,
+        Application.Security.IPermissionService permissions)
         : this()
     {
         _presenter = presenter;
         _views = views;
         _workbooks = workbooks;
         _user = user;
+        btnDeactivate.Visible = Application.Security.PermissionServiceExtensions
+            .Has(permissions, Domain.Security.PermissionCode.PatientDeactivate);
         _presenter.Attach(this);
     }
 

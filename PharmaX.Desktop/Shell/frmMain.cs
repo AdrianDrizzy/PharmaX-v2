@@ -391,7 +391,8 @@ public partial class frmMain : PhxFormBase, IMainView
     private static readonly Dictionary<string, PhxIcon> MenuIcons =
         new(StringComparer.Ordinal)
     {
-        ["printer-setup"] = PhxIcon.Printer, ["till"] = PhxIcon.CashRegister,
+        ["printer-setup"] = PhxIcon.Printer, ["print-sizes"] = PhxIcon.Printer,
+        ["till"] = PhxIcon.CashRegister,
         ["cash-up"] = PhxIcon.Coins, ["end-of-day"] = PhxIcon.CashBanknote,
         ["logoff"] = PhxIcon.Logout, ["change-password"] = PhxIcon.Key,
         ["exit"] = PhxIcon.DoorExit,
@@ -683,6 +684,7 @@ public partial class frmMain : PhxFormBase, IMainView
         ["role-permissions"] = "permission grant role tick",
         ["system-setup"] = "logo colour color palette brand theme",
         ["printer-setup"] = "printer receipt label",
+        ["print-sizes"] = "print size label receipt claim form paper custom font",
         ["receipts"] = "reprint receipt copy history slip",
         ["receipt-template"] = "receipt template layout slip footer",
         ["logoff"] = "sign out log out shift",

@@ -52,6 +52,18 @@ public static class PermissionCode
     public const string ScriptReverse = "dsp.script.reverse";
 
     /// <summary>
+    /// Deleting an uncollected script from Scripts to collect, putting
+    /// its medicine back on the shelf.
+    /// </summary>
+    /// <remarks>
+    /// Administrator only by default (16 November 2026). Its own
+    /// permission so a pharmacy can hand it to a manager without
+    /// giving them clinical reverse, and so a cashier with the till
+    /// cannot clear the queue.
+    /// </remarks>
+    public const string ScriptDelete = "dsp.script.delete";
+
+    /// <summary>
     /// Capturing a prescription into Script Maintenance.
     /// </summary>
     /// <remarks>
@@ -99,6 +111,17 @@ public static class PermissionCode
     /// </summary>
     public const string PatientMaintain = "dsp.patient.maintain";
 
+    /// <summary>
+    /// Taking a patient file off searches, and putting one back. History
+    /// stays; the file is never deleted.
+    /// </summary>
+    /// <remarks>
+    /// Its own permission so maintain can stay with the counter while
+    /// retiring a file stays with whoever the pharmacy ticks (16
+    /// November 2026).
+    /// </remarks>
+    public const string PatientDeactivate = "dsp.patient.deactivate";
+
     public const string ProductRead = "inv.product.read";
 
     /// <summary>
@@ -113,6 +136,17 @@ public static class PermissionCode
     /// product the screen then hides.
     /// </remarks>
     public const string ProductDispensary = "inv.product.dispensary";
+
+    /// <summary>
+    /// Taking a product off the catalogue. Sales history stays; the
+    /// product is never deleted.
+    /// </summary>
+    /// <remarks>
+    /// Separate from inv.product.maintain so a pharmacy can let staff
+    /// edit a product without letting them discontinue it (16 November
+    /// 2026).
+    /// </remarks>
+    public const string ProductDeactivate = "inv.product.deactivate";
 
     /// <summary>
     /// Adding a product and changing its description, filing, reorder
@@ -217,20 +251,32 @@ public static class PermissionCode
     /// <summary>The Templates tab on Labels: saved sticker layouts.</summary>
     public const string LabelTemplates = "dsp.label.templates";
 
+    /// <summary>
+    /// Deactivating or deleting a saved pre-pack or template sticker on
+    /// Labels.
+    /// </summary>
+    public const string LabelDeactivate = "dsp.label.deactivate";
+
+    /// <summary>
+    /// Taking a ledger account off the chart. The books keep it.
+    /// </summary>
+    public const string AccountDeactivate = "fin.account.deactivate";
+
     public static IReadOnlyList<string> All { get; } = new[]
     {
         SaleCreate, SaleTakePayment, SaleDiscountAboveLimit, ReturnAuthorise,
         SessionCloseOtherUser, SessionCashUp, ScriptAuthorise, ScriptReverse,
-        ScriptCapture, ScriptDispense, PatientMaintain,
-        ProductRead, ProductDispensary, ProductMaintain, PriceChange,
+        ScriptDelete, ScriptCapture, ScriptDispense, PatientMaintain,
+        PatientDeactivate, ProductRead, ProductDispensary, ProductMaintain,
+        ProductDeactivate, PriceChange,
         StockTakeCapture, StockTakePost, SupplierMaintain,
         ReferenceMaintain, PurchaseOrderRaise, GoodsReceive,
         ReportOperational, ReportManagement, ReportFinancial,
-        ReportClinical, LedgerRead, LedgerPost,
+        ReportClinical, LedgerRead, LedgerPost, AccountDeactivate,
         UserRoleAssign, RolePermissions, SettingsChange, DispensingAmend, StockPrepack,
         StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust,
         ReceiptHide, BranchMaintain, ReceiptTemplate, DataImport, Backup,
-        SystemConsole, LabelTemplates
+        SystemConsole, LabelTemplates, LabelDeactivate
     };
 
     /// <summary>What the role-permissions screen shows beside the code.</summary>
@@ -246,14 +292,17 @@ public static class PermissionCode
         ReceiptHide => "Hide a receipt",
         ScriptAuthorise => "Clinical authority",
         ScriptReverse => "Reverse a script",
+        ScriptDelete => "Delete a script from collect",
         ScriptCapture => "Capture a script",
         ScriptDispense => "Dispense",
         DispensingAmend => "Correct a dispensed item",
         DispensingChargeAdjust => "Charge other than the price",
         PatientMaintain => "Patients",
+        PatientDeactivate => "Deactivate a patient",
         ProductRead => "Look up products",
         ProductDispensary => "Dispensary stock",
         ProductMaintain => "Maintain products",
+        ProductDeactivate => "Deactivate a product",
         PriceChange => "Change a price",
         StockTakeCapture => "Count stock",
         StockTakePost => "Post a stocktake",
@@ -270,6 +319,7 @@ public static class PermissionCode
         ReportClinical => "Clinical reports",
         LedgerRead => "Read the books",
         LedgerPost => "Post a journal",
+        AccountDeactivate => "Deactivate a ledger account",
         UserRoleAssign => "Users and roles",
         RolePermissions => "Role permissions",
         SettingsChange => "System setup",
@@ -279,6 +329,7 @@ public static class PermissionCode
         Backup => "Back up now",
         SystemConsole => "System console, control variables and pharmacy details",
         LabelTemplates => "Label templates",
+        LabelDeactivate => "Deactivate or delete a label sticker",
         _ => code
     };
 }

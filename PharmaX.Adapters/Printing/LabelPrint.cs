@@ -31,27 +31,34 @@ internal static partial class LabelPrint
     private const int CharactersPerInch = 15;
 
     public static void Draw(Graphics g, Rectangle bounds,
-                            IReadOnlyList<LabelRow> rows, int columns, int lines)
+                            IReadOnlyList<LabelRow> rows, int columns, int lines,
+                            float fontScale = 1f, float lineSpacingScale = 1f)
     {
         ArgumentNullException.ThrowIfNull(g);
         ArgumentNullException.ThrowIfNull(rows);
 
-        var layout = Layout(rows, bounds.Height, lines);
+        fontScale = Math.Clamp(fontScale, 0.5f, 2f);
+        lineSpacingScale = Math.Clamp(lineSpacingScale, 0.5f, 2f);
 
-        if (!InPrinterFace(g, bounds, rows, layout, columns))
-            Condensed(g, bounds, rows, layout, columns);
+        var layout = Layout(rows, bounds.Height, lines, lineSpacingScale);
+
+        if (!InPrinterFace(g, bounds, rows, layout, columns, fontScale))
+            Condensed(g, bounds, rows, layout, columns, fontScale);
     }
 
     /// <summary>
     /// Where each row sits: an equal share of the height the printer
     /// reaches, never less than <paramref name="lines"/> to the label. A
     /// label with that many rows or more fills it to the bottom, with no
-    /// blank row and no gap under the address.
+    /// blank row and no gap under the address. Line spacing stretches or
+    /// tightens that share when the operator has asked for it.
     /// </summary>
     private static List<(float Y, float Height, bool Compact)> Layout(
-        IReadOnlyList<LabelRow> rows, float height, int lines)
+        IReadOnlyList<LabelRow> rows, float height, int lines,
+        float lineSpacingScale = 1f)
     {
-        var slot = height / Math.Max(1, Math.Max(lines, rows.Count));
+        var slot = height / Math.Max(1, Math.Max(lines, rows.Count))
+                   * lineSpacingScale;
 
         return rows.Select((row, i) => (i * slot, slot, row.Compact)).ToList();
     }
@@ -70,7 +77,7 @@ internal static partial class LabelPrint
     private static void Condensed(Graphics g, Rectangle bounds,
                                   IReadOnlyList<LabelRow> rows,
                                   List<(float Y, float Height, bool Compact)> layout,
-                                  int columns)
+                                  int columns, float fontScale = 1f)
     {
         // One direction, so a line the head would otherwise print going
         // both ways does not come out sheared. The third and fourth lines
@@ -106,12 +113,13 @@ internal static partial class LabelPrint
             return Math.Max(6f, Math.Min(byHeight, byWidth));
         }
 
-        var size = SizeFor(headHeight);
+        var size = SizeFor(headHeight) * fontScale;
 
         // Two pixels under the head. Smaller still where the foot line
         // itself is shorter than that, so the year and the address fit.
         var twoPixels = 2f * 72f / Math.Max(1f, g.DpiY);
-        var footSize = Math.Max(5f, Math.Min(size - twoPixels, SizeFor(footHeight)));
+        var footSize = Math.Max(5f,
+            Math.Min(size - twoPixels, SizeFor(footHeight) * fontScale));
 
         using var plain = new Font(FixedPitch.Family, size);
         using var foot = new Font(FixedPitch.Family, footSize);
@@ -159,7 +167,7 @@ internal static partial class LabelPrint
     private static bool InPrinterFace(Graphics g, Rectangle bounds,
                                       IReadOnlyList<LabelRow> rows,
                                       List<(float Y, float Height, bool Compact)> layout,
-                                      int columns)
+                                      int columns, float fontScale = 1f)
     {
         var hdc = g.GetHdc();
 
@@ -180,7 +188,7 @@ internal static partial class LabelPrint
 
             // Shorter than the row, so the line under the words sits in
             // the gap and never on the type of the next row.
-            var faceHeight = (int)Math.Round(Down(headBand) * 0.78);
+            var faceHeight = (int)Math.Round(Down(headBand) * 0.78 * fontScale);
 
             if (pitch < natural * 0.7 || faceHeight < 8)
                 return false;

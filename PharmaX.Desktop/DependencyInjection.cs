@@ -148,6 +148,7 @@ public static class DependencyInjection
         s.AddTransient<frmUserEdit>();
         s.AddTransient<UserEditPresenter>();
         s.AddTransient<frmPrinterSetup>();
+        s.AddTransient<frmPrintSizes>();
         s.AddTransient<frmSystemSetup>();
         s.AddTransient<frmDataImport>();
         s.AddTransient<Features.Dispensing.frmToFollow>();

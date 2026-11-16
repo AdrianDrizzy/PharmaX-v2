@@ -70,7 +70,13 @@ public sealed record ShiftCashUpDto(Guid SessionId, string TillNumber,
     IReadOnlyList<TenderTotalDto> Tenders, decimal ExpectedCash,
     decimal? Declared, IReadOnlyList<ShiftTransactionDto> Transactions,
     IReadOnlyList<PayoutDto>? Payouts = null, string? ClosedByName = null,
-    string? VarianceReason = null)
+    string? VarianceReason = null,
+    /// <summary>
+    /// Full-shift expected drawer total, when this row is a calendar-day
+    /// slice of a till that closed today: Counted/Variance must match the
+    /// cash-up slip, while Sales stay that day's only.
+    /// </summary>
+    decimal? ExpectedOverride = null)
 {
     /// Money in for the shift: sales less refunds, plus account payments.
     public decimal NetTakings => SalesTotal - RefundsTotal + AccountPayments;
@@ -80,7 +86,8 @@ public sealed record ShiftCashUpDto(Guid SessionId, string TillNumber,
 
     /// What the till should account for in all, float included, the
     /// money paid out of the drawer taken off.
-    public decimal ExpectedTotal => OpeningFloat + Tenders.Sum(t => t.Amount) - PaidOut;
+    public decimal ExpectedTotal => ExpectedOverride
+        ?? OpeningFloat + Tenders.Sum(t => t.Amount) - PaidOut;
 
     /// Counted less expected, once the till is closed.
     public decimal? Variance => Declared - ExpectedTotal;
@@ -554,12 +561,41 @@ public sealed class ShiftCashUpService : IShiftCashUpService
                 + "or the administrator.");
 
         var start = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
-        var sessions = await _sessions.ActiveBetweenAsync(start, start.AddDays(1), ct);
+        var end = start.AddDays(1);
+        var sessions = await _sessions.ActiveBetweenAsync(start, end, ct);
         var shifts = new List<ShiftCashUpDto>();
 
         foreach (var session in sessions.OrderBy(s => s.TillNumber, StringComparer.Ordinal)
                                          .ThenBy(s => s.OpenedAtUtc))
-            shifts.Add(await TallyAsync(session, ct, (start, start.AddDays(1))));
+        {
+            // Always slice sales to this calendar day so Monday + Tuesday
+            // End-of-Day figures do not count the same overnight sale twice.
+            var shift = await TallyAsync(session, ct, (start, end));
+
+            var closedOnDay = session.ClosedAtUtc is DateTime closed
+                && DateOnly.FromDateTime(closed.ToLocalTime()) == day;
+
+            if (closedOnDay)
+            {
+                // Counted / Expected / Variance must match the cash-up slip
+                // (whole shift), while Sales / Net above stay today's only.
+                var full = await TallyAsync(session, ct);
+                shift = shift with
+                {
+                    Declared = full.Declared,
+                    VarianceReason = full.VarianceReason,
+                    ExpectedOverride = full.ExpectedTotal,
+                    ExpectedCash = full.ExpectedCash
+                };
+            }
+            else
+            {
+                // Count belongs to the close day, not an intermediate day.
+                shift = shift with { Declared = null, VarianceReason = null };
+            }
+
+            shifts.Add(shift);
+        }
 
         return new EndOfDayDto(day, shifts);
     }

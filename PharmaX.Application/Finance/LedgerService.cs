@@ -187,7 +187,7 @@ public sealed class LedgerService : ILedgerService
     public async Task<Result> DeactivateAccountAsync(Guid id,
         CancellationToken ct = default)
     {
-        _permissions.Demand(PermissionCode.LedgerPost);
+        _permissions.Demand(PermissionCode.AccountDeactivate);
 
         var account = await _ledger.AccountAsync(id, ct);
 
