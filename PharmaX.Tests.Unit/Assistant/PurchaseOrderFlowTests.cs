@@ -40,7 +40,7 @@ public class PurchaseOrderFlowTests
     {
         _user.Username.Returns("test.manager");
 
-        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<ProductPageDto>.Ok(new ProductPageDto(new[]
             {
                 Listed(Tablets, "PAN500", "Panado 500mg tablets 20s", 39.38m, 12m, pack: "TAB 20"),
@@ -71,7 +71,7 @@ public class PurchaseOrderFlowTests
                         l.Quantity, 0m, l.Quantity, l.UnitCost, l.Quantity * l.UnitCost, l.ProductCode)).ToList()));
             });
 
-        _suppliers.ListAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _suppliers.ListAsync(Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<IReadOnlyList<SupplierListItemDto>>.Ok(new[] { Pharmanova, Greenwood }));
     }
 

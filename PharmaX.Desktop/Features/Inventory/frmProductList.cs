@@ -29,6 +29,9 @@ public partial class frmProductList : PhxFormBase, IProductListView
     /// The pages of the matches, under the list.
     private readonly PagerBar _pager = new("pager") { Empty = "No products match" };
 
+    /// Sort, and Filter by when a product was added or changed.
+    private readonly ListFilterBar _filters;
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ProductRead;
 
@@ -43,6 +46,9 @@ public partial class frmProductList : PhxFormBase, IProductListView
         Controls.Add(_pager);
         Controls.SetChildIndex(_pager, Controls.GetChildIndex(pnlTop));
         _pager.PageRequested += (_, move) => PageRequested?.Invoke(this, move);
+
+        _filters = ListFilterBar.Under(pnlTop, prices: true);
+        _filters.Changed += (_, _) => SearchChanged?.Invoke(this, EventArgs.Empty);
 
         _suggestions = new SearchSuggestions(txtSearch);
         _suggestions.Chosen += (_, chosen) => OnSuggestionChosen(chosen);
@@ -102,15 +108,18 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public frmProductList(ProductListPresenter presenter,
         Application.Security.IPermissionService permissions,
         Application.Reporting.IWorkbookWriter workbooks,
-        Application.Abstractions.ICurrentUser user) : this()
+        Application.Abstractions.ICurrentUser user,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes) : this()
     {
         _presenter = presenter;
         _permissions = permissions;
         _workbooks = workbooks;
         _user = user;
+        _scopes = scopes;
         _presenter.Attach(this);
     }
 
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
     private readonly Application.Security.IPermissionService? _permissions;
     private readonly Application.Reporting.IWorkbookWriter? _workbooks;
     private readonly Application.Abstractions.ICurrentUser? _user;
@@ -275,6 +284,12 @@ public partial class frmProductList : PhxFormBase, IProductListView
     {
         base.OnLoad(e);
         ApplyPermissions();
+
+        // Not as a picker: a till looking a product up wants the best match
+        // first, whatever the stock room last sorted this list by.
+        if (_scopes is not null && !IsPickerMode)
+            await _filters.RememberSortAsync(_scopes, "products");
+
         if (_presenter is not null) await _presenter.InitialiseAsync();
 
         // Typing continues where the operator left off, and the first
@@ -295,6 +310,8 @@ public partial class frmProductList : PhxFormBase, IProductListView
     public string SearchText => txtSearch.Text.Trim();
 
     public bool IncludeInactive => chkShowInactive.Checked;
+
+    public Application.Abstractions.ListFilter Filter => _filters.Filter;
 
     public bool BatchView => chkBatches.Checked;
 

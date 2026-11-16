@@ -27,6 +27,9 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     /// The pages of the matches, under the list.
     private readonly PagerBar _pager = new("pager") { Empty = "No patients match" };
 
+    /// Sort, and Filter by when a patient was added or changed.
+    private readonly ListFilterBar _filters;
+
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.PatientMaintain;
 
@@ -40,6 +43,9 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         Controls.Add(_pager);
         Controls.SetChildIndex(_pager, Controls.GetChildIndex(pnlTop));
         _pager.PageRequested += (_, move) => PageRequested?.Invoke(this, move);
+
+        _filters = ListFilterBar.Under(pnlTop);
+        _filters.Changed += (_, _) => SearchChanged?.Invoke(this, EventArgs.Empty);
 
         _suggestions = new SearchSuggestions(txtSearch);
         _suggestions.Chosen += (_, chosen) =>
@@ -99,13 +105,15 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     public frmPatientList(PatientListPresenter presenter, ViewFactory views,
         Application.Reporting.IWorkbookWriter workbooks,
         Application.Abstractions.ICurrentUser user,
-        Application.Security.IPermissionService permissions)
+        Application.Security.IPermissionService permissions,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes)
         : this()
     {
         _presenter = presenter;
         _views = views;
         _workbooks = workbooks;
         _user = user;
+        _scopes = scopes;
         btnDeactivate.Visible = Application.Security.PermissionServiceExtensions
             .Has(permissions, Domain.Security.PermissionCode.PatientDeactivate);
         _presenter.Attach(this);
@@ -113,6 +121,7 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
 
     private readonly Application.Reporting.IWorkbookWriter? _workbooks;
     private readonly Application.Abstractions.ICurrentUser? _user;
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
 
     /// <summary>
     /// Every patient the search matches to a workbook, not only the page
@@ -183,6 +192,11 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+
+        // Not as a picker, as on the product list: the best match first.
+        if (_scopes is not null && !IsPickerMode)
+            await _filters.RememberSortAsync(_scopes, "patients");
+
         if (_presenter is not null) await _presenter.InitialiseAsync();
         txtSearch.Focus();
     }
@@ -194,6 +208,8 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
     }
 
     public string SearchText => txtSearch.Text.Trim();
+
+    public Application.Abstractions.ListFilter Filter => _filters.Filter;
 
     public Guid? SelectedId => grdPatients.CurrentRow?.DataBoundItem
         is PatientListItemDto dto ? dto.Id : null;

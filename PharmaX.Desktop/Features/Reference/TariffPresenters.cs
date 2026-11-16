@@ -40,7 +40,7 @@ public sealed class TariffListPresenter : PresenterBase<ITariffListView>
     private Task LoadAsync() => GuardAsync(async () =>
     {
         var result = await _tariffs.ListAsync(View.SchemeFilter,
-                                              View.SearchText);
+                                              View.SearchText, View.Filter);
 
         if (result.IsFailure)
         {

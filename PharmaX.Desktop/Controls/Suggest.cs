@@ -113,7 +113,7 @@ public static class Suggest
             var found = await scope.ServiceProvider
                 .GetRequiredService<PharmaX.Application.Reference.IReferenceRepository>()
                 .ListAsync(PharmaX.Application.Reference.ReferenceKind.Prescriber, term,
-                           includeInactive: false, ct);
+                           includeInactive: false, ct: ct);
 
             return found.Take(8)
                 .Select(p => new Suggestion(p, p.Name, p.Detail ?? p.Code))
@@ -269,7 +269,7 @@ public static class Suggest
             var found = await scope.ServiceProvider
                 .GetRequiredService<PharmaX.Application.Reference.IReferenceRepository>()
                 .ListAsync(PharmaX.Application.Reference.ReferenceKind.Branch, term,
-                           includeInactive: false, ct);
+                           includeInactive: false, ct: ct);
 
             return found.Take(8)
                 .Select(b => new Suggestion(b.Code, b.Name, Details(b.Code, b.Detail)))
@@ -333,7 +333,7 @@ public static class Suggest
 
             var found = await scope.ServiceProvider
                 .GetRequiredService<Application.Suppliers.ISupplierService>()
-                .ListAsync(includeInactive: false, ct);
+                .ListAsync(includeInactive: false, ct: ct);
 
             return found.IsSuccess
                 ? found.Value

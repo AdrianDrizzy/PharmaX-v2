@@ -97,14 +97,15 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
         {
             if (View.BatchView)
             {
-                var batches = await _products.SearchBatchesAsync(View.SearchText, take: int.MaxValue);
+                var batches = await _products.SearchBatchesAsync(View.SearchText, take: int.MaxValue,
+                    filter: View.Filter);
                 if (batches.IsFailure) View.ShowError(batches.Error.Message);
                 else export(batches.Value.Items.ToList<object>());
                 return;
             }
 
             var products = await _products.SearchAsync(View.SearchText, take: int.MaxValue,
-                includeInactive: View.IncludeInactive);
+                includeInactive: View.IncludeInactive, filter: View.Filter);
             if (products.IsFailure) View.ShowError(products.Error.Message);
             else export(products.Value.Items.ToList<object>());
         }));
@@ -154,7 +155,7 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
     {
         var result = await _products.SearchAsync(View.SearchText,
             take: PageSize, skip: _page * PageSize,
-            includeInactive: View.IncludeInactive);
+            includeInactive: View.IncludeInactive, filter: View.Filter);
 
         if (result.IsFailure)
         {
@@ -178,7 +179,7 @@ public sealed class ProductListPresenter : PresenterBase<IProductListView>
     private Task LoadBatchesAsync() => GuardAsync(async () =>
     {
         var result = await _products.SearchBatchesAsync(View.SearchText,
-            take: PageSize, skip: _page * PageSize);
+            take: PageSize, skip: _page * PageSize, filter: View.Filter);
 
         if (result.IsFailure)
         {

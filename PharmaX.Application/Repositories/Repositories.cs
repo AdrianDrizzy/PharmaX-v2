@@ -1,3 +1,4 @@
+using PharmaX.Application.Abstractions;
 using PharmaX.Domain.Batches;
 using PharmaX.Domain.Claims;
 using PharmaX.Domain.Finance;
@@ -129,13 +130,13 @@ public interface IProductRepository
     /// <param name="includeInactive">False hides deactivated products (the list's toggle).</param>
     Task<IReadOnlyList<Product>> SearchAsync(string term, int take = 200,
         ProductScope scope = ProductScope.All, int skip = 0,
-        bool includeInactive = true,
+        bool includeInactive = true, ListFilter? filter = null,
         CancellationToken ct = default);
 
     /// How many the same term matches altogether, so a list screen can
     /// say how much it is not showing.
     Task<int> CountAsync(string term, ProductScope scope = ProductScope.All,
-                         bool includeInactive = true,
+                         bool includeInactive = true, ListFilter? filter = null,
                          CancellationToken ct = default);
 
     /// <summary>
@@ -208,10 +209,12 @@ public interface IPatientRepository
     Task<IReadOnlyList<Patient>> SearchAsync(string term, int take = 100,
                                              int skip = 0,
                                              bool includeInactive = false,
+                                             ListFilter? filter = null,
                                              CancellationToken ct = default);
 
     /// How many active patients the same search matches, across pages.
     Task<int> CountAsync(string term, bool includeInactive = false,
+                         ListFilter? filter = null,
                          CancellationToken ct = default);
 
     /// <summary>
@@ -349,6 +352,7 @@ public interface ISupplierRepository
     Task<Supplier?> ByCodeAsync(string code, CancellationToken ct = default);
 
     Task<IReadOnlyList<Supplier>> ListAsync(bool includeInactive = false,
+                                            ListFilter? filter = null,
                                             CancellationToken ct = default);
 
     Task AddAsync(Supplier supplier, CancellationToken ct = default);

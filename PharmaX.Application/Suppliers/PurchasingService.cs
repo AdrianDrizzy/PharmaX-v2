@@ -102,7 +102,7 @@ public sealed class PurchasingService : IPurchasingService
         DemandOrderAccess();
 
         var orders = await _orders.OutstandingAsync(supplierId, ct);
-        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct);
+        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct: ct);
 
         var names = suppliers.ToDictionary(s => s.Id, s => s.Name);
         var codes = await CodesAsync(orders.SelectMany(o => o.Lines), ct);
@@ -146,7 +146,7 @@ public sealed class PurchasingService : IPurchasingService
         _permissions.Demand(PermissionCode.PurchaseOrderRaise);
 
         var orders = await _orders.DraftsAsync(ct);
-        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct);
+        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct: ct);
 
         var names = suppliers.ToDictionary(s => s.Id, s => s.Name);
         var codes = await CodesAsync(orders.SelectMany(o => o.Lines), ct);

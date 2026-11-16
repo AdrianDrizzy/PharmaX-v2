@@ -57,7 +57,7 @@ public static class DosageShorthand
         ArgumentNullException.ThrowIfNull(reference);
 
         var codes = (await reference.ListAsync(ReferenceKind.DosageCode, "",
-                includeInactive: false, ct))
+                includeInactive: false, ct: ct))
             .GroupBy(c => c.Code, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
 
@@ -96,7 +96,7 @@ public static class DosageShorthand
         ArgumentNullException.ThrowIfNull(reference);
 
         var listed = await reference.ListAsync(ReferenceKind.DosageCode, "",
-            includeInactive: false, ct);
+            includeInactive: false, ct: ct);
 
         return Catalogue(listed.Select(c => (c.Code, c.Name)));
     }

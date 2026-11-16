@@ -178,7 +178,7 @@ public sealed class PurchaseOrderFlow : GuidedFlow
     {
         if (_supplierList is not null) return _supplierList;
 
-        var list = await _suppliers.ListAsync(includeInactive: false, ct);
+        var list = await _suppliers.ListAsync(includeInactive: false, ct: ct);
         _supplierList = list.IsSuccess ? list.Value : Array.Empty<SupplierListItemDto>();
         return _supplierList;
     }

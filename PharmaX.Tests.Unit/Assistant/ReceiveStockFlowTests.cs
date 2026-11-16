@@ -36,7 +36,7 @@ public class ReceiveStockFlowTests
 
     public ReceiveStockFlowTests()
     {
-        _suppliers.ListAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _suppliers.ListAsync(Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<IReadOnlyList<SupplierListItemDto>>.Ok(new[] { Pharmanova, PharmaPlus }));
 
         _purchasing.OutstandingAsync(Pharmanova.Id, Arg.Any<CancellationToken>())

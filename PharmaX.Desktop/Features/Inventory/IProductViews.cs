@@ -12,6 +12,9 @@ public interface IProductListView : IView
     /// The "Show deactivated" box: deactivated products hidden until ticked.
     bool IncludeInactive { get; }
 
+    /// The Sort and date range under the search box.
+    Application.Abstractions.ListFilter Filter { get; }
+
     /// The batch of the selected row in the batch view; null otherwise.
     Guid? SelectedBatchId { get; }
 

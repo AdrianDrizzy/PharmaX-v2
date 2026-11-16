@@ -11,7 +11,8 @@ namespace PharmaX.Application.Suppliers;
 public interface ISupplierService
 {
     Task<Result<IReadOnlyList<SupplierListItemDto>>> ListAsync(
-        bool includeInactive = false, CancellationToken ct = default);
+        bool includeInactive = false, ListFilter? filter = null,
+        CancellationToken ct = default);
 
     Task<Result<SupplierDto>> GetAsync(Guid id,
         CancellationToken ct = default);
@@ -45,13 +46,14 @@ public sealed class SupplierService : ISupplierService
     }
 
     public async Task<Result<IReadOnlyList<SupplierListItemDto>>> ListAsync(
-        bool includeInactive = false, CancellationToken ct = default)
+        bool includeInactive = false, ListFilter? filter = null,
+        CancellationToken ct = default)
     {
         // Reading the supplier list is part of ordering stock, so it
         // rides on the product-read right rather than a separate one.
         _permissions.Demand(PermissionCode.ProductRead);
 
-        var suppliers = await _suppliers.ListAsync(includeInactive, ct);
+        var suppliers = await _suppliers.ListAsync(includeInactive, filter, ct);
 
         IReadOnlyList<SupplierListItemDto> items =
             suppliers.Select(SupplierListItemDto.From).ToList();

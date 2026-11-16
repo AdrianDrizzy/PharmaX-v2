@@ -64,6 +64,13 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
             SearchChanged?.Invoke(this, EventArgs.Empty);
         };
 
+        _filters = ListFilterBar.Under(pnlTop);
+        _filters.Changed += (_, _) =>
+        {
+            GridPager.Of(grdTariffs)?.Restart();
+            SearchChanged?.Invoke(this, EventArgs.Empty);
+        };
+
         grdTariffs.DoubleClick += (_, _) =>
             EditRequested?.Invoke(this, EventArgs.Empty);
 
@@ -71,15 +78,26 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
     }
 
     /// Runtime. Resolved by the container.
-    public frmTariffList(TariffListPresenter presenter) : this()
+    public frmTariffList(TariffListPresenter presenter,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes) : this()
     {
         _presenter = presenter;
+        _scopes = scopes;
         _presenter.Attach(this);
     }
+
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
+
+    /// Sort, and Filter by when a tariff was added or changed.
+    private readonly ListFilterBar _filters;
 
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+
+        if (_scopes is not null)
+            await _filters.RememberSortAsync(_scopes, "tariffs");
+
         if (_presenter is not null) await _presenter.InitialiseAsync();
         txtSearch.Focus();
     }
@@ -96,6 +114,8 @@ public partial class frmTariffList : PhxFormBase, ITariffListView
 
     public Guid? SchemeFilter =>
         cboScheme.SelectedValue is Guid id && id != AllSchemes ? id : null;
+
+    public Application.Abstractions.ListFilter Filter => _filters.Filter;
 
     public Guid? SelectedId => grdTariffs.CurrentRow?.DataBoundItem
         is TariffListItemDto dto ? dto.Id : null;

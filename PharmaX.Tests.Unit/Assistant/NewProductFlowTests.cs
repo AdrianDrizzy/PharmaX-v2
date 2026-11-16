@@ -41,7 +41,7 @@ public class NewProductFlowTests
         _products.FindAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci => Result<ProductListItemDto?>.Ok(_catalogue.Find(p => p.Code == (string)ci[0])
                                                           ?? _barcodes.GetValueOrDefault((string)ci[0])));
-        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(_ => Result<ProductPageDto>.Ok(new ProductPageDto(_catalogue.ToList(), _catalogue.Count)));
         _products.CreateAsync(Arg.Any<ProductEditDto>(), Arg.Any<CancellationToken>())
             .Returns(Result<Guid>.Ok(Guid.NewGuid()));
@@ -65,7 +65,7 @@ public class NewProductFlowTests
     }
 
     private void List(ReferenceKind kind, params ReferenceItemDto[] items) =>
-        _reference.ListAsync(kind, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _reference.ListAsync(kind, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<IReadOnlyList<ReferenceItemDto>>.Ok(items));
 
     private NewProductFlow Flow(string? name = "Vitamin C 1000mg") =>

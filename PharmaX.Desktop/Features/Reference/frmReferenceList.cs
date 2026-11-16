@@ -57,6 +57,13 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         };
 
+        _filters = ListFilterBar.Under(pnlTop);
+        _filters.Changed += (_, _) =>
+        {
+            GridPager.Of(grdItems)?.Restart();
+            RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
+
         grdItems.DoubleClick += (_, _) =>
             EditRequested?.Invoke(this, EventArgs.Empty);
 
@@ -66,11 +73,18 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     }
 
     /// Runtime. Resolved by the container.
-    public frmReferenceList(ReferenceListPresenter presenter) : this()
+    public frmReferenceList(ReferenceListPresenter presenter,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes) : this()
     {
         _presenter = presenter;
+        _scopes = scopes;
         _presenter.Attach(this);
     }
+
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
+
+    /// Sort, and Filter by when an entry was added or changed.
+    private readonly ListFilterBar _filters;
 
     public ReferenceKind Kind { get; private set; } = ReferenceKind.Department;
 
@@ -80,6 +94,11 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+
+        // One screen, several lists: each remembers its own Sort.
+        if (_scopes is not null)
+            await _filters.RememberSortAsync(_scopes, "reference." + Kind);
+
         if (_presenter is not null) await _presenter.InitialiseAsync();
         txtSearch.Focus();
     }
@@ -93,6 +112,8 @@ public partial class frmReferenceList : PhxFormBase, IReferenceListView
     public string SearchText => txtSearch.Text.Trim();
 
     public bool IncludeInactive => chkInactive.Checked;
+
+    public Application.Abstractions.ListFilter Filter => _filters.Filter;
 
     public Guid? SelectedId => grdItems.CurrentRow?.DataBoundItem
         is ReferenceItemDto dto ? dto.Id : null;

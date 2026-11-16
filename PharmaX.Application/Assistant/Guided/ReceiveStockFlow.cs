@@ -112,7 +112,7 @@ public sealed class ReceiveStockFlow : GuidedFlow
 
     private async Task<string> SupplierPromptAsync(CancellationToken ct)
     {
-        var list = await _suppliers.ListAsync(includeInactive: false, ct);
+        var list = await _suppliers.ListAsync(includeInactive: false, ct: ct);
         var suppliers = list.IsSuccess ? list.Value : Array.Empty<SupplierListItemDto>();
 
         if (_supplierSaid is null) return "Which supplier?";

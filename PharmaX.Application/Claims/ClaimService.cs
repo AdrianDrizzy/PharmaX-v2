@@ -168,7 +168,7 @@ public sealed class ClaimService : IClaimService
                 outstanding.Error.Code, outstanding.Error.Message);
 
         var schemes = await _reference.ListAsync(
-            ReferenceKind.MedicalAidScheme, "", includeInactive: true, ct);
+            ReferenceKind.MedicalAidScheme, "", includeInactive: true, ct: ct);
 
         IReadOnlyList<SchemeAgeDto> analysis = outstanding.Value
             .GroupBy(c => c.SchemeName, StringComparer.Ordinal)

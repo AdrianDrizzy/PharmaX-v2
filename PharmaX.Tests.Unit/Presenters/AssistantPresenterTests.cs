@@ -150,7 +150,7 @@ public class AssistantPresenterTests
                                     && q.Contains("Paracetamol (Acetaminophen)", StringComparison.Ordinal)),
                 Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>())
             .Returns("Rest and fluids help.");
-        products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(ci => PharmaX.Application.Results.Result<PharmaX.Application.Inventory.Dtos.ProductPageDto>.Ok(new(
                 (string)ci[0] == "paracetamol"
                     ? new[]
@@ -194,7 +194,7 @@ public class AssistantPresenterTests
         _chat.AskAsync(Arg.Any<IReadOnlyList<ChatTurn>>(), Arg.Is<string>(q => q.StartsWith("List the", StringComparison.Ordinal)),
                 Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>())
             .Returns("paracetamol, aspirin");
-        products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(ci => PharmaX.Application.Results.Result<PharmaX.Application.Inventory.Dtos.ProductPageDto>.Ok(new(
                 (string)ci[0] switch
                 {

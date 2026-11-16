@@ -17,6 +17,7 @@ public interface IProductService
     Task<Result<ProductPageDto>> SearchAsync(string term, int take = 200,
                                              int skip = 0,
                                              bool includeInactive = true,
+                                             ListFilter? filter = null,
                                              CancellationToken ct = default);
 
     /// <summary>
@@ -24,7 +25,8 @@ public interface IProductService
     /// which batch it came in on, how much is left and when it expires.
     /// </summary>
     Task<Result<ProductBatchPageDto>> SearchBatchesAsync(string term,
-        int take = 200, int skip = 0, CancellationToken ct = default);
+        int take = 200, int skip = 0, ListFilter? filter = null,
+        CancellationToken ct = default);
 
     Task<Result<ProductDto>> GetAsync(Guid id, CancellationToken ct = default);
 
@@ -91,7 +93,7 @@ public sealed partial class ProductService : IProductService
 
     public async Task<Result<ProductPageDto>> SearchAsync(string term,
         int take = 200, int skip = 0, bool includeInactive = true,
-        CancellationToken ct = default)
+        ListFilter? filter = null, CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
@@ -100,8 +102,8 @@ public sealed partial class ProductService : IProductService
         var scope = _permissions.ProductScope();
 
         var products = await _products.SearchAsync(term, take, scope,
-                                                   skip, includeInactive, ct);
-        var total = await _products.CountAsync(term, scope, includeInactive, ct);
+                                                   skip, includeInactive, filter, ct);
+        var total = await _products.CountAsync(term, scope, includeInactive, filter, ct);
 
         IReadOnlyList<ProductListItemDto> items =
             products.Select(ProductListItemDto.From).ToList();
@@ -110,7 +112,7 @@ public sealed partial class ProductService : IProductService
     }
 
     public async Task<Result<ProductBatchPageDto>> SearchBatchesAsync(
-        string term, int take = 200, int skip = 0,
+        string term, int take = 200, int skip = 0, ListFilter? filter = null,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
@@ -118,8 +120,8 @@ public sealed partial class ProductService : IProductService
         var scope = _permissions.ProductScope();
 
         var products = await _products.SearchAsync(term, take, scope,
-                                                   skip, ct: ct);
-        var total = await _products.CountAsync(term, scope, ct: ct);
+                                                   skip, filter: filter, ct: ct);
+        var total = await _products.CountAsync(term, scope, filter: filter, ct: ct);
 
         var batches = await _batches.ForProductsAsync(
             products.Select(p => p.Id).ToList(), ct);
