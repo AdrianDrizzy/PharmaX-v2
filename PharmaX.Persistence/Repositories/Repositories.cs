@@ -180,22 +180,32 @@ public sealed class ProductRepository : IProductRepository
     /// </remarks>
     public async Task<IReadOnlyList<Product>> SearchAsync(string term,
         int take = 200, ProductScope scope = ProductScope.All, int skip = 0,
-        bool includeInactive = true,
+        bool includeInactive = true, ListFilter? filter = null,
         CancellationToken ct = default)
     {
         var words = SearchTerms.Words(term);
         var code = words.Count == 1 ? words[0].ToUpperInvariant() : null;
         var start = words.Count > 0 ? $"{words[0]}%" : null;
 
-        return await Matching(term, scope)
-            .Where(p => includeInactive || p.IsActive)
-            .OrderBy(p => code != null && p.Code == code ? 0 : 1)
-            .ThenBy(p => start != null
-                         && EF.Functions.Like(p.Description, start) ? 0 : 1)
-            .ThenBy(p => p.Description)
+        var query = Matching(term, scope, filter)
+            .Where(p => includeInactive || p.IsActive);
 
-            // The code last, so that two products with the same name
-            // keep their order from one page to the next.
+        // As double: SQLite cannot order by a decimal.
+        var sorted = filter?.Sort switch
+        {
+            ListSort.NameZToA => query.OrderByDescending(p => p.Description),
+            ListSort.PriceHighest => query.OrderByDescending(p => (double)p.RetailPrice.Amount),
+            ListSort.PriceLowest => query.OrderBy(p => (double)p.RetailPrice.Amount),
+            _ => query.ByDate(filter) ?? query
+                .OrderBy(p => code != null && p.Code == code ? 0 : 1)
+                .ThenBy(p => start != null
+                             && EF.Functions.Like(p.Description, start) ? 0 : 1)
+                .ThenBy(p => p.Description)
+        };
+
+        // The code last, so that two products with the same name
+        // keep their order from one page to the next.
+        return await sorted
             .ThenBy(p => p.Code)
             .Skip(skip)
             .Take(take)
@@ -204,9 +214,9 @@ public sealed class ProductRepository : IProductRepository
 
     public async Task<int> CountAsync(string term,
         ProductScope scope = ProductScope.All,
-        bool includeInactive = true,
+        bool includeInactive = true, ListFilter? filter = null,
         CancellationToken ct = default) =>
-        await Matching(term, scope)
+        await Matching(term, scope, filter)
             .Where(p => includeInactive || p.IsActive)
             .CountAsync(ct);
 
@@ -268,9 +278,10 @@ public sealed class ProductRepository : IProductRepository
     /// Word by word, so "amox 500" finds "Amoxicillin 500mg capsules"
     /// and the generic name finds the brands sold under it.
     /// </remarks>
-    private IQueryable<Product> Matching(string term, ProductScope scope)
+    private IQueryable<Product> Matching(string term, ProductScope scope,
+        ListFilter? filter)
     {
-        var query = InScope(_db.Products.AsNoTracking(), scope);
+        var query = InScope(_db.Products.AsNoTracking(), scope).Within(filter);
 
         foreach (var word in SearchTerms.Words(term))
         {
@@ -362,9 +373,10 @@ public sealed class PatientRepository : IPatientRepository
     /// </remarks>
     public async Task<IReadOnlyList<Patient>> SearchAsync(string term,
         int take = 100, int skip = 0, bool includeInactive = false,
-        CancellationToken ct = default)
+        ListFilter? filter = null, CancellationToken ct = default)
     {
         var (query, number) = Matching(term, includeInactive);
+        query = query.Within(filter);
 
         // The counter types the surname first and the first name after
         // it, so a patient whose surname starts with the first word - and
@@ -374,15 +386,18 @@ public sealed class PatientRepository : IPatientRepository
         var surname = words.Count > 0 ? $"{words[0]}%" : null;
         var firstName = words.Count > 1 ? $"{words[1]}%" : null;
 
-        return await query
-            .OrderBy(p => surname != null
-                          && EF.Functions.Like(p.Surname, surname) ? 0 : 1)
-            .ThenBy(p => firstName != null
-                         && EF.Functions.Like(p.FirstNames, firstName) ? 0 : 1)
-            .ThenBy(p => p.Surname).ThenBy(p => p.FirstNames)
+        var sorted = filter?.Sort == ListSort.NameZToA
+            ? query.OrderByDescending(p => p.Surname).ThenByDescending(p => p.FirstNames)
+            : query.ByDate(filter) ?? query
+                .OrderBy(p => surname != null
+                              && EF.Functions.Like(p.Surname, surname) ? 0 : 1)
+                .ThenBy(p => firstName != null
+                             && EF.Functions.Like(p.FirstNames, firstName) ? 0 : 1)
+                .ThenBy(p => p.Surname).ThenBy(p => p.FirstNames);
 
-            // The file last, so two of the same name keep their order
-            // from one page to the next.
+        // The file last, so two of the same name keep their order
+        // from one page to the next.
+        return await sorted
             .ThenBy(p => p.FileNumber)
             .Skip(skip)
             .Take(take)
@@ -390,8 +405,8 @@ public sealed class PatientRepository : IPatientRepository
     }
 
     public async Task<int> CountAsync(string term, bool includeInactive = false,
-        CancellationToken ct = default) =>
-        await Matching(term, includeInactive).Query.CountAsync(ct);
+        ListFilter? filter = null, CancellationToken ct = default) =>
+        await Matching(term, includeInactive).Query.Within(filter).CountAsync(ct);
 
     /// The active patients the search matches, and the telephone or ID
     /// number it was read as, where it was read as one.
@@ -915,13 +930,18 @@ public sealed class SupplierRepository : ISupplierRepository
     }
 
     public async Task<IReadOnlyList<Supplier>> ListAsync(
-        bool includeInactive = false, CancellationToken ct = default)
+        bool includeInactive = false, ListFilter? filter = null,
+        CancellationToken ct = default)
     {
-        var query = _db.Suppliers.AsNoTracking().AsQueryable();
+        var query = _db.Suppliers.AsNoTracking().Within(filter);
 
         if (!includeInactive) query = query.Where(s => s.IsActive);
 
-        return await query.OrderBy(s => s.Name).ToListAsync(ct);
+        var sorted = filter?.Sort == ListSort.NameZToA
+            ? query.OrderByDescending(s => s.Name)
+            : query.ByDate(filter) ?? query.OrderBy(s => s.Name);
+
+        return await sorted.ThenBy(s => s.Code).ToListAsync(ct);
     }
 
     public async Task AddAsync(Supplier supplier,

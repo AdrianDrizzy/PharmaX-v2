@@ -42,7 +42,7 @@ public class DispenseFlowTests
 
     public DispenseFlowTests()
     {
-        _patients.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _patients.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(ci => Result<IReadOnlyList<PatientListItemDto>>.Ok(
                 ((string)ci[0]).Contains("Moyo", StringComparison.OrdinalIgnoreCase)
                     ? new[]
@@ -56,14 +56,14 @@ public class DispenseFlowTests
         _patients.GetAsync(Johnny, Arg.Any<CancellationToken>()).Returns(Result<PatientDto>.Ok(Patient(Johnny, "Johnny",
             "1475", null)));
 
-        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<ProductPageDto>.Ok(new ProductPageDto(new[]
             {
                 Listed(Amoxil, "AMX500", "Amoxicillin 500mg capsules 21s", 118.40m, 48m, schedule: 3, pack: "CAP 21")
             }, 1)));
         _products.FindAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Result<ProductListItemDto?>.Ok(null));
 
-        _reference.ListAsync(ReferenceKind.Prescriber, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _reference.ListAsync(ReferenceKind.Prescriber, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<IReadOnlyList<ReferenceItemDto>>.Ok(new[]
             {
                 new ReferenceItemDto(Guid.NewGuid(), "158", "J P Bell", "Practice 79855 · Harare", true),

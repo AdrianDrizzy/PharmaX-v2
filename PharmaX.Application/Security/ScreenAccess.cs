@@ -31,7 +31,7 @@ public static class ScreenAccess
         {
             // Every signed-in user.
             ["printer-setup"] = _ => true,
-            ["print-sizes"] = _ => true,
+            ["print-sizes"] = p => p.Has(PermissionCode.PrintSizes),
             ["change-password"] = _ => true,
             ["logoff"] = _ => true,
             ["exit"] = _ => true,

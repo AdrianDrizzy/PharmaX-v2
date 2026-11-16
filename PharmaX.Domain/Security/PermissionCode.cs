@@ -242,6 +242,17 @@ public static class PermissionCode
     // role without the rest (12 November 2026). They were all System settings.
     public const string BranchMaintain = "adm.branches";
     public const string ReceiptTemplate = "adm.receipt.template";
+
+    /// <summary>
+    /// Print sizes for labels, receipts and claim forms on this computer.
+    /// </summary>
+    /// <remarks>
+    /// Every standard role holds it by default (16 November 2026), so a
+    /// till can match the stock in its printer without an administrator.
+    /// Untick it on Role permissions to lock the screen down.
+    /// </remarks>
+    public const string PrintSizes = "adm.print.sizes";
+
     public const string DataImport = "adm.data.import";
     public const string Backup = "adm.backup";
 
@@ -275,7 +286,7 @@ public static class PermissionCode
         ReportClinical, LedgerRead, LedgerPost, AccountDeactivate,
         UserRoleAssign, RolePermissions, SettingsChange, DispensingAmend, StockPrepack,
         StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust,
-        ReceiptHide, BranchMaintain, ReceiptTemplate, DataImport, Backup,
+        ReceiptHide, BranchMaintain, ReceiptTemplate, PrintSizes, DataImport, Backup,
         SystemConsole, LabelTemplates, LabelDeactivate
     };
 
@@ -325,6 +336,7 @@ public static class PermissionCode
         SettingsChange => "System setup",
         BranchMaintain => "Branches",
         ReceiptTemplate => "Receipt template",
+        PrintSizes => "Print sizes",
         DataImport => "Import data",
         Backup => "Back up now",
         SystemConsole => "System console, control variables and pharmacy details",

@@ -13,10 +13,11 @@ public interface IPatientService
     /// <param name="skip">Matches passed over first, for a later page.</param>
     Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(string term,
         int take = 100, int skip = 0, bool includeInactive = false,
-        CancellationToken ct = default);
+        ListFilter? filter = null, CancellationToken ct = default);
 
     /// How many patients the same search matches, across every page.
     Task<Result<int>> CountAsync(string term, bool includeInactive = false,
+                                 ListFilter? filter = null,
                                  CancellationToken ct = default);
 
     Task<Result<PatientDto>> GetAsync(Guid id, CancellationToken ct = default);
@@ -117,13 +118,13 @@ public sealed class PatientService : IPatientService
 
     public async Task<Result<IReadOnlyList<PatientListItemDto>>> SearchAsync(
         string term, int take = 100, int skip = 0, bool includeInactive = false,
-        CancellationToken ct = default)
+        ListFilter? filter = null, CancellationToken ct = default)
     {
         // A patient list is clinical information, so reading it needs the
         // dispensing permission rather than the product one.
         _permissions.Demand(PermissionCode.PatientMaintain);
 
-        var patients = await _patients.SearchAsync(term, take, skip, includeInactive, ct);
+        var patients = await _patients.SearchAsync(term, take, skip, includeInactive, filter, ct);
 
         var allergic = await _patients
             .WithAllergiesAsync(patients.Select(p => p.Id), ct);
@@ -137,11 +138,11 @@ public sealed class PatientService : IPatientService
     }
 
     public async Task<Result<int>> CountAsync(string term, bool includeInactive = false,
-        CancellationToken ct = default)
+        ListFilter? filter = null, CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.PatientMaintain);
 
-        return Result<int>.Ok(await _patients.CountAsync(term, includeInactive, ct));
+        return Result<int>.Ok(await _patients.CountAsync(term, includeInactive, filter, ct));
     }
 
     public async Task<Result<PatientDto>> GetAsync(Guid id,

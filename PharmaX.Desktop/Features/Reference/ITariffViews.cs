@@ -11,6 +11,9 @@ public interface ITariffListView : IView
     /// Null means every society.
     Guid? SchemeFilter { get; }
 
+    /// The Sort and date range under the search box.
+    Application.Abstractions.ListFilter Filter { get; }
+
     Guid? SelectedId { get; }
     bool SelectedIsActive { get; }
 

@@ -33,7 +33,7 @@ public sealed class ReferenceListPresenter : PresenterBase<IReferenceListView>
     private Task LoadAsync() => GuardAsync(async () =>
     {
         var result = await _reference.ListAsync(View.Kind, View.SearchText,
-            View.IncludeInactive);
+            View.IncludeInactive, View.Filter);
 
         if (result.IsFailure)
         {

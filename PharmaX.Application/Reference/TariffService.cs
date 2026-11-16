@@ -14,7 +14,7 @@ public interface ITariffRepository
     /// a list of identifiers is no use on a screen.
     /// </summary>
     Task<IReadOnlyList<TariffListItemDto>> ListAsync(Guid? schemeId,
-        string term, CancellationToken ct = default);
+        string term, ListFilter? filter = null, CancellationToken ct = default);
 
     Task<Tariff?> GetAsync(Guid id, CancellationToken ct = default);
 
@@ -31,7 +31,7 @@ public interface ITariffRepository
 public interface ITariffService
 {
     Task<Result<IReadOnlyList<TariffListItemDto>>> ListAsync(
-        Guid? schemeId = null, string term = "",
+        Guid? schemeId = null, string term = "", ListFilter? filter = null,
         CancellationToken ct = default);
 
     Task<Result<Guid>> CreateAsync(TariffEditDto edit,
@@ -71,12 +71,12 @@ public sealed class TariffService : ITariffService
     }
 
     public async Task<Result<IReadOnlyList<TariffListItemDto>>> ListAsync(
-        Guid? schemeId = null, string term = "",
+        Guid? schemeId = null, string term = "", ListFilter? filter = null,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
-        var rows = await _tariffs.ListAsync(schemeId, term, ct);
+        var rows = await _tariffs.ListAsync(schemeId, term, filter, ct);
         return Result<IReadOnlyList<TariffListItemDto>>.Ok(rows);
     }
 

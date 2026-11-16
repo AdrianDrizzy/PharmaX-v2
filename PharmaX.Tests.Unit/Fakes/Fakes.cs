@@ -320,8 +320,10 @@ public sealed class InMemoryProductRepository : IProductRepository
 
     public Task<IReadOnlyList<Product>> SearchAsync(string term,
         int take = 200, ProductScope scope = ProductScope.All, int skip = 0,
-        bool includeInactive = true, CancellationToken ct = default)
+        bool includeInactive = true, ListFilter? filter = null,
+        CancellationToken ct = default)
     {
+        // shortcut: ignores the Sort and date range, which the integration tests cover against SQLite.
         IReadOnlyList<Product> found = _products
             .Where(p => InScope(p, scope))
             .Where(p => includeInactive || p.IsActive)
@@ -338,7 +340,7 @@ public sealed class InMemoryProductRepository : IProductRepository
 
     public Task<int> CountAsync(string term,
         ProductScope scope = ProductScope.All, bool includeInactive = true,
-        CancellationToken ct = default) =>
+        ListFilter? filter = null, CancellationToken ct = default) =>
         Task.FromResult(_products.Count(p => InScope(p, scope)
                                              && (includeInactive || p.IsActive)));
 

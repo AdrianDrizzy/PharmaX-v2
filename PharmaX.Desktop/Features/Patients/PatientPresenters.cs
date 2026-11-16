@@ -18,6 +18,9 @@ public interface IPatientListView : IView
     /// The "Show deactivated" box.
     bool IncludeInactive { get; }
 
+    /// The Sort and date range under the search box.
+    Application.Abstractions.ListFilter Filter { get; }
+
     void ShowPatients(IReadOnlyList<PatientListItemDto> patients);
 
     /// <param name="page">From nought.</param>
@@ -94,7 +97,7 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
         Enqueue(() => GuardAsync(async () =>
         {
             var result = await _patients.SearchAsync(View.SearchText, take: int.MaxValue,
-                includeInactive: View.IncludeInactive);
+                includeInactive: View.IncludeInactive, filter: View.Filter);
             if (result.IsFailure) View.ShowError(result.Error.Message);
             else export(result.Value.ToList<object>());
         }));
@@ -128,7 +131,8 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
     private Task LoadAsync() => GuardAsync(async () =>
     {
-        var count = await _patients.CountAsync(View.SearchText, View.IncludeInactive);
+        var count = await _patients.CountAsync(View.SearchText, View.IncludeInactive,
+            View.Filter);
 
         if (count.IsFailure)
         {
@@ -143,7 +147,7 @@ public sealed class PatientListPresenter : PresenterBase<IPatientListView>
 
         var result = await _patients.SearchAsync(View.SearchText,
             take: PageSize, skip: _page * PageSize,
-            includeInactive: View.IncludeInactive);
+            includeInactive: View.IncludeInactive, filter: View.Filter);
 
         if (result.IsFailure)
         {

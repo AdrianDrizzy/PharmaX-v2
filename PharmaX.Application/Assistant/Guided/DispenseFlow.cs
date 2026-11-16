@@ -343,7 +343,7 @@ public sealed partial class DispenseFlow : GuidedFlow
 
         if (chosen is null)
         {
-            var found = await _reference.ListAsync(ReferenceKind.Prescriber, answer.Trim(), includeInactive: false, ct);
+            var found = await _reference.ListAsync(ReferenceKind.Prescriber, answer.Trim(), includeInactive: false, ct: ct);
             _prescriberMatches = found.IsSuccess ? found.Value.Take(MostMatches).ToList() : Array.Empty<ReferenceItemDto>();
 
             if (_prescriberMatches.Count > 1) return new Reply.Jump("prescriber");

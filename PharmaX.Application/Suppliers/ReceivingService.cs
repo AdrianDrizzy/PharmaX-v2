@@ -92,7 +92,7 @@ public sealed class ReceivingService : IReceivingService
         DemandReceivingAccess();
 
         var receipts = await _receipts.RecentAsync(ct: ct);
-        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct);
+        var suppliers = await _suppliers.ListAsync(includeInactive: true, ct: ct);
 
         var names = suppliers.ToDictionary(s => s.Id, s => s.Name);
 

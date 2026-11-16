@@ -33,6 +33,13 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         };
 
+        _filters = ListFilterBar.Under(pnlTop);
+        _filters.Changed += (_, _) =>
+        {
+            GridPager.Of(grdSuppliers)?.Restart();
+            RefreshRequested?.Invoke(this, EventArgs.Empty);
+        };
+
         grdSuppliers.DoubleClick += (_, _) =>
         {
             if (IsPickerMode) ChooseRequested?.Invoke(this, EventArgs.Empty);
@@ -61,15 +68,22 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
 
     private readonly SearchSuggestions _suggestions;
 
+    /// Sort, and Filter by when a supplier was added or changed.
+    private readonly ListFilterBar _filters;
+
     /// Every supplier read, before the search narrows them.
     private IReadOnlyList<SupplierListItemDto> _all = Array.Empty<SupplierListItemDto>();
 
     /// Runtime. Resolved by the container.
-    public frmSupplierList(SupplierListPresenter presenter) : this()
+    public frmSupplierList(SupplierListPresenter presenter,
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopes) : this()
     {
         _presenter = presenter;
+        _scopes = scopes;
         _presenter.Attach(this);
     }
+
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
 
     public bool IsPickerMode { get; private set; }
 
@@ -85,6 +99,10 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+
+        if (_scopes is not null && !IsPickerMode)
+            await _filters.RememberSortAsync(_scopes, "suppliers");
+
         if (_presenter is not null) await _presenter.InitialiseAsync();
         txtSearch.Focus();
     }
@@ -100,6 +118,8 @@ public partial class frmSupplierList : PhxFormBase, ISupplierListView
         btnDeactivate.Text = SelectedIsActive ? "Deac&tivate" : "Re&activate";
 
     public bool IncludeInactive => chkIncludeInactive.Checked;
+
+    public Application.Abstractions.ListFilter Filter => _filters.Filter;
 
     public void ShowSuppliers(IReadOnlyList<SupplierListItemDto> suppliers)
     {

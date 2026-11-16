@@ -14,6 +14,9 @@ public interface ISupplierListView : IView
 
     bool IncludeInactive { get; }
 
+    /// The Sort and date range under the search box.
+    Application.Abstractions.ListFilter Filter { get; }
+
     void ShowSuppliers(IReadOnlyList<SupplierListItemDto> suppliers);
 
     /// True where the screen was opened to pick a supplier for the
@@ -68,7 +71,7 @@ public sealed class SupplierListPresenter : PresenterBase<ISupplierListView>
 
     private Task LoadAsync() => GuardAsync(async () =>
     {
-        var result = await _suppliers.ListAsync(View.IncludeInactive);
+        var result = await _suppliers.ListAsync(View.IncludeInactive, View.Filter);
 
         if (result.IsFailure)
         {

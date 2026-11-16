@@ -239,7 +239,11 @@ public static class FunctionKeys
         Descendants(form)
             .OfType<Button>()
             .Where(b => !InPager(b))
-            .OrderBy(b => Offset(b).Y / 20)
+
+            // The Sort/Filter strip last: it sits above the buttons, and must
+            // not take the spare keys they already answer to.
+            .OrderBy(b => b.Parent?.Parent is Controls.ListFilterBar)
+            .ThenBy(b => Offset(b).Y / 20)
             .ThenBy(b => Offset(b).X);
 
     private static bool InPager(Control control)

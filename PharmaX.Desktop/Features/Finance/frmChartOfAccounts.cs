@@ -56,14 +56,19 @@ public partial class frmChartOfAccounts : PhxFormBase, IChartView
         _presenter = presenter;
         _workbooks = workbooks;
         _user = user;
-        btnDeactivate.Visible = Application.Security.PermissionServiceExtensions
-            .Has(permissions, Domain.Security.PermissionCode.AccountDeactivate);
+        _permissions = permissions;
         _presenter.Attach(this);
     }
+
+    private readonly Application.Security.IPermissionService? _permissions;
 
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        // Here, not in the constructor: the check reads the database.
+        if (_permissions is not null)
+            btnDeactivate.Visible = Application.Security.PermissionServiceExtensions
+                .Has(_permissions, Domain.Security.PermissionCode.AccountDeactivate);
         if (_presenter is not null) await _presenter.InitialiseAsync();
     }
 

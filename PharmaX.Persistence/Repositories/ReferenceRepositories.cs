@@ -17,23 +17,23 @@ public sealed class ReferenceRepository : IReferenceRepository
 
     public async Task<IReadOnlyList<ReferenceEntry>> ListAsync(
         ReferenceKind kind, string term, bool includeInactive,
-        CancellationToken ct = default) =>
+        ListFilter? filter = null, CancellationToken ct = default) =>
         kind switch
         {
             ReferenceKind.Department =>
-                await Query(_db.Departments, term, includeInactive, ct),
+                await Query(_db.Departments, term, includeInactive, filter, ct),
             ReferenceKind.Category =>
-                await Query(_db.Categories, term, includeInactive, ct),
+                await Query(_db.Categories, term, includeInactive, filter, ct),
             ReferenceKind.Manufacturer =>
-                await Query(_db.Manufacturers, term, includeInactive, ct),
+                await Query(_db.Manufacturers, term, includeInactive, filter, ct),
             ReferenceKind.Branch =>
-                await Query(_db.Branches, term, includeInactive, ct),
+                await Query(_db.Branches, term, includeInactive, filter, ct),
             ReferenceKind.MedicalAidScheme =>
-                await Query(_db.MedicalAidSchemes, term, includeInactive, ct),
+                await Query(_db.MedicalAidSchemes, term, includeInactive, filter, ct),
             ReferenceKind.Prescriber =>
-                await Query(_db.Prescribers, term, includeInactive, ct),
+                await Query(_db.Prescribers, term, includeInactive, filter, ct),
             ReferenceKind.DosageCode =>
-                await Query(_db.DosageCodes, term, includeInactive, ct),
+                await Query(_db.DosageCodes, term, includeInactive, filter, ct),
             _ => Array.Empty<ReferenceEntry>()
         };
 
@@ -121,12 +121,12 @@ public sealed class ReferenceRepository : IReferenceRepository
     }
 
     private static async Task<IReadOnlyList<ReferenceEntry>> Query<T>(
-        DbSet<T> set, string term, bool includeInactive,
+        DbSet<T> set, string term, bool includeInactive, ListFilter? filter,
         CancellationToken ct) where T : ReferenceEntry
     {
         // Read, not tracked: the list shows what the table holds each time
         // it is refreshed, rather than this context's first copy of it.
-        var query = set.AsNoTracking();
+        var query = set.AsNoTracking().Within(filter);
 
         if (!includeInactive) query = query.Where(x => x.IsActive);
 
@@ -142,7 +142,11 @@ public sealed class ReferenceRepository : IReferenceRepository
                                       && EF.Functions.Like(x.Detail, pattern)));
         }
 
-        return await query.OrderBy(x => x.Name).ToListAsync(ct);
+        var sorted = filter?.Sort == ListSort.NameZToA
+            ? query.OrderByDescending(x => x.Name)
+            : query.ByDate(filter) ?? query.OrderBy(x => x.Name);
+
+        return await sorted.ThenBy(x => x.Code).ToListAsync(ct);
     }
 }
 
@@ -153,9 +157,10 @@ public sealed class TariffRepository : ITariffRepository
     public TariffRepository(PharmaXDbContext db) => _db = db;
 
     public async Task<IReadOnlyList<TariffListItemDto>> ListAsync(
-        Guid? schemeId, string term, CancellationToken ct = default)
+        Guid? schemeId, string term, ListFilter? filter = null,
+        CancellationToken ct = default)
     {
-        var query = _db.Tariffs.AsNoTracking().AsQueryable();
+        var query = _db.Tariffs.AsNoTracking().Within(filter);
 
         if (schemeId is Guid scheme)
             query = query.Where(t => t.SchemeId == scheme);
@@ -168,22 +173,36 @@ public sealed class TariffRepository : ITariffRepository
                   t => t.SchemeId, s => s.Id, (t, s) => new { t, s })
             .Join(_db.Products.AsNoTracking(),
                   x => x.t.ProductId, p => p.Id, (x, p) => new { x.t, x.s, p })
-            .Select(x => new TariffListItemDto(
-                x.t.Id, x.s.Code, x.s.Name, x.p.Code, x.p.Description,
-                x.t.Price.Amount, x.t.DispensingFee.Amount,
-                x.t.Price.Amount + x.t.DispensingFee.Amount,
-                x.t.EffectiveFrom, x.t.EffectiveTo, x.t.IsActive))
+            .Select(x => new
+            {
+                Row = new TariffListItemDto(
+                    x.t.Id, x.s.Code, x.s.Name, x.p.Code, x.p.Description,
+                    x.t.Price.Amount, x.t.DispensingFee.Amount,
+                    x.t.Price.Amount + x.t.DispensingFee.Amount,
+                    x.t.EffectiveFrom, x.t.EffectiveTo, x.t.IsActive),
+                Added = x.t.CreatedAtUtc,
+                Modified = x.t.UpdatedAtUtc
+            })
             .ToListAsync(ct);
 
         // Word by word, so "cimas amox" finds Cimas's amoxicillin tariff.
         if (!string.IsNullOrWhiteSpace(term))
-            rows = rows.Where(r => SearchTerms.Matches(term, r.ProductCode,
-                r.ProductDescription, r.SchemeName)).ToList();
+            rows = rows.Where(r => SearchTerms.Matches(term, r.Row.ProductCode,
+                r.Row.ProductDescription, r.Row.SchemeName)).ToList();
 
-        return rows
-            .OrderBy(r => r.SchemeName)
-            .ThenBy(r => r.ProductDescription)
-            .ToList();
+        // Sorted here, as the search is: the whole list is already read.
+        var sorted = filter?.Sort switch
+        {
+            ListSort.NameZToA => rows.OrderByDescending(r => r.Row.SchemeName)
+                .ThenByDescending(r => r.Row.ProductDescription),
+            ListSort.NewestAdded => rows.OrderByDescending(r => r.Added),
+            ListSort.OldestAdded => rows.OrderBy(r => r.Added),
+            ListSort.RecentlyModified => rows.OrderByDescending(r => r.Modified),
+            _ => rows.OrderBy(r => r.Row.SchemeName)
+                .ThenBy(r => r.Row.ProductDescription)
+        };
+
+        return sorted.Select(r => r.Row).ToList();
     }
 
     public async Task<Tariff?> GetAsync(Guid id, CancellationToken ct = default)

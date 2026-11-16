@@ -50,7 +50,7 @@ public class SellFlowTests
             Listed(Codeine, "COD30", "PARACETAMOL CODEINE", 6m, 50m, schedule: 3, pack: "TAB 30")
         };
 
-        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _products.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(ci => Result<ProductPageDto>.Ok(new ProductPageDto(
                 catalogue.Where(p => p.Description.Contains(((string)ci[0]).ToUpperInvariant(), StringComparison.Ordinal)
                                      || ((string)ci[0]).Equals("paracetamol", StringComparison.OrdinalIgnoreCase))

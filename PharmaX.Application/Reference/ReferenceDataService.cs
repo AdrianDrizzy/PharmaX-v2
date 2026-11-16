@@ -13,7 +13,8 @@ namespace PharmaX.Application.Reference;
 public interface IReferenceRepository
 {
     Task<IReadOnlyList<ReferenceEntry>> ListAsync(ReferenceKind kind,
-        string term, bool includeInactive, CancellationToken ct = default);
+        string term, bool includeInactive, ListFilter? filter = null,
+        CancellationToken ct = default);
 
     Task<ReferenceEntry?> GetAsync(ReferenceKind kind, Guid id,
         CancellationToken ct = default);
@@ -29,7 +30,7 @@ public interface IReferenceDataService
 {
     Task<Result<IReadOnlyList<ReferenceItemDto>>> ListAsync(
         ReferenceKind kind, string term = "", bool includeInactive = true,
-        CancellationToken ct = default);
+        ListFilter? filter = null, CancellationToken ct = default);
 
     Task<Result<ReferenceItemDto>> GetAsync(ReferenceKind kind, Guid id,
         CancellationToken ct = default);
@@ -62,12 +63,12 @@ public sealed class ReferenceDataService : IReferenceDataService
 
     public async Task<Result<IReadOnlyList<ReferenceItemDto>>> ListAsync(
         ReferenceKind kind, string term = "", bool includeInactive = true,
-        CancellationToken ct = default)
+        ListFilter? filter = null, CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ProductRead);
 
         var entries = await _repository.ListAsync(kind, term, includeInactive,
-                                                  ct);
+                                                  filter, ct);
 
         IReadOnlyList<ReferenceItemDto> items =
             entries.Select(ReferenceItemDto.From).ToList();

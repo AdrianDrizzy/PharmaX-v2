@@ -43,7 +43,7 @@ public class StockAlertAssistantTests
     {
         var supplier = Supplier.Create(code, code + " Wholesale");
         _suppliers.GetAsync(supplier.Id, Arg.Any<CancellationToken>()).Returns(supplier);
-        _suppliers.ListAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _suppliers.ListAsync(Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(_ => (IReadOnlyList<Supplier>)_supplierList);
         _supplierList.Add(supplier);
         return supplier;

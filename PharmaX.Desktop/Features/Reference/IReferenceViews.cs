@@ -17,6 +17,9 @@ public interface IReferenceListView : IView
     /// is ticked, so they can be brought back.
     bool IncludeInactive { get; }
 
+    /// The Sort and date range under the search box.
+    Application.Abstractions.ListFilter Filter { get; }
+
     Guid? SelectedId { get; }
     bool SelectedIsActive { get; }
 

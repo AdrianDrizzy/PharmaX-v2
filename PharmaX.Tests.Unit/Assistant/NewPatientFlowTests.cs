@@ -27,7 +27,7 @@ public class NewPatientFlowTests
     {
         _clock.Today.Returns(Today);
 
-        _reference.ListAsync(ReferenceKind.MedicalAidScheme, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _reference.ListAsync(ReferenceKind.MedicalAidScheme, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<PharmaX.Application.Abstractions.ListFilter?>(), Arg.Any<CancellationToken>())
             .Returns(Result<IReadOnlyList<ReferenceItemDto>>.Ok(new[] { Cimas }));
         _patients.PossibleDuplicatesAsync(Arg.Any<PatientEditDto>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(_ => Result<IReadOnlyList<PatientListItemDto>>.Ok(_similar.ToList()));
