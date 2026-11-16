@@ -114,11 +114,11 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         _workbooks = workbooks;
         _user = user;
         _scopes = scopes;
-        btnDeactivate.Visible = Application.Security.PermissionServiceExtensions
-            .Has(permissions, Domain.Security.PermissionCode.PatientDeactivate);
+        _permissions = permissions;
         _presenter.Attach(this);
     }
 
+    private readonly Application.Security.IPermissionService? _permissions;
     private readonly Application.Reporting.IWorkbookWriter? _workbooks;
     private readonly Application.Abstractions.ICurrentUser? _user;
     private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? _scopes;
@@ -197,6 +197,10 @@ public partial class frmPatientList : PhxFormBase, IPatientListView
         if (_scopes is not null && !IsPickerMode)
             await _filters.RememberSortAsync(_scopes, "patients");
 
+        // Here, not in the constructor: the check reads the database. The picker never deactivates.
+        if (_permissions is not null)
+            btnDeactivate.Visible = !IsPickerMode && Application.Security.PermissionServiceExtensions
+                .Has(_permissions, Domain.Security.PermissionCode.PatientDeactivate);
         if (_presenter is not null) await _presenter.InitialiseAsync();
         txtSearch.Focus();
     }
