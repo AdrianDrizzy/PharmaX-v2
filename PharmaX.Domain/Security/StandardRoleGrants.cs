@@ -81,7 +81,10 @@ public static class StandardRoleGrants
             // Staff come and go at branch level. UserService stops a
             // manager handing out a role wider than their own, so this
             // does not make a manager an administrator.
-            PermissionCode.UserRoleAssign
+            PermissionCode.UserRoleAssign,
+
+            // Match the stock in this till's printer (16 November 2026).
+            PermissionCode.PrintSizes
         },
 
         Role.Standard.Pharmacist => new[]
@@ -90,6 +93,7 @@ public static class StandardRoleGrants
             PermissionCode.SaleTakePayment,
             PermissionCode.PatientMaintain,
             PermissionCode.PatientDeactivate,
+            PermissionCode.PrintSizes,
 
             // The authorisations a till asks for - a refund, a discount
             // over the cashier's limit, another person's till - are given
@@ -152,6 +156,7 @@ public static class StandardRoleGrants
             PermissionCode.SaleCreate,
             PermissionCode.PatientMaintain,
             PermissionCode.PatientDeactivate,
+            PermissionCode.PrintSizes,
 
             // The till's authorisations, as the pharmacist has them.
             PermissionCode.ReturnAuthorise,
@@ -188,13 +193,15 @@ public static class StandardRoleGrants
             PermissionCode.SaleTakePayment,
             PermissionCode.SessionCashUp,
             PermissionCode.SessionPayOut,
-            PermissionCode.ProductRead
+            PermissionCode.ProductRead,
+            PermissionCode.PrintSizes
         },
 
         Role.Standard.StockController => new[]
         {
             PermissionCode.ProductRead,
             PermissionCode.ProductDispensary,
+            PermissionCode.PrintSizes,
 
             // Adds the products the deliveries bring in. The selling
             // price of an existing product stays with inv.price.change,

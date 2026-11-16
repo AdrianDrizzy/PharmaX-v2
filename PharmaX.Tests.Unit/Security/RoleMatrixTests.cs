@@ -190,6 +190,20 @@ public class RoleMatrixTests
             .Should().BeEquivalentTo(Role.Standard.Administrator);
 
     /// <summary>
+    /// Every role may open Print sizes by default so each till can match
+    /// its own stock (16 November 2026).
+    /// </summary>
+    [Fact]
+    public void Every_standard_role_may_open_print_sizes()
+    {
+        foreach (var role in Role.Standard.All)
+            As(role).Has(PermissionCode.PrintSizes).Should().BeTrue(role);
+
+        ScreenAccess.CanOpen("print-sizes", As(Role.Standard.Cashier))
+            .Should().BeTrue();
+    }
+
+    /// <summary>
     /// What a till asks a second person for - a refund, a discount over the
     /// cashier's limit, another person's till - any of the senior roles can
     /// give, and nobody below them (16 October 2026).

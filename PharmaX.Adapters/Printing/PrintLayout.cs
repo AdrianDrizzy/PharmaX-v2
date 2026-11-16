@@ -99,8 +99,8 @@ public static class PrintPresets
     public static IReadOnlyList<(string Id, string Name, DocumentLayout Layout)>
         Receipts { get; } =
     [
-        ("receipt-57", "57 mm roll", new("receipt-57", 57m, 0m)),
         ("receipt-75", "Current — 75 mm roll", DocumentLayout.DefaultReceipt),
+        ("receipt-57", "57 mm roll", new("receipt-57", 57m, 0m)),
         ("receipt-80", "80 mm roll", new("receipt-80", 80m, 0m)),
         ("custom", "Custom…", DocumentLayout.DefaultReceipt with { PresetId = "custom" })
     ];
