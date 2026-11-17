@@ -39,6 +39,7 @@ public sealed class frmSystemSetup : PhxFormBase
 
     private readonly ComboBox _palettes = new();
     private readonly Label _paletteHint = new();
+    private readonly ComboBox _themes = new();
 
     private readonly Panel _body = new();
     private readonly Branding _preview = new();
@@ -76,7 +77,7 @@ public sealed class frmSystemSetup : PhxFormBase
 
         AcceptButton = _save;
         CancelButton = _cancel;
-        ClientSize = new Size(600, 700);
+        ClientSize = new Size(600, 740);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -237,7 +238,23 @@ public sealed class frmSystemSetup : PhxFormBase
         _paletteHint.Text = "From the logo takes the colours out of the image "
                             + "above, so a new logo brings its own colours.";
 
-        _body.Controls.AddRange(new Control[] { _palettes, _paletteHint });
+        // Light or dark is this till's own choice, the same one the shell's
+        // Theme menu makes, so it is saved with the workstation's settings.
+        _body.Controls.Add(new Label
+        {
+            AutoSize = true,
+            Location = new Point(2, 420),
+            Text = "&Theme"
+        });
+
+        _themes.DropDownStyle = ComboBoxStyle.DropDownList;
+        _themes.DisplayMember = nameof(ThemeMode.Name);
+        _themes.Location = new Point(108, 416);
+        _themes.Name = "cboTheme";
+        _themes.Size = new Size(320, 28);
+        foreach (var mode in ThemeMode.All) _themes.Items.Add(mode);
+
+        _body.Controls.AddRange(new Control[] { _palettes, _paletteHint, _themes });
     }
 
     /// The pharmacy's pricing rules, the same at every till.
@@ -246,36 +263,36 @@ public sealed class frmSystemSetup : PhxFormBase
         _body.Controls.Add(new Label
         {
             AutoSize = false, Font = PhxTheme.Subheading,
-            Location = new Point(0, 430), Size = new Size(300, 24), Text = "Prices"
+            Location = new Point(0, 470), Size = new Size(300, 24), Text = "Prices"
         });
 
-        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 466), Text = "&Markup %" });
+        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 506), Text = "&Markup %" });
         _markup.DecimalPlaces = 1;
-        _markup.Location = new Point(108, 462);
+        _markup.Location = new Point(108, 502);
         _markup.Maximum = 1000m;
         _markup.Name = "numMarkup";
         _markup.Size = new Size(90, 24);
 
-        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(220, 466), Text = "R&ound up to" });
+        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(220, 506), Text = "R&ound up to" });
         _rounding.DropDownStyle = ComboBoxStyle.DropDownList;
         _rounding.Items.AddRange(new object[] { "0.01", "0.05", "0.10", "0.50", "1.00" });
-        _rounding.Location = new Point(340, 462);
+        _rounding.Location = new Point(340, 502);
         _rounding.Name = "cboRounding";
         _rounding.Size = new Size(90, 24);
 
         // A cash patient pays the pack price pro rata for the tablets handed
         // over, rounded up to this - a dollar, as the previous system charged.
-        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 500), Text = "&Dispensing charges round up to" });
+        _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 540), Text = "&Dispensing charges round up to" });
         _dispensingRounding.DropDownStyle = ComboBoxStyle.DropDownList;
         _dispensingRounding.Items.AddRange(new object[] { "0.01", "0.05", "0.10", "0.50", "1.00" });
-        _dispensingRounding.Location = new Point(340, 496);
+        _dispensingRounding.Location = new Point(340, 536);
         _dispensingRounding.Name = "cboDispensingRounding";
         _dispensingRounding.Size = new Size(90, 24);
 
         _body.Controls.Add(new Label
         {
             AutoSize = true, ForeColor = PhxTheme.Muted,
-            Location = new Point(2, 530), MaximumSize = new Size(550, 0),
+            Location = new Point(2, 570), MaximumSize = new Size(550, 0),
             Text = "Every delivery prices the item at its cost plus the markup: at 50%, a "
                    + "10.00 cost sells at 15.00. A dispensed part pack is charged pro rata and "
                    + "rounded up: 14 of a 100-pack at 6.66 is 0.93, charged 1.00."
@@ -383,6 +400,7 @@ public sealed class frmSystemSetup : PhxFormBase
 
         _palettes.Items[0] = LogoChoice();
         SelectPalette(await _pharmacy.GetAsync(PharmacySettingKey.Palette));
+        _themes.SelectedItem = PhxTheme.Mode;
 
         var (markup, step) = await Application.Inventory.Pricing.ReadAsync(_pharmacy);
         _markup.Value = Math.Clamp(markup, _markup.Minimum, _markup.Maximum);
@@ -601,7 +619,9 @@ public sealed class frmSystemSetup : PhxFormBase
             await _pharmacy.SetAsync(PharmacySettingKey.Rounding, (string?)_rounding.SelectedItem);
             await _pharmacy.SetAsync(PharmacySettingKey.DispensingRounding,
                 (string?)_dispensingRounding.SelectedItem);
-            PhxTheme.Use(Palette.Resolve(palette.Id, _branding.Logo));
+            var mode = _themes.SelectedItem as ThemeMode ?? PhxTheme.Mode;
+            await _settings.SetAsync(WorkstationSettingKey.Theme, mode.Id);
+            PhxTheme.Use(Palette.Resolve(palette.Id, _branding.Logo), mode);
 
             if (changingCurrency)
             {

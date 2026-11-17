@@ -31,7 +31,21 @@ public sealed record Palette(string Id, string Name, Color Primary, Color Highli
         new Palette("plum-pink", "Plum and pink",
             Color.FromArgb(107, 33, 168), Color.FromArgb(236, 72, 153)),
         new Palette("slate-sky", "Slate and sky",
-            Color.FromArgb(51, 65, 85), Color.FromArgb(14, 165, 233))
+            Color.FromArgb(51, 65, 85), Color.FromArgb(14, 165, 233)),
+
+        // From the Windows 11 / WinUI (Fluent) accent colours.
+        new Palette("fluent-blue", "Fluent blue and sky",
+            Color.FromArgb(0, 95, 184), Color.FromArgb(96, 205, 255)),
+        new Palette("crimson-tangerine", "Crimson and tangerine",
+            Color.FromArgb(197, 15, 31), Color.FromArgb(247, 99, 12)),
+        new Palette("orchid-magenta", "Orchid and magenta",
+            Color.FromArgb(136, 23, 152), Color.FromArgb(227, 0, 140)),
+        new Palette("indigo-lavender", "Indigo and lavender",
+            Color.FromArgb(79, 70, 229), Color.FromArgb(167, 139, 250)),
+        new Palette("graphite-mint", "Graphite and mint",
+            Color.FromArgb(76, 74, 72), Color.FromArgb(0, 204, 106)),
+        new Palette("mahogany-sand", "Mahogany and sand",
+            Color.FromArgb(142, 86, 46), Color.FromArgb(242, 198, 97))
     };
 
     /// <summary>
@@ -209,8 +223,19 @@ public sealed record ThemeMode(string Id, string Name, Color Paper, Color Field,
         Color.FromArgb(251, 245, 232), Color.FromArgb(255, 251, 242),
         Color.FromArgb(58, 46, 32), false);
 
+    /// Windows 11's own light look (WinUI's Mica grey page, white boxes).
+    public static ThemeMode FluentLight { get; } = new("fluent-light", "Fluent light",
+        Color.FromArgb(243, 243, 243), Color.White,
+        Color.FromArgb(27, 27, 27), false);
+
+    /// Windows 11's own dark look, with WinUI's caution and critical colours.
+    public static ThemeMode FluentDark { get; } = new("fluent-dark", "Fluent dark",
+        Color.FromArgb(32, 32, 32), Color.FromArgb(45, 45, 45),
+        Color.White, true,
+        Warning: Color.FromArgb(252, 225, 0), Error: Color.FromArgb(255, 153, 164));
+
     public static IReadOnlyList<ThemeMode> All { get; } =
-        new[] { Light, Dark, Midnight, Warm };
+        new[] { Light, Dark, Midnight, Warm, FluentLight, FluentDark };
 
     /// The mode a setting names, or Light.
     public static ThemeMode Resolve(string? id) =>

@@ -554,27 +554,31 @@ Words: add a user, reset a password, unlock a user, deactivate a user, discount 
 
 ### Role permissions
 
-Words: permissions, role permissions, tick a permission
+Words: permissions, role permissions, tick a permission, give a role access, take away access
 
 **Administration > Role permissions.** Administrator only, until they tick this for someone else.
 
 1. Each row is a permission. Each column is a role, including Administrator. A tick is what that role may do.
-2. A person gets the permissions of the roles on their user, not a list of their own. Change the role here, then give them that role under Users.
-3. **Save.** Sign out and back in before it applies. Leave **Role permissions** ticked for a role you hold, or you cannot open this screen again.
-4. Each administration screen has its own row: System setup, Branches, Receipt template, Import data, Back up now, System console (with control variables and pharmacy details) and Label templates (the Templates tab on Labels). Tick one for a role to hand over that screen alone.
+2. To give a role a screen, find its row and tick the box under that role. To take it away, untick it.
+3. A person gets the permissions of the roles on their user, not a list of their own. Change the role here, then give them that role under Users.
+4. **Save.** Sign out and back in before it applies. Leave **Role permissions** ticked for a role you hold, or you cannot open this screen again. **Close** leaves without saving.
+5. Each administration screen has its own row: System setup, Branches, Receipt template, Print sizes, Import data, Back up now, System console (with control variables and pharmacy details) and Label templates (the Templates tab on Labels). Tick one for a role to hand over that screen alone.
+6. **Print sizes** is ticked for the manager and the pharmacist from the start, so they can match the paper in their own printer.
 
 ### System setup
 
-Words: system setup, markup, rounding, currency, logo
+Words: system setup, markup, rounding, currency, logo, colour palette, change the colours
 
-**Administration > System Setup.** For the whole pharmacy, every till.
+**Administration > System Setup.** For the whole pharmacy, every till, except the theme, which is this computer's own.
 
 1. **Trades in**: the currency. The sample shows how money will read, and which notes and coins the cash-up counts.
-2. **Choose image...** for the logo, **Remove** to drop it. **Windows** colours, or colours taken from the logo.
-3. **Markup %**. Every delivery prices the item at its cost plus this. At 50%, a cost of 10.00 sells at 15.00. It is 50 until it is changed.
-4. **Round up to**. Prices round up to this step. Left blank, they round up to 0.01, so 32.505 becomes 32.51.
-5. **Dispensing charges round up to** is the same idea for a script charge.
-6. **Save**.
+2. **Choose image...** for the logo, **Remove** to drop it.
+3. **Windows**: the colours of every window. **From the logo** takes them out of the logo, so a new logo brings its own colours. Or pick a palette from the list; each shows its two colours beside its name. The Fluent palettes (Fluent blue and sky, Crimson and tangerine, Orchid and magenta, Indigo and lavender, Graphite and mint, Mahogany and sand) are the Windows 11 accent colours.
+4. **Theme**: light or dark for this computer. The same choice as the **Theme** menu (see Themes).
+5. **Markup %**. Every delivery prices the item at its cost plus this. At 50%, a cost of 10.00 sells at 15.00. It is 50 until it is changed.
+6. **Round up to**. Prices round up to this step. Left blank, they round up to 0.01, so 32.505 becomes 32.51.
+7. **Dispensing charges round up to** is the same idea for a script charge.
+8. **Save**. The new colours and theme show at once, on every open window.
 
 ### Branches
 
@@ -656,6 +660,34 @@ A grey menu entry, or a tile that says **Not permitted for this user**, is the r
 Words: printer setup, receipt printer, label printer, test receipt
 
 **File > Printer Setup.** Choose the receipt printer and the label printer for this computer, **Test receipt**, **Save**. Tick **Every dispensary computer prints labels on this label printer** only on the computer the others should share. **Find on a computer...** looks for a printer that is not already listed.
+
+### Print sizes
+
+Words: print sizes, label size, receipt size, claim form size, paper size, font size, line spacing, padding
+
+**File > Print Sizes.** This computer's label, receipt and claim-form sizes. Needs the **Print sizes** permission (the manager, the pharmacist and the administrator have it from the start).
+
+1. Choose the tab: **Labels**, **Receipts** or **Claim forms**. **Current size** shows what prints now.
+2. **Stock / size**: pick the paper in the printer. Pick a custom size to type your own.
+3. **Width (mm)** and **Height (mm)**: the paper's size.
+4. **Font size %** makes the words bigger or smaller. **Line spacing %** opens up or closes the lines.
+5. **Padding** (hundredths of an inch): **Top**, **Right**, **Bottom**, **Left** move the print away from the paper's edge. Use them when the print runs off the label.
+6. The sample on the right changes as you type. **Print preview** prints a test on the real printer.
+7. **Save**. **Reset to default** puts that tab back as it was installed. **Cancel** leaves without saving.
+
+### Themes
+
+Words: theme, themes, dark mode, light mode, fluent, midnight, warm paper, colours too bright
+
+**Theme** at the right-hand end of the menu bar, or **Theme** in **Administration > System Setup**. This computer only; other tills keep their own.
+
+1. **Light**: the usual look.
+2. **Dark**: dark windows for a dim dispensary.
+3. **Midnight neon**: deep navy with a cyan glow.
+4. **Warm paper**: cream instead of white, easier on the eyes over a long shift.
+5. **Fluent light** and **Fluent dark**: the Windows 11 look, grey page with white boxes, or the Windows dark greys.
+6. Click one. Every open window changes at once, and PharmaX remembers it on this computer. The menu ticks the one in use.
+7. The theme only decides light or dark. The colours of the buttons and titles come from the palette in System Setup.
 
 ### Zoom
 
