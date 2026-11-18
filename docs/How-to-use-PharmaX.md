@@ -580,6 +580,18 @@ Words: system setup, markup, rounding, currency, logo, colour palette, change th
 7. **Dispensing charges round up to** is the same idea for a script charge.
 8. **Save**. The new colours and theme show at once, on every open window.
 
+### Membership
+
+Words: membership, subscription, activation code, renew, licence, license, read-only, Pharmacy ID
+
+**Administration > Membership.** For the whole pharmacy, every till. A new installation runs a 14-day trial.
+
+1. **Copy** the **Pharmacy ID** and send it with your payment (monthly, quarterly or yearly).
+2. When the activation code arrives, paste the whole code into **Activation code**.
+3. **Activate**. The screen shows the plan and the date it runs until. Paying before the end adds the new period after the current one.
+
+Seven days before the end, a yellow banner appears under the menu. After the end there are seven days' grace with everything still working, under a red banner. After that PharmaX is read-only: patients, products, the ledger and reports can still be looked up, but nothing can be sold, dispensed, received or changed until a new code is entered. Clicking the banner opens Membership. If the computer's date is set back, PharmaX is also read-only until the date is correct.
+
 ### Branches
 
 Words: branch, add a branch

@@ -33,6 +33,7 @@ internal static class AssistantOpens
         ("Trial Balance", "trial-balance", "Trial balance"),
         ("Journal Entry", "journal", "Journal entry"),
         ("System Setup", "system-setup", "System setup"),
+        ("Membership", "membership", "Membership"),
         ("Printer Setup", "printer-setup", "Printer setup"),
         ("Print Sizes", "print-sizes", "Print sizes"),
         ("Receipt Template", "receipt-template", "Receipt template"),

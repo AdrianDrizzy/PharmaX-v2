@@ -42,7 +42,7 @@ public static class LicenceState
 
     public static string? BannerText(LicenceSnapshot s)
     {
-        const string Where = "Enter a new code in System Setup > Membership.";
+        const string Where = "Enter a new code in Administration > Membership.";
         var what = s.IsTrial ? "Trial" : "Membership";
 
         return s.Status switch
@@ -54,7 +54,7 @@ public static class LicenceState
                 + $"{Day(s.ValidUntil?.AddDays(GraceDays + 1))}. {Where}",
             LicenceStatus.ReadOnly =>
                 "PharmaX is read-only: no current membership. An administrator can "
-                + "enter a code in System Setup > Membership.",
+                + "enter a code in Administration > Membership.",
             LicenceStatus.ClockWrong =>
                 "PharmaX is read-only: this computer's date looks wrong. Correct the "
                 + "date and time, then sign in again.",

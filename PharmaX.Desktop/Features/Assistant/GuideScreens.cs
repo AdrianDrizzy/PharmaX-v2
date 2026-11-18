@@ -74,6 +74,7 @@ internal static partial class GuideScreens
         ["users"] = Of(() => new Admin.frmUserList(), () => new Admin.frmUserEdit()),
         ["role-permissions"] = Of(() => new Admin.frmRolePermissions(new Admin.RolePermissionPresenter(null!))),
         ["system-setup"] = Of(() => new Admin.frmSystemSetup(null!, null!, null!, null!)),
+        ["membership"] = Of(() => new Admin.frmMembership(null!)),
         ["printer-setup"] = Of(() => new Admin.frmPrinterSetup(null!, null!, null!, null!)),
         ["receipt-template"] = Of(() => new Admin.frmReceiptTemplate()),
         ["data-import"] = Of(() => new Admin.frmDataImport(null!)),

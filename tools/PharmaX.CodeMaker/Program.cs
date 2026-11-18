@@ -33,7 +33,7 @@ switch (args)
 
     case ["issue", var idText, var planText, ..] :
         if (LicenceCode.ParsePharmacyId(idText) is not { } id)
-            return Fail("That is not a Pharmacy ID. Copy it from PharmaX > Membership.");
+            return Fail("That is not a Pharmacy ID. Copy it from PharmaX, Administration > Membership.");
         if (!Enum.TryParse<MembershipPlan>(planText, ignoreCase: true, out var plan)
             || !Enum.IsDefined(plan))
             return Fail("Plan must be monthly, quarterly or yearly.");
@@ -59,7 +59,7 @@ switch (args)
             Console.WriteLine();
             Console.WriteLine("Message to send:");
             Console.WriteLine($"Thank you for your payment. Your PharmaX {plan.ToString().ToLowerInvariant()} "
-                + $"membership runs until {LicenceState.Day(until)}. In PharmaX, open Admin > Membership, "
+                + $"membership runs until {LicenceState.Day(until)}. In PharmaX, open Administration > Membership, "
                 + $"paste this code and click Activate:{Environment.NewLine}{code}");
         }
         return 0;

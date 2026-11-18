@@ -14,7 +14,7 @@ This writes `%APPDATA%\PharmaX.CodeMaker\private.key` and prints the public key.
 
 ## Each payment
 
-1. The pharmacy sends its **Pharmacy ID** (PharmaX > Admin > Membership > Copy).
+1. The pharmacy sends its **Pharmacy ID** (PharmaX, Administration > Membership > Copy).
 2. Once the payment is confirmed:
 
    ```powershell

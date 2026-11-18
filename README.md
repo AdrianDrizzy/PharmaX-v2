@@ -60,6 +60,7 @@ Every screen opens from the home tiles, the menus or a function key (F2-F12). Ea
 
 ### Administration
 - Users, roles and permissions, branches, tills and workstations, pharmacy details, branding and currency.
+- **Membership.** Monthly, quarterly or yearly, unlocked by an activation code. Warned 7 days before the end; 7 days' grace after it; then read-only (look-ups and reports) until a new code is entered.
 - System information, logs and backups.
 - Import from the pharmacy's previous system, with a check that every total matches.
 
@@ -264,6 +265,7 @@ Everything is under `C:\ProgramData\PharmaX`:
 | `data\pharmax.db` | The local SQLite database |
 | `logs\` | Log files (the last 30 are kept) |
 | `attachments\` | Attached files |
+| `licence.json` | This computer's last-known membership, used when the main computer cannot be reached |
 | `branding\` | The pharmacy's logo |
 | `assistant\` | The Ask PharmaX model and its cache |
 | `server.json`, `database-admin.txt` | Main computer only: the database server's details |
