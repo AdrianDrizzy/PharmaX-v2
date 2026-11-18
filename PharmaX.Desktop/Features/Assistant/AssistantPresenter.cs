@@ -351,7 +351,7 @@ public sealed class AssistantPresenter : PresenterBase<IAssistantView>
 
             // Asked at the counter, so answered as counter advice, in the
             // pharmacy's OTC and dispensary terms.
-            var asked = condition is null ? question : StockForCondition.CounterAdvice(question);
+            var asked = condition is null ? question : StockForCondition.CounterAdvice(question, condition);
 
             var answer = await _chat.AskAsync(_turns.ToArray(), asked, writing);
 

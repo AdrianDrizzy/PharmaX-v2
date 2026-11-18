@@ -27,14 +27,43 @@ public static partial class StockForCondition
     /// The condition asked about, or null where the question is not about
     /// products for one.
     /// </summary>
+    /// <remarks>
+    /// Asked the way the counter asks: "what do we have for X", "the best
+    /// medication for someone with X", "what can someone with X take",
+    /// "I have a X, what can I take", "any X tablets". A question about
+    /// safety, doses or interactions is left to the model as it was asked.
+    /// </remarks>
     public static string? Condition(string question)
     {
-        var match = AskingForProducts().Match(question ?? "");
-        if (!match.Success) return null;
+        question ??= "";
+        if (AboutSafety().IsMatch(question)) return null;
 
-        var condition = match.Groups["condition"].Value.Trim(' ', '?', '.', '!');
-        return condition.Length is >= 3 and <= 60 ? condition : null;
+        foreach (var shape in new[] { ForSomething(), NamedRemedy() })
+            if (shape.Match(question) is { Success: true } match
+                && Tidy(match.Groups["condition"].Value) is { } condition)
+                return condition;
+
+        // "What can someone with headaches take?" - only where something is
+        // being asked for, so "can patients with asthma take ibuprofen?"
+        // stays a question about ibuprofen.
+        if (SomeoneWith().Match(question) is { Success: true } who && AskingWhatToGive().IsMatch(question))
+            return Tidy(who.Groups["condition"].Value);
+
+        return null;
     }
+
+    /// <summary>
+    /// True for "Suggest OTC medication in the system?" or "what OTC
+    /// products do we have?": the shelves asked about, with no condition
+    /// named. The condition comes from earlier in the conversation, or
+    /// the operator is asked for it.
+    /// </summary>
+    public static bool AsksForStock(string question) =>
+        !AboutSafety().IsMatch(question ?? "") && AskingForStock().IsMatch(question ?? "");
+
+    /// The answer where the shelves are asked about and nothing says what for.
+    public const string WhichCondition =
+        "Which condition or symptom is it for? Ask, for example: What do we have for a headache?";
 
     /// <summary>
     /// The question as the model is asked it, in the pharmacy's own terms:
@@ -42,13 +71,20 @@ public static partial class StockForCondition
     /// the dispensary, each medicine by its generic name with its other
     /// common name, and when to send the customer on.
     /// </summary>
-    public static string CounterAdvice(string question) =>
-        question.Trim() + "\n\nAnswer as advice at a pharmacy counter, in a few short bullet "
+    /// <remarks>
+    /// The condition is said outright, for a follow-up that does not name
+    /// it, and the stock is left out: PharmaX lists that itself, and the
+    /// model otherwise says it cannot see the pharmacy's system.
+    /// </remarks>
+    public static string CounterAdvice(string question, string condition) =>
+        question.Trim() + $"\n\nThe customer's complaint: {condition}. "
+        + "Answer as advice at a pharmacy counter, in a few short bullet "
         + "points. Name each medicine by its generic name and add its other common name where "
         + "there is one, for example Paracetamol (Acetaminophen) or Salbutamol (Albuterol). "
         + "Put the medicines under two headings: OTC, for those sold over the counter, and "
         + "Dispensary, for prescription medicines that need a script. Then add self-care, and "
-        + "when the customer should see a pharmacist or doctor.";
+        + "when the customer should see a pharmacist or doctor. Do not mention the pharmacy's "
+        + "stock, inventory or system.";
 
     /// The hidden question that gets the ingredients.
     public static string IngredientsQuestion(string condition) =>
@@ -137,10 +173,88 @@ public static partial class StockForCondition
         return terms;
     }
 
-    // "what do we have for X", "suggest something for X",
-    // "products for X", "anything in stock for X", "what can I sell for X"
+    /// Words that follow "for" without being a condition: "for 2 weeks",
+    /// "for me", "for a child" (a child with what?), "OTC medication".
+    private static readonly HashSet<string> NotConditions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "otc", "over", "counter", "the", "any", "some", "good", "best", "other", "our", "your", "my",
+        "this", "that", "these", "those", "generic", "prescription", "strong", "stronger", "common",
+        "more", "all", "which", "what", "cheap", "cheapest", "natural", "herbal", "me", "you", "us",
+        "him", "her", "them", "it", "sale", "now", "today", "example", "instance", "how", "long",
+        "someone", "somebody", "anyone", "people", "person", "patient", "patients", "customer",
+        "customers", "child", "children", "kid", "kids", "baby", "babies", "adult", "adults",
+        "question", "query", "problem", "do", "we", "in", "suggest", "recommend", "new", "repeat"
+    };
+
+    /// <summary>
+    /// The condition as the product list is searched for it: "someone with
+    /// bad headaches in the system" read as "headaches".
+    /// </summary>
+    private static string? Tidy(string said)
+    {
+        var condition = TrailingClause().Replace(said.ToLowerInvariant(), "");
+        condition = Sufferer().Replace(condition, "");
+        condition = Modifiers().Replace(condition, "").Trim(' ', '?', '.', '!', '\'', '"');
+
+        if (condition.Length is < 3 or > 40 || char.IsDigit(condition[0])) return null;
+
+        var words = condition.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length > 4 || NotConditions.Contains(words[0]) ? null : condition;
+    }
+
+    // "what do we have for X", "suggest something for X", "products for X",
+    // "the best medication for X", "what can I take for X", "good for X"
     [GeneratedRegex(
-        @"\b(have|stock|stocked|products?|medicines?|medication|meds|suggest|recommend|sell|give|offer|anything|something|options?)\b.*?\bfor\s+(an?\s+|the\s+|my\s+)?(?<condition>[^?.!]+)",
+        @"\b(have|stock|stocked|products?|medicines?|medications?|meds|suggest|recommend|sell|give|offer|anything|something|options?|good|best|take|use|treat|treatment|help|helps|remedy|remedies|relief|cure|tablets?|pills?|syrups?|creams?|drops|otc)\b.*?\bfor\s+(?<condition>[^?.!,;]+)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex AskingForProducts();
+    private static partial Regex ForSomething();
+
+    // "any headache tablets?", "suggest cough medicine", "I need pain relief"
+    [GeneratedRegex(
+        @"\b(suggest|recommend|have|stock|sell|give|offer|need|want|looking|any|some)\b.*?\b(?<condition>[a-z]+)\s+(medications?|medicines?|meds|tablets|pills|remed(y|ies)|relief|treatments?|relievers?|syrups?|drops|creams?|sprays?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex NamedRemedy();
+
+    // "someone with X", "a customer who has X", "I have a X", "she's got X"
+    [GeneratedRegex(
+        @"\b(someone|somebody|anyone|person|people|patients?|customers?|clients?|child|children|kids?|baby|babies|adults?|i|he|she|they|i'm|he's|she's|they're|i've|i\s+am|he\s+is|she\s+is|they\s+are)\s+(with|who\s+(has|have|is\s+having|suffers\s+from|gets?)|that\s+(has|have)|suffering\s+from|having|has|have|got|has\s+got|have\s+got|gets?|suffers\s+from)\s+(?<condition>[^?.!,;]+)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SomeoneWith();
+
+    // Something being asked for: "what can they take", "suggest", "anything".
+    [GeneratedRegex(
+        @"\b(what|which)\b.*\b(take|give|use|have|recommend|suggest|sell|buy|best|good|help)\b|\b(suggest|recommend|something|anything|options?|remed(y|ies)|relief|medications?|medicines?|meds|tablets|treatment|treat)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex AskingWhatToGive();
+
+    // "Suggest OTC medication in the system?", "what OTC products do we have?"
+    [GeneratedRegex(
+        @"^(?=.*\b(suggest|recommend|list|show|what|which|any|give|offer|options?)\b)(?=.*\b(otc|over\s+the\s+counter|medications?|medicines?|meds|products?|items|something|anything)\b)(?=.*\b(in\s+the\s+system|in\s+stock|on\s+the\s+shel(f|ves)|we\s+(have|stock|sell|carry)|our|available|otc|over\s+the\s+counter)\b)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex AskingForStock();
+
+    // A question about using a medicine rather than choosing one.
+    [GeneratedRegex(
+        @"\b(safe|safely|safety|interacts?|interactions?|side\s+effects?|doses?|dosage|avoid|contraindicat\w*|overdose|mix|combine)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex AboutSafety();
+
+    // " in stock", " in the system", " please", " - what can I give?",
+    // "headaches take" from "what can someone with headaches take?"
+    [GeneratedRegex(
+        @"\s+(in\s+(stock|the\s+(system|shop|store|pharmacy)|our\s+system)|on\s+(the|our)\s+shel(f|ves)|that\s+we|which\s+we|we\s|do\s+we|please|what\s|which\s|can\s|could\s|should\s|would\s|today|right\s+now|at\s+the\s+moment|available|over\s+the\s+counter|otc\b|(take|use|get|buy|try|need|have)\b).*$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex TrailingClause();
+
+    // "someone with ", "a customer who has ", "my son suffering from "
+    [GeneratedRegex(
+        @"^((a|an|the|my|our|your)\s+)?(someone|somebody|anyone|person|people|patients?|customers?|clients?|child|children|kids?|baby|babies|adults?|elderly|woman|women|man|men|mother|mum|son|daughter|husband|wife)\s+(with|who\s+(has|have|is\s+having|suffers\s+from|gets?)|that\s+(has|have)|suffering\s+from|having)\s+",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex Sufferer();
+
+    // "a bad ", "the ", "a bit of a "
+    [GeneratedRegex(
+        @"^((an?|the|my|his|her|their|bad|severe|mild|terrible|slight|minor|really|very|nasty|persistent|constant|bit\s+of\s+an?|bit\s+of|little)\s+)+",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex Modifiers();
 }
