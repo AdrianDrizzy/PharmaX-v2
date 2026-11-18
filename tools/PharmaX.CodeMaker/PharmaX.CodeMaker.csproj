@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The vendor's code maker. Never shipped: the installer packages
+       PharmaX.Desktop only. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>codemaker</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\PharmaX.Application\PharmaX.Application.csproj" />
+  </ItemGroup>
+
+</Project>
