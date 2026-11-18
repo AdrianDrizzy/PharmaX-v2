@@ -23,6 +23,9 @@ public interface IMainView : Mvp.IView
     /// cannot be mistaken for a live till.
     void MarkAsTestEnvironment();
 
+    /// The membership banner under the menu; null hides it. Urgent is red.
+    void SetMembership(string? text, bool urgent);
+
     /// <summary>
     /// Closes the shell in a way the host reads as "sign in again"
     /// rather than "quit", so a shift change does not need the

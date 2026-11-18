@@ -377,6 +377,37 @@ public partial class frmMain : PhxFormBase, IMainView
 
     public event EventHandler? AssistantNoticeClicked;
 
+    // Styled as PhxFormBase's offline banner; created on first use.
+    private Label? _membership;
+
+    public void SetMembership(string? text, bool urgent)
+    {
+        if (_membership is null)
+        {
+            if (text is null) return;
+
+            _membership = new Label
+            {
+                AutoSize = false,
+                Dock = DockStyle.Top,
+                Font = PhxTheme.Emphasis,
+                Padding = new Padding(0, 4, 0, 4),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand,
+                Height = PhxTheme.Emphasis.Height + 10
+            };
+            _membership.Click += (_, _) => MenuSelected?.Invoke(this, "membership");
+
+            // Just under the menu bar: the menu, docked earlier, stays on top.
+            Controls.Add(_membership);
+            Controls.SetChildIndex(_membership, Controls.GetChildIndex(mnuMain));
+        }
+
+        _membership.Text = text ?? "";
+        _membership.BackColor = urgent ? PhxTheme.Problem : PhxTheme.Attention;
+        _membership.Visible = text is not null;
+    }
+
     /// As the alerts: shown only while drafts are waiting.
     public void SetAssistantNotice(string notice)
     {
@@ -425,7 +456,7 @@ public partial class frmMain : PhxFormBase, IMainView
         ["admin"] = PhxIcon.Settings, ["vat-codes"] = PhxIcon.Percentage,
         ["users"] = PhxIcon.Users, ["role-permissions"] = PhxIcon.Lock,
         ["branches"] = PhxIcon.Building,
-        ["transaction-types"] = PhxIcon.ListDetails, ["system-setup"] = PhxIcon.Palette,
+        ["transaction-types"] = PhxIcon.ListDetails, ["system-setup"] = PhxIcon.Palette, ["membership"] = PhxIcon.Key,
         ["system-console"] = PhxIcon.Terminal, ["data-import"] = PhxIcon.DatabaseImport,
         ["backup"] = PhxIcon.DatabaseExport, ["to-follow"] = PhxIcon.Clock,
         ["control-variables"] = PhxIcon.AdjustmentsHorizontal,
@@ -683,6 +714,7 @@ public partial class frmMain : PhxFormBase, IMainView
         ["users"] = "staff user role",
         ["role-permissions"] = "permission grant role tick",
         ["system-setup"] = "logo colour color palette brand theme",
+        ["membership"] = "membership subscription licence license activation code renew",
         ["printer-setup"] = "printer receipt label",
         ["print-sizes"] = "print size label receipt claim form paper custom font",
         ["receipts"] = "reprint receipt copy history slip",

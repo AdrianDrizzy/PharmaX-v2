@@ -83,6 +83,23 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
         SubscribeStockAssistant();
     }
 
+    // shortcut: read at sign-in and after the Membership screen closes, so a
+    // till left signed in past expiry changes at its next sign-in.
+    private async Task ShowMembershipAsync()
+    {
+        using (var scope = _scopes.CreateScope())
+        {
+            var licence = await scope.ServiceProvider
+                .GetRequiredService<Application.Licensing.ILicenceService>()
+                .RefreshAsync();
+
+            View.SetMembership(Application.Licensing.LicenceState.BannerText(licence),
+                licence.Status != Application.Licensing.LicenceStatus.Expiring);
+        }
+
+        View.ApplyAccess(key => ScreenAccess.CanOpen(key, _permissions));
+    }
+
     /// A choice kept for this till, read back before the next sign-in.
     private Task SaveAsync(string key, string value) => GuardAsync(async () =>
     {
@@ -115,6 +132,9 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
 
         var session = await _sessions.CurrentAsync();
         View.SetSession(SessionStatus(session));
+
+        // Before access: a lapsed membership takes write screens away.
+        await ShowMembershipAsync();
 
         // Offer each screen on its own merits, from the same policy the
         // guard in OnMenuAsync reads - and every service still refuses
@@ -534,6 +554,9 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
                 break;
             case "mass-price":
                 await MassPriceChangeAsync();
+                return;
+            case "membership":
+                Open<Features.Admin.frmMembership>(key, closed: ShowMembershipAsync);
                 return;
             case "system-setup":
                 // Currency and logo both show on the shell, so it

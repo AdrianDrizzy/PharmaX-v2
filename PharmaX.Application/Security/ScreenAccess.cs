@@ -148,6 +148,7 @@ public static class ScreenAccess
             ["role-permissions"] = p => p.Has(PermissionCode.RolePermissions),
             ["branches"] = p => p.Has(PermissionCode.BranchMaintain),
             ["system-setup"] = p => p.Has(PermissionCode.SettingsChange),
+            ["membership"] = p => p.Has(PermissionCode.SettingsChange),
             ["receipt-template"] = p => p.Has(PermissionCode.ReceiptTemplate),
             ["data-import"] = p => p.Has(PermissionCode.DataImport),
             ["backup"] = p => p.Has(PermissionCode.Backup),

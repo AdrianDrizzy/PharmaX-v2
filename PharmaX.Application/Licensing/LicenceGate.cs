@@ -12,8 +12,6 @@ public interface ILicenceGate
 
     void Update(LicenceSnapshot snapshot);
 
-    event EventHandler? Changed;
-
     bool Allows(string permissionCode);
 }
 
@@ -39,13 +37,7 @@ public sealed class LicenceGate : ILicenceGate
     public LicenceSnapshot Current { get; private set; } =
         new(LicenceStatus.Active, null, null, false);
 
-    public event EventHandler? Changed;
-
-    public void Update(LicenceSnapshot snapshot)
-    {
-        Current = snapshot;
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
+    public void Update(LicenceSnapshot snapshot) => Current = snapshot;
 
     public bool Allows(string permissionCode) =>
         !Current.IsReadOnly || ReadOnlyAllowed.Contains(permissionCode);

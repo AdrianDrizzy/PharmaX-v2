@@ -163,6 +163,7 @@ partial class frmMain
                 Item("Branches", "branches"),
                 Item("Stock Transactions", "transaction-types"),
                 Item("System Setup", "system-setup"),
+                Item("Membership", "membership"),
                 Item("Receipt Template", "receipt-template"),
                 Item("Import Data", "data-import"),
                 Item("Back Up Now", "backup"),

@@ -150,6 +150,7 @@ public static class DependencyInjection
         s.AddTransient<frmPrinterSetup>();
         s.AddTransient<frmPrintSizes>();
         s.AddTransient<frmSystemSetup>();
+        s.AddTransient<frmMembership>();
         s.AddTransient<frmDataImport>();
         s.AddTransient<Features.Dispensing.frmToFollow>();
         s.AddTransient<frmDayEnd>();

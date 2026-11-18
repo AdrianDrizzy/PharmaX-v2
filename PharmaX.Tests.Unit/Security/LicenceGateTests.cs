@@ -49,16 +49,4 @@ public sealed class LicenceGateTests
                 Service(Gate(LicenceStatus.ReadOnly)).Demand(PermissionCode.SaleCreate))
             .Should().Throw<PermissionDeniedException>()
             .WithMessage("PharmaX is read-only until the membership is renewed.");
-
-    [Fact]
-    public void Update_raises_changed()
-    {
-        var gate = new LicenceGate();
-        var raised = false;
-        gate.Changed += (_, _) => raised = true;
-
-        gate.Update(new(LicenceStatus.Grace, null, null, false));
-
-        raised.Should().BeTrue();
-    }
 }
