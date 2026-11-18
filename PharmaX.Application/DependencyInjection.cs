@@ -23,6 +23,7 @@ public static class DependencyInjection
 
         s.AddScoped<IAuthenticationService, AuthenticationService>();
         s.AddScoped<IPermissionService, PermissionService>();
+        s.AddSingleton<Licensing.ILicenceGate, Licensing.LicenceGate>();
         s.AddScoped<IUserService, UserService>();
         s.AddScoped<IRolePermissionService, RolePermissionService>();
         s.AddScoped<ISaleService, SaleService>();

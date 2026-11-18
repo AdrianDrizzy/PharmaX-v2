@@ -39,18 +39,30 @@ public sealed class PermissionService : IPermissionService
     private readonly ICurrentUser _user;
     private readonly IPermissionRepository _permissions;
     private readonly IAuditWriter _audit;
+    private readonly Licensing.ILicenceGate? _licence;
+
+    public const string ReadOnlyMessage =
+        "PharmaX is read-only until the membership is renewed.";
 
     public PermissionService(ICurrentUser user,
                              IPermissionRepository permissions,
-                             IAuditWriter audit)
+                             IAuditWriter audit,
+                             Licensing.ILicenceGate? licence = null)
     {
         _user = user;
         _permissions = permissions;
         _audit = audit;
+        _licence = licence;
     }
+
+    private bool Lapsed(string permissionCode) =>
+        _licence is not null && !_licence.Allows(permissionCode);
 
     public PermissionOutcome Check(string permissionCode)
     {
+        // Not RequiresSupervisor: no supervisor can override a lapsed membership.
+        if (Lapsed(permissionCode)) return PermissionOutcome.Denied;
+
         if (_permissions.UserHas(_user.Id, permissionCode))
             return PermissionOutcome.Granted;
 
@@ -65,12 +77,14 @@ public sealed class PermissionService : IPermissionService
 
         _audit.Refused(permissionCode, "Permission", _user.Id);
 
-        throw new PermissionDeniedException(
-            "You do not have permission for this action.");
+        throw new PermissionDeniedException(Lapsed(permissionCode)
+            ? ReadOnlyMessage
+            : "You do not have permission for this action.");
     }
 
     public bool UserHolds(Guid userId, string permissionCode) =>
-        userId != Guid.Empty && _permissions.UserHas(userId, permissionCode);
+        userId != Guid.Empty && !Lapsed(permissionCode)
+        && _permissions.UserHas(userId, permissionCode);
 
     public void DemandOrAuthorised(string permissionCode, Guid? authoriserId)
     {
