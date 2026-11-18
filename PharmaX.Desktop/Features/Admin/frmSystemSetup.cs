@@ -275,7 +275,7 @@ public sealed class frmSystemSetup : PhxFormBase
 
         _body.Controls.Add(new Label { AutoSize = true, Location = new Point(220, 506), Text = "R&ound up to" });
         _rounding.DropDownStyle = ComboBoxStyle.DropDownList;
-        _rounding.Items.AddRange(new object[] { "0.01", "0.05", "0.10", "0.50", "1.00" });
+        _rounding.Items.AddRange(Steps);
         _rounding.Location = new Point(340, 502);
         _rounding.Name = "cboRounding";
         _rounding.Size = new Size(90, 24);
@@ -284,7 +284,7 @@ public sealed class frmSystemSetup : PhxFormBase
         // over, rounded up to this - a dollar, as the previous system charged.
         _body.Controls.Add(new Label { AutoSize = true, Location = new Point(2, 540), Text = "&Dispensing charges round up to" });
         _dispensingRounding.DropDownStyle = ComboBoxStyle.DropDownList;
-        _dispensingRounding.Items.AddRange(new object[] { "0.01", "0.05", "0.10", "0.50", "1.00" });
+        _dispensingRounding.Items.AddRange(Steps);
         _dispensingRounding.Location = new Point(340, 536);
         _dispensingRounding.Name = "cboDispensingRounding";
         _dispensingRounding.Size = new Size(90, 24);
@@ -300,6 +300,16 @@ public sealed class frmSystemSetup : PhxFormBase
 
         _body.Controls.AddRange(new Control[] { _markup, _rounding, _dispensingRounding });
     }
+
+    // "None" is saved as a step of 0: the price to the cent, never rounded up.
+    private const string NoRounding = "None";
+    private static readonly object[] Steps = { NoRounding, "0.01", "0.05", "0.10", "0.50", "1.00" };
+
+    private static string StepText(decimal step) =>
+        step <= 0m ? NoRounding : step.ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static string? StepValue(object? item) =>
+        item as string == NoRounding ? "0" : item as string;
 
     /// <summary>A palette as the list offers it.</summary>
     private sealed record PaletteChoice(string Id, string Name, Palette Colours)
@@ -404,11 +414,11 @@ public sealed class frmSystemSetup : PhxFormBase
 
         var (markup, step) = await Application.Inventory.Pricing.ReadAsync(_pharmacy);
         _markup.Value = Math.Clamp(markup, _markup.Minimum, _markup.Maximum);
-        _rounding.SelectedItem = (step <= 0m ? 0.01m : step).ToString("0.00", CultureInfo.InvariantCulture);
-        if (_rounding.SelectedIndex < 0) _rounding.SelectedIndex = 0;
+        _rounding.SelectedItem = StepText(step);
+        if (_rounding.SelectedIndex < 0) _rounding.SelectedIndex = 1;
 
         var dispensingStep = await Application.Dispensing.DispensingCharge.RoundToAsync(_pharmacy);
-        _dispensingRounding.SelectedItem = dispensingStep.ToString("0.00", CultureInfo.InvariantCulture);
+        _dispensingRounding.SelectedItem = StepText(dispensingStep);
         if (_dispensingRounding.SelectedIndex < 0) _dispensingRounding.SelectedIndex = _dispensingRounding.Items.Count - 1;
 
         _currencies.Focus();
@@ -616,9 +626,9 @@ public sealed class frmSystemSetup : PhxFormBase
 
             await _pharmacy.SetAsync(PharmacySettingKey.Markup,
                 _markup.Value.ToString(CultureInfo.InvariantCulture));
-            await _pharmacy.SetAsync(PharmacySettingKey.Rounding, (string?)_rounding.SelectedItem);
+            await _pharmacy.SetAsync(PharmacySettingKey.Rounding, StepValue(_rounding.SelectedItem));
             await _pharmacy.SetAsync(PharmacySettingKey.DispensingRounding,
-                (string?)_dispensingRounding.SelectedItem);
+                StepValue(_dispensingRounding.SelectedItem));
             var mode = _themes.SelectedItem as ThemeMode ?? PhxTheme.Mode;
             await _settings.SetAsync(WorkstationSettingKey.Theme, mode.Id);
             PhxTheme.Use(Palette.Resolve(palette.Id, _branding.Logo), mode);

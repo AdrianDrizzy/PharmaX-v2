@@ -53,6 +53,7 @@ public class DispensingChargeTests
     [InlineData("", 1.00)]
     [InlineData("0.50", 0.50)]
     [InlineData("0.01", 0.01)]
+    [InlineData("0", 0.00)]
     [InlineData("nonsense", 1.00)]
     public async Task The_step_is_a_dollar_unless_System_setup_says_otherwise(string? set, double step)
     {
