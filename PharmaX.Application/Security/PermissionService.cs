@@ -42,7 +42,8 @@ public sealed class PermissionService : IPermissionService
     private readonly Licensing.ILicenceGate? _licence;
 
     public const string ReadOnlyMessage =
-        "PharmaX is read-only until the membership is renewed.";
+        "PharmaX is read-only until the membership is renewed. If it has just "
+        + "been renewed, sign in again.";
 
     public PermissionService(ICurrentUser user,
                              IPermissionRepository permissions,

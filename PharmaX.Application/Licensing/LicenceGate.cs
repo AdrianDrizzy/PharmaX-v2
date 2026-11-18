@@ -22,6 +22,7 @@ public sealed class LicenceGate : ILicenceGate
     private static readonly HashSet<string> ReadOnlyAllowed = new(StringComparer.Ordinal)
     {
         PermissionCode.ProductRead,
+        PermissionCode.ProductDispensary,
         PermissionCode.ReportOperational,
         PermissionCode.ReportManagement,
         PermissionCode.ReportFinancial,

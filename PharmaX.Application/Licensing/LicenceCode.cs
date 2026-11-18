@@ -49,11 +49,15 @@ public static class LicenceCode
 
     public static LicencePayload? Verify(string code, ECDsa publicKey)
     {
-        var text = new string((code ?? "").Where(c => !char.IsWhiteSpace(c) && c != '-')
-                                          .Select(char.ToUpperInvariant).ToArray());
-        if (!text.StartsWith("PHX", StringComparison.Ordinal)) return null;
+        // First, not last: a group inside the code can itself end in "PHX".
+        var text = (code ?? "").ToUpperInvariant();
+        var start = text.IndexOf(Prefix, StringComparison.Ordinal);
+        if (start < 0) return null;
 
-        var bytes = FromBase32(text[3..]);
+        // Whatever the paste brought along - the message around it, dashes,
+        // invisible spaces - is not in the alphabet, so it drops out here.
+        var bytes = FromBase32(new string(text[(start + Prefix.Length)..]
+            .Where(c => Alphabet.Contains(c, StringComparison.Ordinal)).ToArray()));
         if (bytes is null || bytes.Length != PayloadLength + SignatureLength) return null;
 
         var data = bytes.AsSpan(0, PayloadLength);

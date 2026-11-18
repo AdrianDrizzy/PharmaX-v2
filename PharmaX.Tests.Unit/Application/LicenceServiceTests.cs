@@ -127,6 +127,28 @@ public sealed class LicenceServiceTests
         (await Service().GetPharmacyIdAsync()).Should()
             .Be(await Service().GetPharmacyIdAsync()).And.NotBe(Guid.Empty);
 
+    [Fact]
+    public async Task Edited_end_date_row_is_ignored_when_a_code_is_stored()
+    {
+        await Service().ActivateAsync(await CodeFor(new DateOnly(2026, 12, 31)));
+        await _settings.SetAsync("licence.valid-until", "2099-12-31");
+
+        (await Service().RefreshAsync()).ValidUntil.Should().Be(new DateOnly(2026, 12, 31));
+    }
+
+    [Fact]
+    public async Task Activation_clears_a_wrong_future_date()
+    {
+        _clock.Advance(TimeSpan.FromDays(400));   // someone's clock was a year out
+        await Service().RefreshAsync();
+        _clock.Advance(TimeSpan.FromDays(-400));
+        (await Service().RefreshAsync()).Status.Should().Be(LicenceStatus.ClockWrong);
+
+        (await Service().ActivateAsync(await CodeFor(Today.AddMonths(1)))).Ok.Should().BeTrue();
+
+        _gate.Current.Status.Should().Be(LicenceStatus.Active);
+    }
+
     private sealed class MemorySettings : IPharmacySettings
     {
         private readonly Dictionary<string, string?> _values = new();

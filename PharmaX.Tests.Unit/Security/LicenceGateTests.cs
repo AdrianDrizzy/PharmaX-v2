@@ -27,6 +27,7 @@ public sealed class LicenceGateTests
     [InlineData(PermissionCode.ProductRead)]
     [InlineData(PermissionCode.ReportFinancial)]
     [InlineData(PermissionCode.SettingsChange)]
+    [InlineData(PermissionCode.ProductDispensary)]
     public void Read_only_allows_lookups_and_fixing(string code) =>
         Gate(LicenceStatus.ClockWrong).Allows(code).Should().BeTrue();
 
@@ -48,5 +49,5 @@ public sealed class LicenceGateTests
         FluentActions.Invoking(() =>
                 Service(Gate(LicenceStatus.ReadOnly)).Demand(PermissionCode.SaleCreate))
             .Should().Throw<PermissionDeniedException>()
-            .WithMessage("PharmaX is read-only until the membership is renewed.");
+            .WithMessage(PermissionService.ReadOnlyMessage);
 }

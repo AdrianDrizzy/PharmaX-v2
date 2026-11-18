@@ -53,6 +53,16 @@ public sealed class LicenceCodeTests
         LicenceCode.Verify(text, Key).Should().BeNull();
 
     [Fact]
+    public void Whole_whatsapp_message_pasted_verifies()
+    {
+        var message = "Thank you for your payment. Your PharmaX membership runs until "
+            + "18 Feb 2027. Paste this code and click Activate:\r\n​"
+            + LicenceCode.Issue(Sample, Key) + " ";
+
+        LicenceCode.Verify(message, Key).Should().Be(Sample);
+    }
+
+    [Fact]
     public void Pharmacy_id_round_trips() =>
         LicenceCode.ParsePharmacyId(
                 LicenceCode.FormatPharmacyId(Sample.PharmacyId).ToLowerInvariant())

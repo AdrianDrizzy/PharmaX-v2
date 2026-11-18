@@ -60,16 +60,28 @@ public sealed class LicenceService : ILicenceService
 
         try
         {
-            validUntil = Parse(await _settings.GetAsync(ValidUntilKey, ct));
             lastSeen = Parse(await _settings.GetAsync(LastSeenKey, ct));
-            var code = await _settings.GetAsync(CodeKey, ct);
-            payload = string.IsNullOrEmpty(code) ? null : _verify(code);
+            payload = await StoredCodeAsync(ct);
 
-            if (validUntil is null)
+            if (payload is not null)
             {
-                // First start: a trial, so setting up is never blocked.
-                validUntil = today.AddDays(TrialDays);
-                await _settings.SetAsync(ValidUntilKey, Format(validUntil), ct);
+                // The signed date decides, never a row anyone could edit.
+                validUntil = payload.ValidUntil;
+            }
+            else
+            {
+                // No code: a trial, so setting up is never blocked.
+                var trialEnd = Parse(await _settings.GetAsync(ValidUntilKey, ct));
+                if (trialEnd is null)
+                {
+                    trialEnd = today.AddDays(TrialDays);
+                    await _settings.SetAsync(ValidUntilKey, Format(trialEnd), ct);
+                }
+
+                // shortcut: deleting this row restarts the trial; bound it by the
+                // database's first sale if that ever proves to be abused.
+                var longest = today.AddDays(TrialDays);
+                validUntil = trialEnd > longest ? longest : trialEnd;
             }
 
             if (lastSeen is null || today > lastSeen)
@@ -118,20 +130,27 @@ public sealed class LicenceService : ILicenceService
             return new(false, "This code has already expired (it ran until "
                               + $"{LicenceState.Day(payload.ValidUntil)}).");
 
-        var current = Parse(await _settings.GetAsync(ValidUntilKey, ct));
-        var currentCode = await _settings.GetAsync(CodeKey, ct);
-
-        // An older code never takes days away. A trial's end is not a membership.
-        if (string.IsNullOrEmpty(currentCode) || current is null
-            || payload.ValidUntil >= current)
-        {
+        // An older code never takes days away.
+        if (await StoredCodeAsync(ct) is not { } stored || payload.ValidUntil >= stored.ValidUntil)
             await _settings.SetAsync(CodeKey, code, ct);
-            await _settings.SetAsync(ValidUntilKey, Format(payload.ValidUntil), ct);
-        }
+
+        // A vendor's code outranks a computer whose clock once ran ahead.
+        await _settings.SetAsync(LastSeenKey, Format(_clock.Today), ct);
 
         var snapshot = await RefreshAsync(ct);
         return new(true, $"Membership active until {LicenceState.Day(snapshot.ValidUntil)} "
                          + $"({snapshot.Plan}).");
+    }
+
+    /// The stored code, if it is genuine and made for this pharmacy.
+    private async Task<LicencePayload?> StoredCodeAsync(CancellationToken ct)
+    {
+        var code = await _settings.GetAsync(CodeKey, ct);
+        return string.IsNullOrEmpty(code) || _verify(code) is not { } payload
+               || !Guid.TryParse(await _settings.GetAsync(PharmacyIdKey, ct), out var mine)
+               || payload.PharmacyId != mine
+            ? null
+            : payload;
     }
 
     private static DateOnly? Parse(string? text) =>

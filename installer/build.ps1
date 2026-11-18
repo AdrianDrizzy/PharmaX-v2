@@ -45,6 +45,13 @@ $root = Split-Path -Parent $PSScriptRoot
 $dist = Join-Path $root 'dist'
 $publish = Join-Path $dist 'publish'
 
+# Without the vendor's public key every activation code is refused, and every
+# pharmacy goes read-only when its trial runs out. See tools/PharmaX.CodeMaker.
+if (Select-String -Path (Join-Path $root 'PharmaX.Application\Licensing\LicenceCode.cs') `
+        -Pattern 'PublicKey = "";' -SimpleMatch -Quiet) {
+    throw "LicenceCode.PublicKey is empty. Run 'codemaker keygen' and paste the public key in first."
+}
+
 Write-Host "Publishing PharmaX ($Configuration)..." -ForegroundColor Cyan
 
 # Cleared rather than published over: a stale file from a previous build
