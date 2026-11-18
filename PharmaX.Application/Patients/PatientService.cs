@@ -53,10 +53,12 @@ public sealed class PatientService : IPatientService
     private readonly IOutbox _outbox;
     private readonly IUnitOfWork _uow;
     private readonly IClock _clock;
+    private readonly Licensing.ILicenceGate? _licence;
 
     public PatientService(IPatientRepository patients,
         IDocumentNumbering numbering, IPermissionService permissions,
-        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow, IClock clock)
+        IAuditWriter audit, IOutbox outbox, IUnitOfWork uow, IClock clock,
+        Licensing.ILicenceGate? licence = null)
     {
         _patients = patients;
         _numbering = numbering;
@@ -65,6 +67,14 @@ public sealed class PatientService : IPatientService
         _outbox = outbox;
         _uow = uow;
         _clock = clock;
+        _licence = licence;
+    }
+
+    // Read-only still opens patients (PatientMaintain), so saving is refused here.
+    private void DemandWritable()
+    {
+        if (_licence?.Current.IsReadOnly == true)
+            throw new PermissionDeniedException(PermissionService.ReadOnlyMessage);
     }
 
     public async Task<Result<IReadOnlyList<PatientListItemDto>>>
@@ -166,6 +176,7 @@ public sealed class PatientService : IPatientService
         ArgumentNullException.ThrowIfNull(edit);
 
         _permissions.Demand(PermissionCode.PatientMaintain);
+        DemandWritable();
 
         if (Validate(edit, _clock.Today) is Error problem)
             return Result<Guid>.Fail(problem.Code, problem.Message);
@@ -212,6 +223,7 @@ public sealed class PatientService : IPatientService
         ArgumentNullException.ThrowIfNull(edit);
 
         _permissions.Demand(PermissionCode.PatientMaintain);
+        DemandWritable();
 
         if (Validate(edit, _clock.Today) is Error problem)
             return Result.Fail(problem.Code, problem.Message);
