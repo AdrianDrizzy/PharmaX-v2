@@ -42,14 +42,14 @@ public static class DispensingCharge
     public static decimal Exact(decimal packPrice, decimal unitsInPack, decimal quantity) =>
         packPrice * quantity / (unitsInPack > 0m ? unitsInPack : 1m);
 
-    /// The step as set, or a dollar where it never was.
+    /// The step as set - 0 being "None", no rounding - or a dollar where it never was.
     public static async Task<decimal> RoundToAsync(IPharmacySettings settings, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
         var said = await settings.GetAsync(PharmacySettingKey.DispensingRounding, ct).ConfigureAwait(false);
 
-        return decimal.TryParse(said, NumberStyles.Number, CultureInfo.InvariantCulture, out var step) && step > 0m
+        return decimal.TryParse(said, NumberStyles.Number, CultureInfo.InvariantCulture, out var step) && step >= 0m
             ? step
             : DefaultRoundTo;
     }
