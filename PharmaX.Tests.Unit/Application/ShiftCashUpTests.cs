@@ -708,9 +708,10 @@ public class ShiftCashUpTests
     }
 
     [Theory]
-    [InlineData(Role.Standard.Cashier, true, false)]
-    [InlineData(Role.Standard.Pharmacist, true, true)]
-    [InlineData(Role.Standard.PharmacistAssistant, true, true)]
+    [InlineData(Role.Standard.Cashier, false, false)]
+    [InlineData(Role.Standard.Pharmacist, false, false)]
+    [InlineData(Role.Standard.PharmacistAssistant, false, false)]
+    [InlineData(Role.Standard.Manager, false, false)]
     [InlineData(Role.Standard.Administrator, true, true)]
     [InlineData(Role.Standard.StockController, false, false)]
     public void The_menu_offers_cash_up_and_the_end_of_day_to_the_right_people(

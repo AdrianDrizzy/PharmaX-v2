@@ -47,13 +47,11 @@ public static class ScreenAccess
             // The drawer belongs to whoever sells from it.
             ["till"] = p => p.Has(PermissionCode.SaleCreate),
 
-            // A cashier cashes up their own shift; the pharmacist, the
-            // assistant, the manager and the administrator any cashier's,
-            // and they see the whole day (as does whoever reads the books).
-            ["cash-up"] = p => p.HasAny(PermissionCode.SessionCashUp,
-                                        PermissionCode.SessionCloseOtherUser),
-            ["end-of-day"] = p => p.HasAny(PermissionCode.SessionCloseOtherUser,
-                                           PermissionCode.ReportFinancial),
+            // Each on its own tick in Role permissions: the administrator
+            // only, until the pharmacy ticks it for another role
+            // (19 November 2026).
+            ["cash-up"] = p => p.Has(PermissionCode.CashUpScreen),
+            ["end-of-day"] = p => p.Has(PermissionCode.EndOfDayScreen),
 
             // Dispensary.
             ["dispensing"] = p => p.Has(PermissionCode.ScriptDispense),

@@ -524,17 +524,28 @@ public sealed class frmPrintSizes : PhxFormBase
                 default:
                 {
                     PrintLayouts.Label = Active;
-                    using var document = new LabelDocument(
-                        PrintSamplePreview.SampleLabelPublic(),
-                        new PharmacyImprint("Bethrapha Pharmacy",
-                            "28 Woodstock Road, Thorngrove, Bulawayo",
-                            "029-123456"),
-                        layout: Active);
-                    result = await Spooler.PrintAsync(document, _settings,
-                        WorkstationSettingKey.LabelPrinter, "label",
-                        "Print sizes sample label",
-                        NullLogger.Instance, CancellationToken.None,
-                        orDefault: false);
+                    var imprint = new PharmacyImprint("Bethrapha Pharmacy",
+                        "28 Woodstock Road, Thorngrove, Bulawayo", "029-123456");
+
+                    // A patient's label, then a pre-pack sticker: a pre-pack
+                    // has a row more, so the size has to suit both.
+                    using (var document = new LabelDocument(
+                               PrintSamplePreview.SampleLabelPublic(), imprint, layout: Active))
+                        result = await Spooler.PrintAsync(document, _settings,
+                            WorkstationSettingKey.LabelPrinter, "label",
+                            "Print sizes sample label",
+                            NullLogger.Instance, CancellationToken.None,
+                            orDefault: false);
+
+                    if (result.Outcome != PrintOutcome.Printed) break;
+
+                    using (var prepack = new LabelDocument(
+                               PrintSamplePreview.SamplePrepackPublic(), imprint, layout: Active))
+                        result = await Spooler.PrintAsync(prepack, _settings,
+                            WorkstationSettingKey.LabelPrinter, "label",
+                            "Print sizes sample pre-pack",
+                            NullLogger.Instance, CancellationToken.None,
+                            orDefault: false);
                     break;
                 }
             }
@@ -833,6 +844,20 @@ internal sealed class PrintSamplePreview : Panel
     }
 
     internal static LabelDto SampleLabelPublic() => SampleLabel();
+
+    /// A pre-pack sticker as the Labels screen prints one.
+    internal static LabelDto SamplePrepackPublic() => new(
+        PatientName: "",
+        ProductDescription: "Magnesium Trisilicate",
+        Quantity: 12m,
+        Directions: "Chew one tablet / two tablets when required",
+        BatchNumber: "8834",
+        Expiry: new DateOnly(2027, 8, 31),
+        PharmacistName: "",
+        ScriptNumber: "Pre-pack",
+        DispensedOn: DateOnly.FromDateTime(DateTime.Today),
+        Cautions: new[] { "Do not take with other medicines" },
+        Price: 1.50m);
 
     internal static ClaimFormDto SampleClaimPublic() => SampleClaim();
 
