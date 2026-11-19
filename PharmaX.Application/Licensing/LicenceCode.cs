@@ -17,7 +17,7 @@ public sealed record LicencePayload(MembershipPlan Plan, Guid PharmacyId,
 public static class LicenceCode
 {
     /// <summary>The vendor's public key (SubjectPublicKeyInfo, Base64).</summary>
-    public const string PublicKey = "";
+    public const string PublicKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEmo5KZYYRVqdXh7Zcpbxh6tHlVK9CXYc4gkYAWo0xtoRQcT8FGXZpONmXHOOPElsX1JPZXeJK4RCFpbQM9c+x4Q==";
 
     private const string Prefix = "PHX-";
     private const byte Version = 1;
