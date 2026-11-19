@@ -244,21 +244,41 @@ internal sealed class HomeTile : Panel
         base.OnPaint(e);
         ArgumentNullException.ThrowIfNull(e);
 
+        var radius = LogicalToDeviceUnits(8);
+        using var edge = PhxTheme.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), radius);
+
+        // The corners outside the card take the page's colour; the smoothed
+        // outline drawn over their edge hides the steps.
+        using (var outside = new Region(ClientRectangle))
+        using (var page = new SolidBrush(PhxTheme.Behind(this)))
+        {
+            outside.Exclude(edge);
+            e.Graphics.FillRegion(page, outside);
+        }
+
         PaintIcon(e.Graphics);
         if (_count is not null && Enabled) PaintCount(e.Graphics);
+
+        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
         // The card under the mouse is outlined in the highlight, two
         // pixels wide; a pen that wide straddles its line, so it is drawn
         // one pixel in to stay inside the card.
         if (_hot && Enabled)
         {
-            using var hot = new Pen(PhxTheme.Highlight, 2);
-            e.Graphics.DrawRectangle(hot, 1, 1, Width - 2, Height - 2);
-            return;
+            var ring = new Rectangle(1, 1, Width - 3, Height - 3);
+            using var sweep = PhxTheme.Sweep(ring, PhxTheme.Brand, PhxTheme.Highlight);
+            using var hot = new Pen(sweep, 2);
+            using var inner = PhxTheme.Rounded(ring, radius);
+            e.Graphics.DrawPath(hot, inner);
+        }
+        else
+        {
+            using var pen = new Pen(PhxTheme.Line);
+            e.Graphics.DrawPath(pen, edge);
         }
 
-        using var pen = new Pen(PhxTheme.Line);
-        e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
     }
 
     /// <summary>
@@ -286,18 +306,18 @@ internal sealed class HomeTile : Panel
 
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-        using (var path = Rounded(box, chip / 4))
-        using (var fill = new SolidBrush(Enabled ? PhxTheme.Selection : PhxTheme.Line))
+        // A coloured chip, swept like the primary buttons, with a white icon.
+        using (var path = PhxTheme.Rounded(box, chip / 4))
+        using (Brush fill = Enabled
+                   ? PhxTheme.Sweep(box, PhxTheme.Brand, PhxTheme.BrandSweep)
+                   : new SolidBrush(PhxTheme.Line))
             graphics.FillPath(fill, path);
 
         var glyph = (int)(chip * 0.62);
 
         graphics.DrawImage(
-            PhxIcons.Image(_icon, glyph, Enabled ? PhxTheme.Title : PhxTheme.Muted),
+            PhxIcons.Image(_icon, glyph, Enabled ? Color.White : PhxTheme.Muted),
             box.X + (chip - glyph) / 2, box.Y + (chip - glyph) / 2, glyph, glyph);
-
-        // The card's one-pixel outline is drawn next, and blurs if smoothed.
-        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
     }
 
     /// <summary>
@@ -325,7 +345,7 @@ internal sealed class HomeTile : Panel
 
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-        using (var path = Rounded(pill, height / 2))
+        using (var path = PhxTheme.Rounded(pill, height / 2))
         using (var fill = new SolidBrush(PhxTheme.Brand))
             graphics.FillPath(fill, path);
 
@@ -336,19 +356,5 @@ internal sealed class HomeTile : Panel
         TextRenderer.DrawText(graphics, _count, font, inside, Color.White,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
             | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
-    }
-
-    private static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle box,
-                                                                 int radius)
-    {
-        var path = new System.Drawing.Drawing2D.GraphicsPath();
-        var d = radius * 2;
-
-        path.AddArc(box.X, box.Y, d, d, 180, 90);
-        path.AddArc(box.Right - d, box.Y, d, d, 270, 90);
-        path.AddArc(box.Right - d, box.Bottom - d, d, d, 0, 90);
-        path.AddArc(box.X, box.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
     }
 }

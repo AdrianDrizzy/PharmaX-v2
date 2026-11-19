@@ -234,8 +234,14 @@ public sealed record ThemeMode(string Id, string Name, Color Paper, Color Field,
         Color.White, true,
         Warning: Color.FromArgb(252, 225, 0), Error: Color.FromArgb(255, 153, 164));
 
+    /// Deep violet with a magenta glow: the futuristic one.
+    public static ThemeMode Aurora { get; } = new("aurora", "Aurora",
+        Color.FromArgb(13, 9, 30), Color.FromArgb(26, 20, 54),
+        Color.FromArgb(242, 238, 255), true, Color.FromArgb(214, 92, 255),
+        Color.FromArgb(255, 200, 87), Color.FromArgb(255, 84, 140));
+
     public static IReadOnlyList<ThemeMode> All { get; } =
-        new[] { Light, Dark, Midnight, Warm, FluentLight, FluentDark };
+        new[] { Light, Dark, Midnight, Aurora, Warm, FluentLight, FluentDark };
 
     /// The mode a setting names, or Light.
     public static ThemeMode Resolve(string? id) =>
