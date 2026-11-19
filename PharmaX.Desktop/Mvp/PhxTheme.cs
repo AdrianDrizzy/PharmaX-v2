@@ -242,14 +242,10 @@ public static class PhxTheme
         Focus = Palette.Mix(Field, Highlight, mode.IsDark ? 0.18 : 0.10);
 
         // The menu and status bars draw themselves in the system's
-        // colours unless told otherwise. Swapped only on the way into or
-        // out of light, which keeps the system's renderer untouched.
-        var themed = ToolStripManager.Renderer is StripRenderer;
-
-        if (themed == (mode == ThemeMode.Light))
-            ToolStripManager.Renderer = themed
-                ? new ToolStripProfessionalRenderer()
-                : new StripRenderer();
+        // colours unless told otherwise; the renderer reads the shades
+        // above as it draws, so one serves every mode.
+        if (ToolStripManager.Renderer is not StripRenderer)
+            ToolStripManager.Renderer = new StripRenderer();
 
         var after = Shades();
         var changes = new Dictionary<Color, Color>();
@@ -576,13 +572,31 @@ public static class PhxTheme
     }
 
     /// <summary>
-    /// The menu, status bar and drop-downs in the mode's colours. Only
-    /// outside the light mode, which keeps the system's own look.
+    /// The menu, status bar and drop-downs in the mode's colours, flat,
+    /// with the item under the mouse on a rounded block as in Windows 11.
     /// </summary>
     private sealed class StripRenderer : ToolStripProfessionalRenderer
     {
         public StripRenderer() : base(new StripColours()) =>
             RoundedEdges = false;
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (!e.Item.Enabled || !(e.Item.Selected || e.Item.Pressed))
+            {
+                base.OnRenderMenuItemBackground(e);
+                return;
+            }
+
+            var box = new Rectangle(Point.Empty, e.Item.Size);
+            box.Inflate(-3, -1);
+
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using (var path = Rounded(box, 4))
+            using (var brush = new SolidBrush(Selection))
+                e.Graphics.FillPath(brush, path);
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
+        }
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
@@ -851,6 +865,126 @@ public static class PhxTheme
         // would leave a dead control looking like the live one.
         button.EnabledChanged += (sender, _) => PaintPrimary((Button)sender!);
         PaintPrimary(button);
+        Round(button);
+    }
+
+    // ---- Rounded buttons -------------------------------------------------
+
+    /// <summary>
+    /// Draws a button as Windows 11 does: a rounded block, a one-pixel
+    /// outline on an ordinary button, none on the filled primary one.
+    /// </summary>
+    /// <remarks>
+    /// Painted over what the button drew itself, so FlatStyle stays the
+    /// primary's marker. A picture laid out other than icon-then-caption
+    /// (PhxIcons' layout) is left for the button to draw.
+    /// </remarks>
+    private static void Round(Button button)
+    {
+        button.Paint -= PaintRounded;
+        button.Paint += PaintRounded;
+    }
+
+    private static void PaintRounded(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button button || button.BackgroundImage is not null
+            || (button.Image is not null
+                && button.TextImageRelation != TextImageRelation.ImageBeforeText))
+            return;
+
+        var g = e.Graphics;
+        var box = button.ClientRectangle;
+        var filled = button.FlatStyle == FlatStyle.Flat;
+        var back = button.BackColor == SystemColors.Control ? Card : button.BackColor;
+        var hot = button.Enabled && box.Contains(button.PointToClient(Cursor.Position));
+
+        var fill = !hot ? back
+            : filled && !button.FlatAppearance.MouseOverBackColor.IsEmpty
+                ? button.FlatAppearance.MouseOverBackColor
+            : back == Card || back == ButtonFace ? Hover
+            : Palette.Mix(back, Color.Black, 0.1);
+
+        if (hot && Control.MouseButtons == MouseButtons.Left)
+            fill = Palette.Mix(fill, Color.Black, 0.08);
+
+        g.Clear(Behind(button));
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        var radius = button.LogicalToDeviceUnits(4);
+
+        using (var path = Rounded(new Rectangle(0, 0, box.Width - 1, box.Height - 1), radius))
+        {
+            using (var brush = new SolidBrush(fill)) g.FillPath(brush, path);
+
+            if (!filled || button.FlatAppearance.BorderSize > 0)
+            {
+                using var pen = new Pen(filled && !button.FlatAppearance.BorderColor.IsEmpty
+                    ? button.FlatAppearance.BorderColor : Line);
+                g.DrawPath(pen, path);
+            }
+        }
+
+        // Where the next Enter or Space goes, for whoever is on the keyboard.
+        if (button.Focused)
+        {
+            using var ring = new Pen(Highlight, 2);
+            using var inner = Rounded(new Rectangle(1, 1, box.Width - 3, box.Height - 3), radius);
+            g.DrawPath(ring, inner);
+        }
+
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
+
+        var flags = TextFormatFlags.WordBreak | TextFormatFlags.VerticalCenter
+                    | (button.UseMnemonic ? TextFormatFlags.HidePrefix : TextFormatFlags.NoPrefix)
+                    | Across(button.TextAlign);
+        var inside = new Rectangle(button.Padding.Left, button.Padding.Top,
+            box.Width - button.Padding.Horizontal, box.Height - button.Padding.Vertical);
+
+        if (button.Image is { } image)
+        {
+            var gap = button.LogicalToDeviceUnits(6);
+            var text = TextRenderer.MeasureText(g, button.Text, button.Font, inside.Size, flags).Width;
+            var left = inside.X + Math.Max(0, (inside.Width - image.Width - gap - text) / 2);
+
+            g.DrawImage(image, left, inside.Y + (inside.Height - image.Height) / 2,
+                        image.Width, image.Height);
+
+            inside = Rectangle.FromLTRB(left + image.Width + gap, inside.Top,
+                                        inside.Right, inside.Bottom);
+            flags &= ~(TextFormatFlags.HorizontalCenter | TextFormatFlags.Right);
+        }
+
+        TextRenderer.DrawText(g, button.Text, button.Font, inside,
+            button.Enabled ? button.ForeColor : Muted, flags);
+    }
+
+    private static TextFormatFlags Across(ContentAlignment align) =>
+        (align & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft
+                  | ContentAlignment.BottomLeft)) != 0 ? TextFormatFlags.Left
+        : (align & (ContentAlignment.TopRight | ContentAlignment.MiddleRight
+                    | ContentAlignment.BottomRight)) != 0 ? TextFormatFlags.Right
+        : TextFormatFlags.HorizontalCenter;
+
+    /// The colour a control stands on: its nearest parent that is not see-through.
+    internal static Color Behind(Control control)
+    {
+        for (var parent = control.Parent; parent is not null; parent = parent.Parent)
+            if (parent.BackColor.A == 255) return parent.BackColor;
+
+        return Surface;
+    }
+
+    internal static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle box, int radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        var d = Math.Max(1, radius * 2);
+
+        path.AddArc(box.X, box.Y, d, d, 180, 90);
+        path.AddArc(box.Right - d, box.Y, d, d, 270, 90);
+        path.AddArc(box.Right - d, box.Bottom - d, d, d, 0, 90);
+        path.AddArc(box.X, box.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private static void PaintPrimary(Button button)
@@ -977,8 +1111,9 @@ public static class PhxTheme
             // what would quietly undo the accent on every screen.
             // Standard rather than System: it looks the same, and a
             // System-drawn button cannot show an icon.
-            case Button button when button.FlatStyle != FlatStyle.Flat:
-                button.FlatStyle = FlatStyle.Standard;
+            case Button button:
+                if (button.FlatStyle != FlatStyle.Flat) button.FlatStyle = FlatStyle.Standard;
+                Round(button);
                 break;
 
             case TextBox or ComboBox or ListBox or NumericUpDown or TreeView:
@@ -1030,6 +1165,11 @@ public static class PhxTheme
         grid.BackgroundColor = Field;
         grid.BorderStyle = BorderStyle.None;
         grid.GridColor = Line;
+
+        // Rows divided by a hairline and nothing between columns or
+        // round the headings, as a Windows 11 list.
+        grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+        grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
         grid.EnableHeadersVisualStyles = false;
         grid.RowHeadersVisible = false;
         grid.AllowUserToResizeRows = false;
