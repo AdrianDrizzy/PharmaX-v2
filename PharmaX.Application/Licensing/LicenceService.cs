@@ -14,7 +14,17 @@ public interface ILicenceService
     Task<Guid> GetPharmacyIdAsync(CancellationToken ct = default);
 
     Task<ActivationResult> ActivateAsync(string code, CancellationToken ct = default);
+
+    /// False on a till: codes are entered on the main computer only.
+    bool CanActivate { get; }
 }
+
+/// <summary>
+/// The computer PharmaX is running on, as membership sees it: whether it is
+/// the main computer (the server, or a PC on its own) and the Pharmacy ID
+/// that belongs to that computer and no other.
+/// </summary>
+public sealed record LicenceMachine(bool IsMain, Guid PharmacyId);
 
 /// <summary>
 /// This computer's last-known membership, so a till that cannot reach the
@@ -41,13 +51,17 @@ public sealed class LicenceService : ILicenceService
     private readonly ILicenceCache _cache;
     private readonly Func<string, LicencePayload?> _verify;
 
+    private readonly LicenceMachine? _machine;
+
     public LicenceService(IPharmacySettings settings, IClock clock, ILicenceGate gate,
-                          ILicenceCache cache, Func<string, LicencePayload?>? verify = null)
+                          ILicenceCache cache, Func<string, LicencePayload?>? verify = null,
+                          LicenceMachine? machine = null)
     {
         _settings = settings;
         _clock = clock;
         _gate = gate;
         _cache = cache;
+        _machine = machine;
         _verify = verify ?? LicenceCode.Verify;
     }
 
@@ -106,8 +120,21 @@ public sealed class LicenceService : ILicenceService
         return snapshot;
     }
 
+    public bool CanActivate => _machine?.IsMain ?? true;
+
     public async Task<Guid> GetPharmacyIdAsync(CancellationToken ct = default)
     {
+        // The main computer's own ID, written where the tills read it, so a
+        // code works for this pharmacy's main PC and its tills and nowhere
+        // else - not even on a copy of the database on another computer.
+        if (_machine is { IsMain: true } main)
+        {
+            var own = main.PharmacyId.ToString();
+            if (await _settings.GetAsync(PharmacyIdKey, ct) != own)
+                await _settings.SetAsync(PharmacyIdKey, own, ct);
+            return main.PharmacyId;
+        }
+
         if (Guid.TryParse(await _settings.GetAsync(PharmacyIdKey, ct), out var id))
             return id;
 
@@ -119,6 +146,10 @@ public sealed class LicenceService : ILicenceService
     public async Task<ActivationResult> ActivateAsync(string code,
                                                       CancellationToken ct = default)
     {
+        if (!CanActivate)
+            return new(false, "Enter the activation code on the main computer. "
+                              + "This till takes the membership from it.");
+
         if (_verify(code ?? "") is not { } payload)
             return new(false, "That is not a valid PharmaX code. Paste the whole "
                               + "code exactly as you received it.");
@@ -147,8 +178,7 @@ public sealed class LicenceService : ILicenceService
     {
         var code = await _settings.GetAsync(CodeKey, ct);
         return string.IsNullOrEmpty(code) || _verify(code) is not { } payload
-               || !Guid.TryParse(await _settings.GetAsync(PharmacyIdKey, ct), out var mine)
-               || payload.PharmacyId != mine
+               || payload.PharmacyId != await GetPharmacyIdAsync(ct)
             ? null
             : payload;
     }

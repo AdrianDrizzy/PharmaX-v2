@@ -149,6 +149,54 @@ public sealed class LicenceServiceTests
         _gate.Current.Status.Should().Be(LicenceStatus.Active);
     }
 
+    private static readonly Guid MainPc = Guid.Parse("11111111-2222-3333-4444-555555555555");
+
+    private LicenceService On(bool isMain, Guid? pc = null) =>
+        new(_settings, _clock, _gate, _cache, code => LicenceCode.Verify(code, Key),
+            new LicenceMachine(isMain, pc ?? MainPc));
+
+    private string CodeForMainPc(MembershipPlan plan = MembershipPlan.Monthly) =>
+        LicenceCode.Issue(new LicencePayload(plan, MainPc, Today.AddMonths(1), Today), Key);
+
+    [Theory]
+    [InlineData(MembershipPlan.Monthly)]
+    [InlineData(MembershipPlan.Lifetime)]
+    public async Task Code_is_entered_on_the_main_computer_and_the_till_takes_it(MembershipPlan plan)
+    {
+        (await On(isMain: true).ActivateAsync(CodeForMainPc(plan))).Ok.Should().BeTrue();
+
+        var till = await On(isMain: false, pc: Guid.NewGuid()).RefreshAsync();
+
+        till.IsTrial.Should().BeFalse();
+        till.Plan.Should().Be(plan);
+    }
+
+    [Fact]
+    public async Task A_till_cannot_activate_a_code()
+    {
+        var till = On(isMain: false, pc: Guid.NewGuid());
+
+        till.CanActivate.Should().BeFalse();
+        (await till.ActivateAsync(CodeForMainPc())).Ok.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task The_main_computer_shows_its_own_pharmacy_id() =>
+        (await On(isMain: true).GetPharmacyIdAsync()).Should().Be(MainPc);
+
+    [Fact]
+    public async Task A_code_does_not_follow_the_database_to_another_main_computer()
+    {
+        await On(isMain: true).ActivateAsync(CodeForMainPc());
+
+        // The same database, now opened by a different main computer.
+        var elsewhere = await On(isMain: true, pc: Guid.NewGuid()).RefreshAsync();
+
+        elsewhere.Plan.Should().BeNull();
+        (await On(isMain: true, pc: Guid.NewGuid()).ActivateAsync(CodeForMainPc()))
+            .Message.Should().Be("This code was made for a different pharmacy.");
+    }
+
     private sealed class MemorySettings : IPharmacySettings
     {
         private readonly Dictionary<string, string?> _values = new();
