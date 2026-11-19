@@ -36,7 +36,7 @@ switch (args)
             return Fail("That is not a Pharmacy ID. Copy it from PharmaX, Administration > Membership.");
         if (!Enum.TryParse<MembershipPlan>(planText, ignoreCase: true, out var plan)
             || !Enum.IsDefined(plan))
-            return Fail("Plan must be monthly, quarterly or yearly.");
+            return Fail("Plan must be monthly, quarterly, yearly or lifetime.");
         if (!File.Exists(keyFile))
             return Fail("No private key yet. Run: codemaker keygen");
 
@@ -52,14 +52,16 @@ switch (args)
             File.AppendAllText(logFile, string.Join(',', Iso(today), id, Csv(name), plan,
                 Iso(until), code) + Environment.NewLine);
 
+            var runs = LicenceState.Runs(plan, until);
+
             Console.WriteLine($"{plan} membership{(name.Length > 0 ? " for " + name : "")}, "
-                + $"valid until {LicenceState.Day(until)}:");
+                + $"valid {runs}:");
             Console.WriteLine();
             Console.WriteLine(code);
             Console.WriteLine();
             Console.WriteLine("Message to send:");
             Console.WriteLine($"Thank you for your payment. Your PharmaX {plan.ToString().ToLowerInvariant()} "
-                + $"membership runs until {LicenceState.Day(until)}. In PharmaX, open Administration > Membership, "
+                + $"membership runs {runs}. In PharmaX, open Administration > Membership, "
                 + $"paste this code and click Activate:{Environment.NewLine}{code}");
         }
         return 0;
@@ -72,7 +74,7 @@ switch (args)
     default:
         Console.WriteLine("""
             codemaker keygen                                   make your signing key (once, ever)
-            codemaker issue <pharmacy-id> <monthly|quarterly|yearly> [--name "Pharmacy name"]
+            codemaker issue <pharmacy-id> <monthly|quarterly|yearly|lifetime> [--name "Pharmacy name"]
             codemaker list                                     each pharmacy's current end date
             """);
         return args.Length == 0 ? 0 : 1;

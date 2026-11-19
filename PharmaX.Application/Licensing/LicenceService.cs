@@ -138,7 +138,7 @@ public sealed class LicenceService : ILicenceService
         await _settings.SetAsync(LastSeenKey, Format(_clock.Today), ct);
 
         var snapshot = await RefreshAsync(ct);
-        return new(true, $"Membership active until {LicenceState.Day(snapshot.ValidUntil)} "
+        return new(true, $"Membership active {LicenceState.Runs(snapshot.Plan, snapshot.ValidUntil)} "
                          + $"({snapshot.Plan}).");
     }
 

@@ -62,6 +62,10 @@ public static class LicenceState
         };
     }
 
+    /// How long a membership runs, in words: "for life" or "until 18 Feb 2027".
+    public static string Runs(MembershipPlan? plan, DateOnly? until) =>
+        plan == MembershipPlan.Lifetime ? "for life" : $"until {Day(until)}";
+
     public static string Day(DateOnly? day) =>
         day?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "";
 }

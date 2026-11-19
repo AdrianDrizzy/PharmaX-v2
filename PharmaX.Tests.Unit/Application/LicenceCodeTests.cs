@@ -17,6 +17,24 @@ public sealed class LicenceCodeTests
         LicenceCode.Verify(LicenceCode.Issue(Sample, Key), Key).Should().Be(Sample);
 
     [Fact]
+    public void Lifetime_code_verifies_and_runs_to_the_last_date()
+    {
+        var today = new DateOnly(2026, 11, 20);
+        var until = LicenceCode.NextValidUntil(today, null, MembershipPlan.Lifetime);
+        var lifetime = Sample with { Plan = MembershipPlan.Lifetime, ValidUntil = until };
+
+        until.Should().Be(DateOnly.MaxValue);
+        LicenceCode.Verify(LicenceCode.Issue(lifetime, Key), Key).Should().Be(lifetime);
+        LicenceState.Evaluate(until, today, today).Should().Be(LicenceStatus.Active);
+        LicenceState.Runs(MembershipPlan.Lifetime, until).Should().Be("for life");
+    }
+
+    [Fact]
+    public void A_shorter_plan_never_shortens_a_lifetime_membership() =>
+        LicenceCode.NextValidUntil(new DateOnly(2026, 11, 20), DateOnly.MaxValue,
+            MembershipPlan.Monthly).Should().Be(DateOnly.MaxValue);
+
+    [Fact]
     public void Code_starts_with_PHX_and_is_grouped() =>
         LicenceCode.Issue(Sample, Key).Should()
             .MatchRegex("^PHX-([A-Z2-7]{1,5}-)*[A-Z2-7]{1,5}$");

@@ -4,7 +4,8 @@ using System.Text;
 
 namespace PharmaX.Application.Licensing;
 
-public enum MembershipPlan : byte { Monthly = 1, Quarterly = 3, Yearly = 12 }
+/// Each plan's value is its length in months; Lifetime never ends.
+public enum MembershipPlan : byte { Monthly = 1, Quarterly = 3, Yearly = 12, Lifetime = 255 }
 
 public sealed record LicencePayload(MembershipPlan Plan, Guid PharmacyId,
                                     DateOnly ValidUntil, DateOnly IssuedOn);
@@ -85,7 +86,12 @@ public static class LicenceCode
                                           MembershipPlan plan)
     {
         var from = currentEnd is { } end && end > today ? end : today;
-        return from.AddMonths((int)plan);
+
+        // Lifetime - or any code for a pharmacy that already has it - runs to
+        // the last date there is.
+        return plan == MembershipPlan.Lifetime || from == DateOnly.MaxValue
+            ? DateOnly.MaxValue
+            : from.AddMonths((int)plan);
     }
 
     public static string FormatPharmacyId(Guid id) =>
