@@ -92,6 +92,14 @@ public sealed class frmMembership : PhxFormBase
         base.OnLoad(e);
         _pharmacyId.Text = LicenceCode.FormatPharmacyId(await _licence.GetPharmacyIdAsync());
         ShowStatus(await _licence.RefreshAsync());
+
+        if (!_licence.CanActivate)
+        {
+            _code.Enabled = false;
+            _activate.Enabled = false;
+            _result.Text = "Codes are entered on the main computer. "
+                           + "This till takes the membership from it.";
+        }
     }
 
     private async Task ActivateAsync()

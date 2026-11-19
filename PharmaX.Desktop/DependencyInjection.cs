@@ -30,6 +30,10 @@ public static class DependencyInjection
         s.AddSingleton<ViewFactory>();
         s.AddSingleton<ErrorHandler>();
 
+        // Membership codes are locked to the main computer's Pharmacy ID.
+        s.AddSingleton(sp => Setup.ThisComputer.Licence(
+            sp.GetRequiredService<PharmaX.Application.Abstractions.PharmaXOptions>()));
+
         // One logo for the whole application, loaded once at start-up.
         s.AddSingleton<Branding>();
 

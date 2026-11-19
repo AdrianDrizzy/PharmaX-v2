@@ -584,11 +584,13 @@ Words: system setup, markup, rounding, currency, logo, colour palette, change th
 
 Words: membership, subscription, activation code, renew, licence, license, read-only, Pharmacy ID
 
-**Administration > Membership.** For the whole pharmacy, every till. A new installation runs a 14-day trial.
+**Administration > Membership**, on the **main computer** (the server, or the PC if PharmaX runs on one PC only). One code covers the whole pharmacy: every till takes the membership from the main computer, and the code works on no other computer. On a till this screen only shows where the membership stands. A new installation runs a 14-day trial.
 
 1. **Copy** the **Pharmacy ID** and send it with your payment (monthly, quarterly, yearly or lifetime).
 2. When the activation code arrives, paste the whole code into **Activation code**.
-3. **Activate**. The screen shows the plan and the date it runs until. Paying before the end adds the new period after the current one.
+3. **Activate**. The screen shows the plan and the date it runs until. Paying before the end adds the new period after the current one. A lifetime membership shows "active for life" and never ends.
+
+The Pharmacy ID belongs to the main computer. If the main computer is replaced, or Windows on it is reinstalled, it gets a new Pharmacy ID and the old code stops working: send the new ID for a new code.
 
 Seven days before the end, a yellow banner appears under the menu. After the end there are seven days' grace with everything still working, under a red banner. After that PharmaX is read-only: patients, products, the ledger and reports can still be looked up, but nothing can be sold, dispensed, received or changed until a new code is entered. Clicking the banner opens Membership. If the computer's date is set back, PharmaX is also read-only until the date is correct.
 
