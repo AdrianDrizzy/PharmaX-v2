@@ -158,6 +158,17 @@ public static class PhxTheme
 
     public static Color AccentDisabled { get; private set; }
 
+    /// <summary>
+    /// The far end of the sweep a filled button, a tile's icon and a band's
+    /// underline are painted in: the brand turned towards the highlight,
+    /// still dark enough to carry white text.
+    /// </summary>
+    /// <remarks>
+    /// Only painted, never set on a control, so it stays out of Shades and
+    /// Recolour.
+    /// </remarks>
+    public static Color BrandSweep { get; private set; }
+
     static PhxTheme() => Use(Palette.NavyAndOrange);
 
     /// <summary>
@@ -202,6 +213,7 @@ public static class PhxTheme
         BrandDeep = Palette.Mix(Brand, Color.Black, 0.2);
         Highlight = mode.Glow ?? palette.Highlight;
         HighlightText = Palette.Readable(Highlight, paper, 4.8);
+        BrandSweep = Palette.Readable(Palette.Mix(Brand, Highlight, 0.35), Color.White);
         Surface = Palette.Mix(paper, tint, 0.04);
         Band = Palette.Mix(paper, tint, 0.09);
         Line = Palette.Mix(paper, tint, 0.18);
@@ -752,10 +764,12 @@ public static class PhxTheme
 
         // The logo's orange along the foot of the band. Painted rather than
         // docked, so it sits in the padding and no caller's layout moves.
+        // Swept from the brand into the highlight, left to right.
         band.Paint += (_, e) =>
         {
-            using var brush = new SolidBrush(Highlight);
-            e.Graphics.FillRectangle(brush, 0, band.Height - 3, band.Width, 3);
+            var line = new Rectangle(0, band.Height - 3, band.Width, 3);
+            using var brush = Sweep(line, Brand, Highlight);
+            e.Graphics.FillRectangle(brush, line);
         };
 
         return band;
@@ -912,9 +926,17 @@ public static class PhxTheme
 
         var radius = button.LogicalToDeviceUnits(4);
 
-        using (var path = Rounded(new Rectangle(0, 0, box.Width - 1, box.Height - 1), radius))
+        // The live primary is swept from the brand towards the highlight.
+        var swept = filled && back == Accent && button.Enabled;
+        var outline = new Rectangle(0, 0, box.Width - 1, box.Height - 1);
+
+        using (var path = Rounded(outline, radius))
         {
-            using (var brush = new SolidBrush(fill)) g.FillPath(brush, path);
+            using (Brush brush = swept
+                       ? Sweep(outline, fill, fill == back ? BrandSweep
+                                                           : Palette.Mix(BrandSweep, Color.Black, 0.15))
+                       : new SolidBrush(fill))
+                g.FillPath(brush, path);
 
             if (!filled || button.FlatAppearance.BorderSize > 0)
             {
@@ -964,6 +986,18 @@ public static class PhxTheme
         : (align & (ContentAlignment.TopRight | ContentAlignment.MiddleRight
                     | ContentAlignment.BottomRight)) != 0 ? TextFormatFlags.Right
         : TextFormatFlags.HorizontalCenter;
+
+    /// <summary>A left-to-right, slightly diagonal blend across a box.</summary>
+    internal static System.Drawing.Drawing2D.LinearGradientBrush Sweep(Rectangle box,
+                                                                      Color from, Color to)
+    {
+        // One pixel bigger all round: a gradient wraps its first colour back
+        // in at the exact edge of its own rectangle.
+        var area = Rectangle.Inflate(box, 1, 1);
+        return new System.Drawing.Drawing2D.LinearGradientBrush(
+            area with { Width = Math.Max(2, area.Width), Height = Math.Max(2, area.Height) },
+            from, to, 15f);
+    }
 
     /// The colour a control stands on: its nearest parent that is not see-through.
     internal static Color Behind(Control control)

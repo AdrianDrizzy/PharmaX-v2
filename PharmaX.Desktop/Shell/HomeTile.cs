@@ -266,8 +266,10 @@ internal sealed class HomeTile : Panel
         // one pixel in to stay inside the card.
         if (_hot && Enabled)
         {
-            using var hot = new Pen(PhxTheme.Highlight, 2);
-            using var inner = PhxTheme.Rounded(new Rectangle(1, 1, Width - 3, Height - 3), radius);
+            var ring = new Rectangle(1, 1, Width - 3, Height - 3);
+            using var sweep = PhxTheme.Sweep(ring, PhxTheme.Brand, PhxTheme.Highlight);
+            using var hot = new Pen(sweep, 2);
+            using var inner = PhxTheme.Rounded(ring, radius);
             e.Graphics.DrawPath(hot, inner);
         }
         else
@@ -304,14 +306,17 @@ internal sealed class HomeTile : Panel
 
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
+        // A coloured chip, swept like the primary buttons, with a white icon.
         using (var path = PhxTheme.Rounded(box, chip / 4))
-        using (var fill = new SolidBrush(Enabled ? PhxTheme.Selection : PhxTheme.Line))
+        using (Brush fill = Enabled
+                   ? PhxTheme.Sweep(box, PhxTheme.Brand, PhxTheme.BrandSweep)
+                   : new SolidBrush(PhxTheme.Line))
             graphics.FillPath(fill, path);
 
         var glyph = (int)(chip * 0.62);
 
         graphics.DrawImage(
-            PhxIcons.Image(_icon, glyph, Enabled ? PhxTheme.Title : PhxTheme.Muted),
+            PhxIcons.Image(_icon, glyph, Enabled ? Color.White : PhxTheme.Muted),
             box.X + (chip - glyph) / 2, box.Y + (chip - glyph) / 2, glyph, glyph);
     }
 
