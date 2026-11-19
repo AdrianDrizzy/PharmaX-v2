@@ -43,7 +43,11 @@ public sealed class LicenceService : ILicenceService
     private const string PharmacyIdKey = "licence.pharmacy-id";
     private const string ValidUntilKey = "licence.valid-until";
     private const string LastSeenKey = "licence.last-seen";
+    private const string MainSeenKey = "licence.main-seen";
     private const int TrialDays = 14;
+
+    /// How long the tills keep working without the main computer running PharmaX.
+    public const int MainAwayDays = 14;
 
     private readonly IPharmacySettings _settings;
     private readonly IClock _clock;
@@ -71,6 +75,7 @@ public sealed class LicenceService : ILicenceService
         DateOnly? validUntil, lastSeen;
         LicencePayload? payload;
         var offline = false;
+        var mainAway = false;
 
         try
         {
@@ -100,6 +105,21 @@ public sealed class LicenceService : ILicenceService
 
             if (lastSeen is null || today > lastSeen)
                 await _settings.SetAsync(LastSeenKey, Format(today), ct);
+
+            // The main computer checks in each day it runs PharmaX; a till holds
+            // a code only while it does. A database copied to a site whose own
+            // main computer never runs PharmaX leaves its tills read-only.
+            if (_machine is { IsMain: true })
+            {
+                if (await _settings.GetAsync(MainSeenKey, ct) != Format(today))
+                    await _settings.SetAsync(MainSeenKey, Format(today), ct);
+            }
+            else if (_machine is not null && payload is not null)
+            {
+                var mainSeen = Parse(await _settings.GetAsync(MainSeenKey, ct));
+                mainAway = mainSeen is not { } seenOn
+                           || today.DayNumber - seenOn.DayNumber > MainAwayDays;
+            }
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -110,8 +130,10 @@ public sealed class LicenceService : ILicenceService
             offline = true;
         }
 
-        var snapshot = new LicenceSnapshot(
-            LicenceState.Evaluate(validUntil, today, lastSeen),
+        var status = LicenceState.Evaluate(validUntil, today, lastSeen);
+        if (mainAway && status != LicenceStatus.ClockWrong) status = LicenceStatus.MainAway;
+
+        var snapshot = new LicenceSnapshot(status,
             validUntil, payload?.Plan ?? (offline ? _gate.Current.Plan : null),
             IsTrial: offline ? _gate.Current.IsTrial : payload is null);
 

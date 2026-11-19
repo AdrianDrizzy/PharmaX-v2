@@ -584,7 +584,7 @@ Words: system setup, markup, rounding, currency, logo, colour palette, change th
 
 Words: membership, subscription, activation code, renew, licence, license, read-only, Pharmacy ID
 
-**Administration > Membership**, on the **main computer** (the server, or the PC if PharmaX runs on one PC only). One code covers the whole pharmacy: every till takes the membership from the main computer, and the code works on no other computer. On a till this screen only shows where the membership stands. A new installation runs a 14-day trial.
+**Administration > Membership**, on the **main computer** (the server, or the PC if PharmaX runs on one PC only). One code covers the whole pharmacy: every till takes the membership from the main computer, and the code works on no other computer. On a till this screen only shows where the membership stands. The tills keep working only while PharmaX is opened on the main computer at least once every 14 days; after that they turn read-only until it is opened there again. A new installation runs a 14-day trial.
 
 1. **Copy** the **Pharmacy ID** and send it with your payment (monthly, quarterly, yearly or lifetime).
 2. When the activation code arrives, paste the whole code into **Activation code**.

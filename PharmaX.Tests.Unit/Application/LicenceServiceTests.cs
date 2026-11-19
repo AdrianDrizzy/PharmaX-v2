@@ -197,6 +197,36 @@ public sealed class LicenceServiceTests
             .Message.Should().Be("This code was made for a different pharmacy.");
     }
 
+    [Fact]
+    public async Task A_till_goes_read_only_when_the_main_computer_stops_checking_in()
+    {
+        await On(isMain: true).ActivateAsync(CodeForMainPc(MembershipPlan.Lifetime));
+        var till = On(isMain: false, pc: Guid.NewGuid());
+
+        _clock.Advance(TimeSpan.FromDays(LicenceService.MainAwayDays));
+        (await till.RefreshAsync()).Status.Should().Be(LicenceStatus.Active);
+
+        _clock.Advance(TimeSpan.FromDays(1));
+        var away = await till.RefreshAsync();
+        away.Status.Should().Be(LicenceStatus.MainAway);
+        away.IsReadOnly.Should().BeTrue();
+        LicenceState.BannerText(away).Should().StartWith("PharmaX is read-only: the main computer");
+
+        // The main computer runs PharmaX again and the till comes back.
+        await On(isMain: true).RefreshAsync();
+        (await till.RefreshAsync()).Status.Should().Be(LicenceStatus.Active);
+    }
+
+    [Fact]
+    public async Task A_copied_database_without_its_main_computer_leaves_tills_read_only()
+    {
+        await On(isMain: true).ActivateAsync(CodeForMainPc());
+        await _settings.SetAsync("licence.main-seen", null);
+
+        (await On(isMain: false, pc: Guid.NewGuid()).RefreshAsync())
+            .Status.Should().Be(LicenceStatus.MainAway);
+    }
+
     private sealed class MemorySettings : IPharmacySettings
     {
         private readonly Dictionary<string, string?> _values = new();
