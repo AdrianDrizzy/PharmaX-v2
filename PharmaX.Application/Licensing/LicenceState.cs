@@ -2,13 +2,14 @@ using System.Globalization;
 
 namespace PharmaX.Application.Licensing;
 
-public enum LicenceStatus { Active, Expiring, Grace, ReadOnly, ClockWrong }
+/// MainAway: a till whose main computer has not run PharmaX for MainAwayDays.
+public enum LicenceStatus { Active, Expiring, Grace, ReadOnly, ClockWrong, MainAway }
 
 public sealed record LicenceSnapshot(LicenceStatus Status, DateOnly? ValidUntil,
                                      MembershipPlan? Plan, bool IsTrial)
 {
     public bool IsReadOnly =>
-        Status is LicenceStatus.ReadOnly or LicenceStatus.ClockWrong;
+        Status is LicenceStatus.ReadOnly or LicenceStatus.ClockWrong or LicenceStatus.MainAway;
 }
 
 /// <summary>
@@ -58,6 +59,10 @@ public static class LicenceState
             LicenceStatus.ClockWrong =>
                 "PharmaX is read-only: this computer's date looks wrong. Correct the "
                 + "date and time, then sign in again.",
+            LicenceStatus.MainAway =>
+                "PharmaX is read-only: the main computer has not run PharmaX for over "
+                + $"{LicenceService.MainAwayDays} days. Open PharmaX on the main computer, "
+                + "then sign in here again.",
             _ => null
         };
     }
