@@ -34,6 +34,17 @@ public static class PermissionCode
     /// </remarks>
     public const string SessionPayOut = "pos.session.pay-out";
 
+    /// <summary>File > Cash Up, on the menu.</summary>
+    /// <remarks>
+    /// The administrator only for now (19 November 2026). The services
+    /// behind the screen still demand their own permissions.
+    /// </remarks>
+    public const string CashUpScreen = "pos.screen.cash-up";
+
+    /// <summary>File > End-of-Day Cash-Up, on the menu.</summary>
+    /// <remarks>The administrator only for now (19 November 2026).</remarks>
+    public const string EndOfDayScreen = "pos.screen.end-of-day";
+
     /// <summary>
     /// Taking a printed receipt off the Receipts list, with a reason, and
     /// putting one back. The sale itself is untouched.
@@ -287,7 +298,7 @@ public static class PermissionCode
         UserRoleAssign, RolePermissions, SettingsChange, DispensingAmend, StockPrepack,
         StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust,
         ReceiptHide, BranchMaintain, ReceiptTemplate, PrintSizes, DataImport, Backup,
-        SystemConsole, LabelTemplates, LabelDeactivate
+        SystemConsole, LabelTemplates, LabelDeactivate, CashUpScreen, EndOfDayScreen
     };
 
     /// <summary>What the role-permissions screen shows beside the code.</summary>
@@ -300,6 +311,8 @@ public static class PermissionCode
         SessionCloseOtherUser => "Close someone else's till",
         SessionCashUp => "Cash up and close",
         SessionPayOut => "Pay money out of the till",
+        CashUpScreen => "File > Cash Up",
+        EndOfDayScreen => "File > End-of-Day Cash-Up",
         ReceiptHide => "Hide a receipt",
         ScriptAuthorise => "Clinical authority",
         ScriptReverse => "Reverse a script",

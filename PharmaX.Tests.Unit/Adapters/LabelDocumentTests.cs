@@ -76,6 +76,25 @@ public class LabelDocumentTests
     }
 
     /// <remarks>
+    /// A pre-pack's row is shorter than a patient's, so the face height
+    /// it works out can be one the printer lacks. The heights tried go up
+    /// to the row, then down to the smallest draft face, so the size a
+    /// patient's label prints at is among them.
+    /// </remarks>
+    [Fact]
+    public void A_prepack_tries_every_face_that_fits_its_row()
+    {
+        LabelPrint.FaceHeights(wanted: 7, row: 12)
+            .Should().Equal(8, 9, 10, 11, 12);
+
+        LabelPrint.FaceHeights(wanted: 10, row: 12)
+            .Should().Equal(10, 11, 12, 9, 8);
+
+        LabelPrint.FaceHeights(wanted: 14, row: 12)
+            .Should().Equal(14, 13, 12, 11, 10, 9, 8);
+    }
+
+    /// <remarks>
     /// Every label carries its expiry, a patient's as well as a
     /// pre-pack's. Where nothing records it - a medicine not kept by batch -
     /// there is a space to write it in.

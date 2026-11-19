@@ -31,8 +31,8 @@ public sealed class ReferenceDataSeeder
 
     public async Task SeedAsync(CancellationToken ct = default)
     {
-        await SeedPermissionsAsync(ct);
-        await SeedRolesAsync(ct);
+        var newPermissions = await SeedPermissionsAsync(ct);
+        await SeedRolesAsync(newPermissions, ct);
         await SeedAdministratorAsync(ct);
         await SeedDenominationsAsync(ct);
         await SeedFirstNumberBlockAsync(ct);
@@ -107,18 +107,21 @@ public sealed class ReferenceDataSeeder
         }
     }
 
-    private async Task SeedPermissionsAsync(CancellationToken ct)
+    private async Task<IReadOnlyList<string>> SeedPermissionsAsync(CancellationToken ct)
     {
         var existing = await _db.Permissions
             .Select(p => p.Code)
             .ToListAsync(ct);
 
-        foreach (var code in PermissionCode.All.Except(existing,
-                     StringComparer.Ordinal))
+        var added = PermissionCode.All.Except(existing, StringComparer.Ordinal).ToList();
+
+        foreach (var code in added)
             _db.Add(Permission.Create(code));
+
+        return added;
     }
 
-    private async Task SeedRolesAsync(CancellationToken ct)
+    private async Task SeedRolesAsync(IReadOnlyList<string> newPermissions, CancellationToken ct)
     {
         var existing = await _db.Roles.ToListAsync(ct);
 
@@ -136,6 +139,12 @@ public sealed class ReferenceDataSeeder
             // shortcut: an edited role does not gain permissions added in
             // a later release, tick those on Role permissions (or drop the
             // mark for a column) if an upgrade must fill them in.
+            // A permission new in this release reaches the administrator even
+            // on an edited role, so a screen gated on it is never locked to all.
+            if (name == Role.Standard.Administrator && existing.Count > 0)
+                foreach (var code in newPermissions)
+                    role.Grant(code);
+
             if (role.Has(Role.EditedMark)) continue;
 
             // Additive until the pharmacy edits the role. A permission

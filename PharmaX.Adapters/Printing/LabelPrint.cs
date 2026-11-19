@@ -190,24 +190,25 @@ internal static partial class LabelPrint
             // the gap and never on the type of the next row.
             var faceHeight = (int)Math.Round(Down(headBand) * 0.78 * fontScale);
 
-            if (pitch < natural * 0.7 || faceHeight < 8)
+            if (pitch < natural * 0.7 || (int)Down(headBand) < 8)
                 return false;
-
-            // The foot is two pixels smaller, and narrower by the same
-            // amount, so the year is not cut off at the edge of the sticker.
-            var footFace = Math.Max(8, faceHeight - 2);
-            var footPitch = pitch * footFace / faceHeight;
 
             OneDirection(hdc);
             _ = SetBkMode(hdc, Transparent);
             _ = SetTextCharacterExtra(hdc, 0);
 
             var width = Math.Max(1, (int)Math.Round(pitch));
-            var footWidth = Math.Max(1, (int)Math.Round(footPitch));
 
             foreach (var name in DeviceFaces)
+            foreach (var height in FaceHeights(faceHeight, (int)Down(headBand)))
             {
-                var plain = Face(name, faceHeight, width);
+                // The foot is two pixels smaller, and narrower by the same
+                // amount, so the year is not cut off at the edge of the sticker.
+                var footFace = Math.Max(8, height - 2);
+                var footPitch = pitch * footFace / height;
+                var footWidth = Math.Max(1, (int)Math.Round(footPitch));
+
+                var plain = Face(name, height, width);
                 var small = Face(name, footFace, footWidth);
                 var before = SelectObject(hdc, plain);
 
@@ -266,6 +267,24 @@ internal static partial class LabelPrint
         {
             g.ReleaseHdc(hdc);
         }
+    }
+
+    /// <summary>
+    /// The face heights to ask the printer for: the one worked out first,
+    /// then taller ones that still fit the row, then shorter down to the
+    /// smallest the draft face prints. A pre-pack has a row more than a
+    /// patient's label, so its own height could fall between the sizes the
+    /// printer has, and it printed in the small screen face instead
+    /// (19 November 2026). A size that suits a patient's label always fits
+    /// a pre-pack's shorter row, so it is found here.
+    /// </summary>
+    internal static IEnumerable<int> FaceHeights(int wanted, int row)
+    {
+        const int Smallest = 8;
+        var start = Math.Max(Smallest, wanted);
+
+        for (var h = start; h <= Math.Max(start, row); h++) yield return h;
+        for (var h = start - 1; h >= Smallest; h--) yield return h;
     }
 
     /// Epson: print this page in one direction. Ignored where the driver
