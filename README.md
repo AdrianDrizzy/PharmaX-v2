@@ -60,7 +60,7 @@ Every screen opens from the home tiles, the menus or a function key (F2-F12). Ea
 
 ### Administration
 - Users, roles and permissions, branches, tills and workstations, pharmacy details, branding and currency.
-- **Membership.** Monthly, quarterly or yearly, unlocked by an activation code. Warned 7 days before the end; 7 days' grace after it; then read-only (look-ups and reports) until a new code is entered.
+- **Membership.** Monthly, quarterly, yearly or lifetime (never ends), unlocked by an activation code. Warned 7 days before the end; 7 days' grace after it; then read-only (look-ups and reports) until a new code is entered.
 - System information, logs and backups.
 - Import from the pharmacy's previous system, with a check that every total matches.
 

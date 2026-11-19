@@ -114,5 +114,5 @@ public sealed class frmMembership : PhxFormBase
     private void ShowStatus(LicenceSnapshot s) =>
         _status.Text = LicenceState.BannerText(s) ?? (s.IsTrial
             ? $"Trial, ends on {LicenceState.Day(s.ValidUntil)}."
-            : $"{s.Plan} membership, active until {LicenceState.Day(s.ValidUntil)}.");
+            : $"{s.Plan} membership, active {LicenceState.Runs(s.Plan, s.ValidUntil)}.");
 }

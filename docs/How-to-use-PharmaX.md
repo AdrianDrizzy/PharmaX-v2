@@ -586,7 +586,7 @@ Words: membership, subscription, activation code, renew, licence, license, read-
 
 **Administration > Membership.** For the whole pharmacy, every till. A new installation runs a 14-day trial.
 
-1. **Copy** the **Pharmacy ID** and send it with your payment (monthly, quarterly or yearly).
+1. **Copy** the **Pharmacy ID** and send it with your payment (monthly, quarterly, yearly or lifetime).
 2. When the activation code arrives, paste the whole code into **Activation code**.
 3. **Activate**. The screen shows the plan and the date it runs until. Paying before the end adds the new period after the current one.
 
