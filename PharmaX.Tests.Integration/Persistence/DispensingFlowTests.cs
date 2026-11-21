@@ -307,6 +307,108 @@ public class DispensingFlowTests : IClassFixture<PharmaXFixture>
 
     // ---- Steps -----------------------------------------------------------
 
+    /// <summary>
+    /// Stock on the shelf but on no batch: the label used to print with
+    /// no expiry. The batch on the box takes the loose stock onto it.
+    /// </summary>
+    [Fact]
+    public async Task Found_batch_takes_loose_stock_and_the_line_allocates_to_it()
+    {
+        await SignInAsync();
+
+        var code = await GivenAProductAsync("OMIZAC20", "Omeprazole 20mg",
+            batchTracked: true);
+        var scriptId = await GivenAScriptAsync(
+            await GivenAPatientAsync("Moyo", "Tendai"), code);
+
+        using (var scope = _fixture.NewScope())
+        {
+            var dispensing = PharmaXFixture.Resolve<IDispensingService>(scope);
+            var clock = PharmaXFixture.Resolve<IClock>(scope);
+            var begun = await dispensing.BeginAsync(scriptId);
+
+            var proposal = await dispensing.ProposeItemAsync(begun.Value.Id, code);
+            proposal.Value.NeedsBatchFromBox.Should().BeTrue();
+
+            var found = await dispensing.RecordFoundBatchAsync(
+                proposal.Value.ProductId, "OMZ-1", clock.Today.AddMonths(6), 1m);
+            found.IsSuccess.Should().BeTrue(found.Error.Message);
+
+            var added = await dispensing.AddItemAsync(begun.Value.Id, code,
+                new DirectionsDto(1m, "One daily"));
+            added.Value.Items[0].BatchNumber.Should().Be("OMZ-1");
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var product = await db.Products.AsNoTracking().SingleAsync(p => p.Code == code);
+
+            product.QuantityOnHand.Should().Be(200m, "the pack was already counted, loose");
+            (await db.StockMovements.AsNoTracking().AnyAsync(m => m.ProductId == product.Id))
+                .Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task Found_stock_beyond_the_loose_is_recorded_as_found_at_dispensing()
+    {
+        await SignInAsync();
+
+        var code = await GivenAProductAsync("FOUND2", "Found item", batchTracked: true);
+        Guid productId;
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var product = await db.Products.SingleAsync(p => p.Code == code);
+            product.SetQuantityOnHand(0m);
+            productId = product.Id;
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var clock = PharmaXFixture.Resolve<IClock>(scope);
+            (await PharmaXFixture.Resolve<IDispensingService>(scope)
+                .RecordFoundBatchAsync(productId, "F-2", clock.Today.AddMonths(6), 2m))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+
+            (await db.Products.AsNoTracking().SingleAsync(p => p.Id == productId))
+                .QuantityOnHand.Should().Be(2m);
+            (await db.Batches.AsNoTracking().SingleAsync(b => b.ProductId == productId))
+                .QuantityOnHand.Should().Be(2m);
+
+            var movement = await db.StockMovements.AsNoTracking()
+                .SingleAsync(m => m.ProductId == productId);
+            movement.MovementType.Should().Be(MovementType.Adjustment);
+            movement.Quantity.Should().Be(2m);
+            movement.ReasonCode.Should().Be("FOUND AT DISPENSING");
+        }
+    }
+
+    [Fact]
+    public async Task An_expired_batch_from_the_box_is_refused()
+    {
+        await SignInAsync();
+
+        var code = await GivenAProductAsync("FOUND3", "Old box", batchTracked: true);
+
+        using var scope = _fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+        var clock = PharmaXFixture.Resolve<IClock>(scope);
+        var id = (await db.Products.AsNoTracking().SingleAsync(p => p.Code == code)).Id;
+
+        (await PharmaXFixture.Resolve<IDispensingService>(scope)
+            .RecordFoundBatchAsync(id, "OLD", clock.Today, 1m))
+            .Error.Code.Should().Be("DSP-061");
+    }
+
     private async Task SignInAsync()
     {
         using var scope = _fixture.NewScope();

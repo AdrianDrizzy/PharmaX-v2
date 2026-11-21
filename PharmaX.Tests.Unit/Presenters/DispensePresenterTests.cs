@@ -115,6 +115,56 @@ public class DispensePresenterTests
         _view.DidNotReceive().ShowError(Arg.Any<string>());
     }
 
+    [Fact]
+    public void A_cancelled_batch_prompt_adds_the_item_as_before()
+    {
+        Begun();
+        var productId = Guid.NewGuid();
+        var directions = new DirectionsDto(10m, "One daily");
+
+        _dispensing.ProposeItemAsync(_dispensingId, "OMZ", Arg.Any<CancellationToken>())
+            .Returns(Result<ItemProposalDto>.Ok(new ItemProposalDto(productId, "OMZ",
+                "Omeprazole", 10m, "", false, UnitsInPack: 28m) { NeedsBatchFromBox = true }));
+        _view.PromptDirections(Arg.Any<ItemProposalDto>()).Returns(directions);
+        _view.AskBatchFromBox("Omeprazole").Returns(((string, DateOnly)?)null);
+
+        Presenter().Attach(_view);
+        _view.ScriptRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.ProductScanned += Raise.Event<EventHandler<string>>(this, "OMZ");
+
+        _dispensing.DidNotReceive().RecordFoundBatchAsync(Arg.Any<Guid>(),
+            Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<decimal>(),
+            Arg.Any<CancellationToken>());
+        _dispensing.Received(1).AddItemAsync(_dispensingId, "OMZ", directions,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void A_batch_from_the_box_is_recorded_in_whole_packs_before_the_item()
+    {
+        Begun();
+        var productId = Guid.NewGuid();
+        var expiry = new DateOnly(2027, 6, 30);
+
+        _dispensing.ProposeItemAsync(_dispensingId, "OMZ", Arg.Any<CancellationToken>())
+            .Returns(Result<ItemProposalDto>.Ok(new ItemProposalDto(productId, "OMZ",
+                "Omeprazole", 30m, "", false, UnitsInPack: 28m) { NeedsBatchFromBox = true }));
+        _view.PromptDirections(Arg.Any<ItemProposalDto>()).Returns(new DirectionsDto(30m, "One daily"));
+        _view.AskBatchFromBox("Omeprazole").Returns(("B7", expiry));
+        _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 2m, Arg.Any<CancellationToken>())
+            .Returns(Result.Ok());
+
+        Presenter().Attach(_view);
+        _view.ScriptRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.ProductScanned += Raise.Event<EventHandler<string>>(this, "OMZ");
+
+        Received.InOrder(() =>
+        {
+            _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 2m, Arg.Any<CancellationToken>());
+            _dispensing.AddItemAsync(_dispensingId, "OMZ", Arg.Any<DirectionsDto>(), Arg.Any<CancellationToken>());
+        });
+    }
+
     private DispensePresenter Presenter() =>
         new(_dispensing, _scripts, _patients, _printer,
             Substitute.For<IClaimFormService>(), Substitute.For<IClaimFormPrinter>(),

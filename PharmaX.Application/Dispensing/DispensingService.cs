@@ -148,6 +148,15 @@ public interface IDispensingService
     Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId, int lineNo,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// A batch-tracked item with no batch in stock: the batch and expiry
+    /// read off the box in the pharmacist's hand become a batch, so the
+    /// label carries them. Loose stock goes onto it first; anything
+    /// beyond that is recorded as found at dispensing.
+    /// </summary>
+    Task<Result> RecordFoundBatchAsync(Guid productId, string batchNumber,
+        DateOnly expiry, decimal packs, CancellationToken ct = default);
+
     /// Scripts begun within the last 24 hours and kept to finish later;
     /// older ones are set aside first.
     Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
@@ -406,8 +415,15 @@ public sealed class DispensingService : IDispensingService
                 product.Description, item.Quantity, item.Directions,
                 FromScript: true);
 
+        // Nothing on a batch to hand over: the label would print with no
+        // expiry, so the screen asks for the one on the box instead.
+        var needsBatch = product.IsBatchTracked
+            && !(await _batches.ForProductAsync(product.Id, ct))
+                .Any(b => b.IsAvailableOn(_clock.Today) && b.QuantityOnHand > 0m);
+
         return Result<ItemProposalDto>.Ok(proposal with
         {
+            NeedsBatchFromBox = needsBatch,
             Unit = Assistant.Guided.Directions.UnitOf(product.PackSize, product.Description),
             UnitsInPack = unitsInPack,
             PackPrice = tariffed ? null : packPrice,
@@ -1214,6 +1230,36 @@ public sealed class DispensingService : IDispensingService
         }
 
         return owed.OrderBy(o => o.Since).ToList();
+    }
+
+    public async Task<Result> RecordFoundBatchAsync(Guid productId,
+        string batchNumber, DateOnly expiry, decimal packs,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var number = (batchNumber ?? "").Trim();
+        if (number.Length is < 1 or > 50)
+            return Result.Fail("DSP-061", "Enter the batch number printed on the box.");
+
+        if (expiry <= _clock.Today)
+            return Result.Fail("DSP-061",
+                $"Batch {number} expired on {expiry:dd/MM/yyyy}. Do not hand it over.");
+
+        if (packs <= 0m)
+            return Result.Fail("DSP-061", "Say how many packs are being handed over.");
+
+        var product = await _products.GetAsync(productId, ct);
+        if (product is null) return Result.Fail("DSP-001", "Product not found.");
+
+        await _stock.RecordFoundBatchAsync(product, number, expiry, packs, ct);
+
+        _audit.Applied("inv.stock.adjust", "Product", product.Id,
+            $"Found at dispensing: batch {number}, expiry {expiry:dd/MM/yyyy}, "
+            + $"{packs:0.###} pack(s)");
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
     }
 
     public async Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId,

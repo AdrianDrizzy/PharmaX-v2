@@ -50,6 +50,9 @@ public interface IDispenseView : Mvp.IView
     /// </summary>
     DirectionsDto? PromptDirections(ItemProposalDto proposal);
 
+    /// The batch number and expiry printed on the box; null if cancelled.
+    (string Batch, DateOnly Expiry)? AskBatchFromBox(string productDescription);
+
     /// Returns the pharmacist who authenticated, or null if cancelled.
     Guid? PromptPharmacistAuthorisation(string reasonShown);
 

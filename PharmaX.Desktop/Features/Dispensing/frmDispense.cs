@@ -378,6 +378,11 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         grdItems.SelectedInOrder().Select(r => r.Cells["LineNo"].Value)
             .OfType<int>().ToList();
 
+    public (string Batch, DateOnly Expiry)? AskBatchFromBox(string productDescription) =>
+        BatchPrompt.Ask(this, $"{productDescription} has no batch in stock. Enter the "
+            + "batch number and expiry from the box, so the label carries them. "
+            + "Cancel to owe it instead.");
+
     public DirectionsDto? PromptDirections(ItemProposalDto proposal) =>
         frmItemPrompt.Ask(this, proposal, _dosage);
 

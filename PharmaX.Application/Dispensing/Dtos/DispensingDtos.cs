@@ -104,6 +104,9 @@ public sealed record ItemProposalDto(Guid ProductId, string ProductCode,
     bool FromScript, string Unit = "tablet", decimal UnitsInPack = 1m,
     decimal? PackPrice = null, decimal RoundTo = DispensingCharge.DefaultRoundTo)
 {
+    /// Batch tracked with nothing on a batch to give: ask for the box's.
+    public bool NeedsBatchFromBox { get; init; }
+
     /// "Enter the number of tablets handed over (a pack holds 100)."
     public string WhatToEnter => DispensingCharge.WhatToEnter(Unit, UnitsInPack);
 

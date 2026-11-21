@@ -64,6 +64,14 @@ public interface IStockService
                            CancellationToken ct = default);
 
     /// <summary>
+    /// A batch read off a box at dispensing. Loose stock - counted, but on
+    /// no batch - goes onto it first; only what is beyond that is new to
+    /// the books, and is recorded as found. Saved by the caller.
+    /// </summary>
+    Task RecordFoundBatchAsync(Product product, string batchNumber,
+        DateOnly expiry, decimal packs, CancellationToken ct = default);
+
+    /// <summary>
     /// Brings the system's figures up to what was counted. Writes an
     /// adjustment movement per varying line, carrying the signed
     /// difference, so the stock ledger explains the change rather than
@@ -421,6 +429,47 @@ public sealed class StockService : IStockService
     {
         var product = await _products.GetAsync(productId, ct);
         return product?.QuantityOnHand ?? 0m;
+    }
+
+    public async Task RecordFoundBatchAsync(Product product, string batchNumber,
+        DateOnly expiry, decimal packs, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+
+        var batches = await _batches.ForProductAsync(product.Id, ct);
+        var loose = Math.Max(product.QuantityOnHand
+                             - batches.Sum(b => b.QuantityOnHand), 0m);
+        var found = packs - Math.Min(loose, packs);
+
+        var batch = batches.FirstOrDefault(b => b.ExpiryDate == expiry
+            && string.Equals(b.BatchNumber, batchNumber, StringComparison.OrdinalIgnoreCase));
+
+        if (batch is null)
+        {
+            batch = Batch.Receive(product.Id, batchNumber, expiry, packs,
+                product.CostPrice, _clock.UtcNow);
+            await _batches.AddAsync(batch, ct);
+        }
+        else
+        {
+            batch.Return(packs);
+        }
+
+        product.SetBatchTracked(true);
+        if (found <= 0m) return;
+
+        var balance = product.QuantityOnHand + found;
+        product.SetQuantityOnHand(balance);
+
+        _movements.Add(StockMovement.Record(
+            productId: product.Id,
+            batchId: batch.Id,
+            movementType: MovementType.Adjustment,
+            quantity: found,
+            balanceAfter: balance,
+            occurredAtUtc: _clock.UtcNow,
+            reasonCode: "FOUND AT DISPENSING",
+            sourceDocumentType: "StockAdjustment"));
     }
 
     public async Task ApplyReceiptAsync(Domain.Suppliers.GoodsReceipt receipt,

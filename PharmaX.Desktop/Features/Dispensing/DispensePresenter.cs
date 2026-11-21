@@ -233,6 +233,23 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         var directions = View.PromptDirections(proposal.Value);
         if (directions is null) return;
 
+        // No batch in stock: the box in hand has one. Cancelled, the item
+        // goes on as before and what is missing is owed.
+        if (proposal.Value.NeedsBatchFromBox
+            && View.AskBatchFromBox(proposal.Value.Description) is { } box)
+        {
+            var packs = Math.Ceiling(directions.Quantity
+                                     / Math.Max(proposal.Value.UnitsInPack, 1m));
+            var found = await _dispensing.RecordFoundBatchAsync(
+                proposal.Value.ProductId, box.Batch, box.Expiry, packs);
+
+            if (found.IsFailure)
+            {
+                View.ShowError(found.Error.Message);
+                return;
+            }
+        }
+
         var result = await _dispensing.AddItemAsync(
             _dispensingId, proposal.Value.ProductCode, directions);
 
