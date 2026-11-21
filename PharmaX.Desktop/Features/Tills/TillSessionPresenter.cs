@@ -208,14 +208,36 @@ public sealed class TillSessionPresenter : PresenterBase<ITillSessionView>
             }
         }
 
+        var session = await SessionAsync();
+
+        // Opened and closed within minutes is usually a slip, and a day's
+        // takings then sit on two sessions.
+        var minutes = session is null ? 0 : (DateTime.UtcNow - session.OpenedAtUtc).TotalMinutes;
+        if (session is not null && minutes < CashUpService.ShortSessionMinutes
+            && !View.Confirm($"This session was opened only {Math.Max(minutes, 0):0} minute(s) "
+                             + "ago. Close it anyway?"))
+            return;
+
         if (!View.Confirm("Close the session? This cannot be undone."))
             return;
 
-        var session = await SessionAsync();
         var payouts = session is null
             ? Array.Empty<Application.Tills.Dtos.PayoutDto>()
             : await _payouts.ListAsync(session.Id);
         var result = await _cashUp.CloseAsync(reason, TargetSessionId);
+
+        // A difference above the supervisor threshold: someone who may close
+        // other people's tills signs in, and the close is tried again.
+        if (result.IsFailure && result.Error.Code == CashUpService.NeedsSupervisor)
+        {
+            if (View.PromptSupervisor(result.Error.Message) is not Guid supervisor)
+            {
+                View.ShowError("Not closed: a supervisor did not sign in.");
+                return;
+            }
+
+            result = await _cashUp.CloseAsync(reason, TargetSessionId, supervisor);
+        }
 
         if (result.IsFailure)
         {

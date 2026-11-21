@@ -13,6 +13,7 @@ using PharmaX.Application.Suppliers;
 using PharmaX.Application.Suppliers.Dtos;
 using PharmaX.Application.Tills;
 using PharmaX.Application.Tills.Dtos;
+using PharmaX.Domain.Sales;
 
 namespace PharmaX.Persistence.Seeding;
 
@@ -653,15 +654,26 @@ public sealed class DemoTradingSeeder
         var denominations = await _cashUp.DenominationsAsync(ct)
             .ConfigureAwait(false);
 
-        var counted = CountOut(denominations, Math.Max(0m, expectedCash - 20m));
+        var counted = CountOut(denominations, Math.Max(0m, expectedCash - 4m));
 
-        await _cashUp.DeclareAsync(counted, ct: ct).ConfigureAwait(false);
+        // The EcoCash and card statements agree with the till: the cash
+        // drawer is where the demonstration's small shortfall is.
+        var statements = read.Expectations
+            .Where(e => Enum.TryParse<TenderType>(e.TenderType, out var t)
+                        && t.IsDeclaredAgainstStatement())
+            .ToDictionary(e => Enum.Parse<TenderType>(e.TenderType), e => e.Expected);
+
+        await _cashUp.DeclareAsync(counted, statements, ct: ct).ConfigureAwait(false);
 
         var closed = await _cashUp.CloseAsync(
-            "Twenty short; float recounted and the difference noted.", ct: ct)
+            "Four short; float recounted and the difference noted.", ct: ct)
             .ConfigureAwait(false);
 
-        return closed.IsSuccess ? 1 : 0;
+        if (closed.IsSuccess) return 1;
+
+        _log.LogWarning("Demonstration cash-up did not close: {Error}",
+            closed.Error.Message);
+        return 0;
     }
 
     /// <summary>

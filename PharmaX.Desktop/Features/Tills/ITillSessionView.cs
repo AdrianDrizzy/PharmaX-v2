@@ -11,6 +11,9 @@ public interface ITillSessionView : Mvp.IView
 
     decimal? PromptFloat();
     string? PromptVarianceReason(string tender, decimal variance);
+
+    /// A supervisor's own sign-in for a large difference; null if none.
+    Guid? PromptSupervisor(string reason);
     IReadOnlyDictionary<string, int> CountedDenominations { get; }
 
     /// What the EcoCash merchant statement shows was received this
