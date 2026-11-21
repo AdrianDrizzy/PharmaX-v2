@@ -212,6 +212,7 @@ public sealed class AlertPresenter : PresenterBase<IAlertView>
         AlertKind.OutOfStock => "Out of stock",
         AlertKind.LowStock => "Low stock",
         AlertKind.NothingOnHand => "No stock",
+        AlertKind.DispensedWithoutExpiry => "No expiry on label",
         _ => ""
     };
 }

@@ -66,7 +66,8 @@ partial class frmAlerts
             new Choice("Expired", AlertKind.Expired),
             new Choice("Expiring soon", AlertKind.ExpiringSoon),
             new Choice("Out of stock", AlertKind.OutOfStock),
-            new Choice("Low stock", AlertKind.LowStock)
+            new Choice("Low stock", AlertKind.LowStock),
+            new Choice("Dispensed with no batch or expiry", AlertKind.DispensedWithoutExpiry)
         });
 
         cboFilter.SelectedIndex = 0;
