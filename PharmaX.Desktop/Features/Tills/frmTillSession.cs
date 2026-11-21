@@ -29,11 +29,24 @@ public partial class frmTillSession : PhxFormBase, ITillSessionView
     }
 
     /// Runtime. Resolved by the container.
-    public frmTillSession(TillSessionPresenter presenter, ViewFactory views) : this()
+    public frmTillSession(TillSessionPresenter presenter, ViewFactory views,
+                          Application.Security.IAuthenticationService auth) : this()
     {
         _presenter = presenter;
         _views = views;
+        _auth = auth;
         _presenter.Attach(this);
+    }
+
+    private readonly Application.Security.IAuthenticationService? _auth;
+
+    public Guid? PromptSupervisor(string reason)
+    {
+        if (_auth is null) return null;
+
+        using var dialog = new Login.frmSupervisorPrompt(_auth, reason,
+            Domain.Security.PermissionCode.SessionCloseOtherUser);
+        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.AuthoriserId : null;
     }
 
     private readonly ViewFactory? _views;

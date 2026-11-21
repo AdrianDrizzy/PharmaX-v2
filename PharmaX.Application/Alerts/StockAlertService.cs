@@ -1,5 +1,6 @@
 using System.Globalization;
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Dispensing;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
 using PharmaX.Application.Security;
@@ -46,7 +47,10 @@ public enum AlertKind
     /// of stock", so dead lines can be deleted (IStockAlertService.
     /// NothingOnHandAsync).
     /// </remarks>
-    NothingOnHand = 5
+    NothingOnHand = 5,
+
+    /// Handed over today, batch tracked, on no batch: its label had no expiry.
+    DispensedWithoutExpiry = 6
 }
 
 /// <summary>
@@ -101,11 +105,14 @@ public sealed class StockAlertService : IStockAlertService
     private readonly IPermissionService _permissions;
     private readonly PharmaXOptions _options;
     private readonly IClock _clock;
+    private readonly IDispensingRepository? _dispensings;
 
     public StockAlertService(IProductRepository products,
         IBatchRepository batches, IPermissionService permissions,
-        PharmaXOptions options, IClock clock)
+        PharmaXOptions options, IClock clock,
+        IDispensingRepository? dispensings = null)
     {
+        _dispensings = dispensings;
         _products = products;
         _batches = batches;
         _permissions = permissions;
@@ -130,6 +137,7 @@ public sealed class StockAlertService : IStockAlertService
 
         alerts.AddRange(await ExpiryAlertsAsync(today, ct));
         alerts.AddRange(await LevelAlertsAsync(ct));
+        alerts.AddRange(await DispensedWithoutExpiryAsync(today, ct));
 
         // A user who sees only the over-the-counter catalogue sees only
         // its alerts: an expiring dispensary batch is not a cashier's to
@@ -195,6 +203,45 @@ public sealed class StockAlertService : IStockAlertService
     /// <summary>
     /// Batches that have expired or are about to.
     /// </summary>
+    /// <summary>
+    /// Batch-tracked items handed over today on no batch: each one went out
+    /// with a label that had no expiry on it.
+    /// </summary>
+    private async Task<IEnumerable<StockAlertDto>> DispensedWithoutExpiryAsync(
+        DateOnly today, CancellationToken ct)
+    {
+        if (_dispensings is null) return Array.Empty<StockAlertDto>();
+
+        var from = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+        var issued = await _dispensings.IssuedBetweenAsync(from, from.AddDays(1), ct);
+        var alerts = new List<StockAlertDto>();
+
+        foreach (var dispensing in issued)
+            foreach (var line in dispensing.Lines.Where(l => l.BatchExpiry is null
+                         && l.Batches.Count == 0 && l.Owed is null or 0m))
+            {
+                if (await _products.GetAsync(line.ProductId, ct) is not { IsBatchTracked: true } product)
+                    continue;
+
+                alerts.Add(new StockAlertDto(
+                    Key: $"dispensed:{line.Id}",
+                    Kind: AlertKind.DispensedWithoutExpiry,
+                    Severity: AlertSeverity.Critical,
+                    ProductId: product.Id,
+                    ProductCode: product.Code,
+                    ProductName: product.Description,
+                    BatchNumber: null,
+                    Expiry: null,
+                    DaysLeft: null,
+                    Quantity: line.Quantity,
+                    ReorderLevel: 0m,
+                    Summary: $"Dispensed on {dispensing.DocumentNumber} with no batch "
+                             + "or expiry. Find the box and record its batch."));
+            }
+
+        return alerts;
+    }
+
     private async Task<IEnumerable<StockAlertDto>> ExpiryAlertsAsync(
         DateOnly today, CancellationToken ct)
     {

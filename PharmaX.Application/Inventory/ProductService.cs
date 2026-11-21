@@ -382,6 +382,10 @@ public sealed partial class ProductService : IProductService
             return Result.Fail("INV-036",
                 "Stock is still on a batch, so batch tracking has to stay on.");
 
+        if (edit.IsBatchTracked && !product.IsBatchTracked
+            && product.QuantityOnHand > 0m && !stock.Value.LeavesStockOnABatch)
+            return Result.Fail(NeedsBatchForStock, NeedsBatchMessage(product));
+
         if (stock.Value.MovesStock) DemandStockCorrection();
 
         // Only a price change needs the price permission on top.
@@ -395,6 +399,12 @@ public sealed partial class ProductService : IProductService
             product.ChangeRetailPrice(Money.Of(edit.RetailPrice));
             _outbox.Append("ProductPrice", product.Id,
                 $"{{\"productId\":\"{product.Id}\",\"retail\":{edit.RetailPrice}}}");
+        }
+
+        if (edit.ReplaceZigPrice && product.ZigRetailAmount != edit.ZigRetailPrice)
+        {
+            _permissions.Demand(PermissionCode.PriceChange);
+            product.SetZigRetail(edit.ZigRetailPrice);
         }
 
         if (code != product.Code)

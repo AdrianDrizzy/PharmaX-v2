@@ -85,7 +85,7 @@ public sealed record SaleDto(
 }
 
 public sealed record PaymentDto(string TenderType, decimal Amount,
-                               string? Reference);
+                               string? Reference, string? Currency = null);
 
 /// <param name="Change">The change to hand back from the cash tender.</param>
 public sealed record FinaliseDto(string DocumentNumber, decimal Total,

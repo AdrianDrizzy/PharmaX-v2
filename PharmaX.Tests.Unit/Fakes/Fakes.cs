@@ -482,6 +482,10 @@ public sealed class RecordingStockService : IStockService
     public Task<decimal> OnHandAsync(Guid productId,
         CancellationToken ct = default) => Task.FromResult(0m);
 
+    public Task RecordFoundBatchAsync(PharmaX.Domain.Inventory.Product product,
+        string batchNumber, DateOnly expiry, decimal packs,
+        CancellationToken ct = default) => Task.CompletedTask;
+
     public Task ApplyReceiptAsync(
         PharmaX.Domain.Suppliers.GoodsReceipt receipt,
         CancellationToken ct = default)

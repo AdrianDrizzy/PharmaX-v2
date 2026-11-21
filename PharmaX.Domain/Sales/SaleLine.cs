@@ -153,5 +153,9 @@ public enum PriceSource
     ManualOverride = 2,
     AgreedAccountPrice = 3,
     Promotion = 4,
-    StandardRetail = 5
+    StandardRetail = 5,
+
+    /// A ZiG shelf price kept beside the US dollar one. Not a conversion,
+    /// and not a candidate in ResolvePrice.
+    ZigList = 6
 }

@@ -37,7 +37,9 @@ public static class DependencyInjection
         // Ambient infrastructure. Registered here rather than in the
         // Desktop project because the audit interceptor below needs both,
         // and an integration test needs them without a form in sight.
-        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<SystemClock>();
+        services.AddSingleton<IClock>(sp => sp.GetRequiredService<SystemClock>());
+        services.AddSingleton<IClockCorrection>(sp => sp.GetRequiredService<SystemClock>());
         services.AddSingleton<UserSession>();
         services.AddSingleton<ICurrentUser>(sp =>
             sp.GetRequiredService<UserSession>());
@@ -167,6 +169,8 @@ public static class DependencyInjection
         services.AddScoped<Application.Import.IDataImporter, Import.DataImporter>();
         services.AddScoped<Application.Home.IHomeCounts, Repositories.HomeCounts>();
         services.AddScoped<IDatabaseBackup, Backup.DatabaseBackup>();
+        services.AddScoped<PharmaX.Application.History.IDayHistoryStore,
+            History.DayHistoryStore>();
         services.AddScoped<ICurrencyChanger, CurrencyChanger>();
 
         return services;
@@ -199,6 +203,9 @@ public static class DependencyInjection
         services.AddSingleton<IDbContextFactory<PharmaXDbContext>>(sp =>
             new SharedContextFactory(
                 sp.GetRequiredService<IDbContextFactory<HostDbContext>>()));
+
+        // Only a shared database has a server clock to check the tills against.
+        services.AddScoped<IServerClock, ServerClock>();
 
         services.AddScoped<PharmaXDbContext>(sp => sp
             .GetRequiredService<IDbContextFactory<HostDbContext>>()

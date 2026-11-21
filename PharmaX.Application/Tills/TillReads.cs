@@ -1,6 +1,7 @@
 using System.Globalization;
 using PharmaX.Application.Sales;
 using PharmaX.Application.Tills.Dtos;
+using PharmaX.Domain.Sales;
 
 namespace PharmaX.Application.Tills;
 
@@ -35,24 +36,25 @@ public static class TillReads
 
         lines.Add(string.Format(culture, "X-read {0}   {1:dd/MM/yyyy HH:mm}",
             read.ReadNumber, read.ReadAtUtc.ToLocalTime()));
-        lines.Add(new string('-', 42));
-        lines.Add(string.Format(culture, "{0,-18}{1,8}{2,16}", "Tender",
-            "Count", "Expected"));
+        lines.Add(Rule());
 
-        foreach (var tender in read.Expectations)
-            lines.Add(string.Format(culture, "{0,-18}{1,8}{2,16:N2}",
-                tender.TenderType, tender.TransactionCount, tender.Expected));
+        foreach (var tender in Statements(read.Expectations))
+        {
+            lines.Add(Label(tender.TenderType));
+            Amount(lines, "  Expected", tender.Expected);
+        }
 
-        lines.Add(new string('-', 42));
-        lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Total",
-            read.GrandTotal));
+        lines.Add(Rule());
+        Amount(lines, "Total", read.GrandTotal);
 
         PaidOut(lines, payouts);
 
         lines.Add("");
         lines.Add("Interim read. The session is still open.");
 
-        return new PrintableDocument($"X-read {read.ReadNumber}", lines);
+        // Thirty-two across, the receipt's width. Forty-two ran the
+        // declared and variance columns off the 75 mm roll.
+        return new PrintableDocument($"X-read {read.ReadNumber}", lines, CashUpSlip.Width);
     }
 
     /// <summary>
@@ -75,22 +77,19 @@ public static class TillReads
 
         lines.Add(string.Format(culture, "Z-read   closed {0:dd/MM/yyyy HH:mm}",
             closedAtLocal));
-        lines.Add(new string('-', 42));
-        lines.Add(string.Format(culture, "{0,-12}{1,10}{2,10}{3,10}",
-            "Tender", "Expected", "Declared", "Variance"));
+        lines.Add(Rule());
 
-        foreach (var line in declaration.Variances)
-            lines.Add(string.Format(culture, "{0,-12}{1,10:N2}{2,10:N2}{3,10:N2}",
-                line.TenderType.Length <= 12
-                    ? line.TenderType
-                    : line.TenderType[..12],
-                line.Expected, line.Declared, line.Variance));
+        foreach (var line in Statements(declaration.Variances))
+        {
+            lines.Add(Label(line.TenderType));
+            Amount(lines, "  Expected", line.Expected);
+            Amount(lines, "  Declared", line.Declared);
+            Amount(lines, "  Variance", line.Variance);
+        }
 
-        lines.Add(new string('-', 42));
-        lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Declared",
-            declaration.TotalDeclared));
-        lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Variance",
-            declaration.TotalVariance));
+        lines.Add(Rule());
+        Amount(lines, "DECLARED", declaration.TotalDeclared);
+        Amount(lines, "VARIANCE", declaration.TotalVariance);
 
         PaidOut(lines, payouts);
 
@@ -103,7 +102,57 @@ public static class TillReads
         lines.Add("");
         lines.Add("Session closed.");
 
-        return new PrintableDocument("Z-read", lines);
+        return new PrintableDocument("Z-read", lines, CashUpSlip.Width);
+    }
+
+    /// Cash, EcoCash and card, even at zero, then whatever else was taken.
+    private static List<T> Statements<T>(IReadOnlyList<T> lines) where T : class
+    {
+        // The two shapes share a tender name. Kept here so a read that
+        // recorded neither still prints the lines the cashier checks.
+        static string Name(T row) => row switch
+        {
+            VarianceLineDto variance => variance.TenderType,
+            TenderExpectationDto expected => expected.TenderType,
+            _ => ""
+        };
+
+        var all = lines.ToList();
+
+        foreach (var name in new[] { nameof(TenderType.Cash), nameof(TenderType.EcoCash), nameof(TenderType.Card) })
+        {
+            if (all.Exists(row => Name(row) == name)) continue;
+
+            object blank = typeof(T) == typeof(VarianceLineDto)
+                ? new VarianceLineDto(name, 0m, 0m, 0m, false)
+                : new TenderExpectationDto(name, 0m, 0);
+            all.Add((T)blank);
+        }
+
+        int Rank(string tender) => tender switch
+        {
+            "Cash" => 0,
+            "EcoCash" => 1,
+            "Card" => 2,
+            _ => 3
+        };
+
+        all.Sort((a, b) => Rank(Name(a)).CompareTo(Rank(Name(b))));
+        return all;
+    }
+
+    private static string Label(string tender) =>
+        Enum.TryParse<TenderType>(tender, out var parsed) ? parsed.DisplayName() : tender;
+
+    private static string Rule() => new('-', CashUpSlip.Width);
+
+    private static void Amount(List<string> lines, string label, decimal value)
+    {
+        var amount = value.ToString("N2", CultureInfo.CurrentCulture);
+        var room = CashUpSlip.Width - amount.Length - 1;
+        var pieces = SlipLayout.Wrap(label, Math.Max(1, room), Math.Max(1, room));
+        lines.AddRange(pieces.SkipLast(1));
+        lines.Add(pieces[^1].PadRight(room + 1) + amount);
     }
 
     /// <summary>
@@ -115,25 +164,15 @@ public static class TillReads
         var paid = (payouts ?? Array.Empty<PayoutDto>()).Where(p => !p.IsVoided).ToList();
         if (paid.Count == 0) return;
 
-        var culture = CultureInfo.CurrentCulture;
-        const int amount = 12;
-        const int room = 42 - amount;
-
         lines.Add("");
         lines.Add("Paid out of the drawer");
 
         foreach (var p in paid)
-        {
-            var pieces = SlipLayout.Wrap(string.Format(culture, "{0:HH:mm} {1}: {2}",
-                p.PaidAtLocal, p.KindName, p.Note), room, room);
+            Amount(lines, string.Format(CultureInfo.CurrentCulture, "{0:HH:mm} {1}: {2}",
+                p.PaidAtLocal, p.KindName, p.Note), -p.Amount);
 
-            lines.AddRange(pieces.SkipLast(1));
-            lines.Add(pieces[^1].PadRight(room)
-                      + (-p.Amount).ToString("N2", culture).PadLeft(amount));
-        }
-
-        lines.Add(new string('-', 42));
-        lines.Add(string.Format(culture, "{0,-26}{1,16:N2}", "Paid out", -PayoutDto.Total(paid)));
+        lines.Add(Rule());
+        Amount(lines, "Paid out", -PayoutDto.Total(paid));
         lines.Add("Cash expected is after the money paid out.");
     }
 

@@ -476,6 +476,12 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
             case "dosage-codes":
                 ShowReferenceList(ReferenceKind.DosageCode);
                 break;
+            case "warning-codes":
+                ShowReferenceList(ReferenceKind.WarningCode);
+                break;
+            case "day-history":
+                Open<Features.History.frmHistory>(key);
+                break;
             case "tariffs":
                 Open<frmTariffList>(key);
                 break;
@@ -881,11 +887,21 @@ public sealed partial class MainPresenter : PresenterBase<IMainView>
             return;
         }
 
+        var format = Controls.frmChoicePrompt.Ask((Form)View, "Back up now",
+            "Save the backup as", new (string Text, BackupFormat Value)[]
+            {
+                ("SQL, zipped", BackupFormat.SqlZip),
+                ("Excel, one workbook per table, zipped", BackupFormat.Excel),
+                ("CSV, one file per table, zipped", BackupFormat.Csv)
+            });
+
+        if (format is null) return;
+
         View.SetBusy(true);
 
         try
         {
-            var file = await backup.BackUpAsync("manual");
+            var file = await backup.BackUpAsync("manual", format: format.Value);
 
             View.ShowInfo($"Backed up to {file}." + Environment.NewLine
                 + Environment.NewLine

@@ -143,7 +143,8 @@ public static class StandardRoleGrants
 
             PermissionCode.StockTakeCapture,
             PermissionCode.ReportOperational,
-            PermissionCode.ReportClinical
+            PermissionCode.ReportClinical,
+            PermissionCode.HistoryView
         },
 
         // Captures patients and scripts, prepares and issues the
@@ -182,7 +183,8 @@ public static class StandardRoleGrants
             PermissionCode.StockTakeCapture,
             PermissionCode.PurchaseOrderRaise,
             PermissionCode.GoodsReceive,
-            PermissionCode.ReportOperational
+            PermissionCode.ReportOperational,
+            PermissionCode.HistoryView
         },
 
         // Over-the-counter trade only. No dispensary stock, no stock

@@ -35,14 +35,33 @@ public interface ICashUpService
         Guid? sessionId = null,
         CancellationToken ct = default);
 
+    /// <param name="authorisedBy">
+    /// The supervisor who signed in for a difference above
+    /// CashUpService.SupervisorThreshold.
+    /// </param>
     Task<Result> CloseAsync(string? varianceReason, Guid? sessionId = null,
+                            Guid? authorisedBy = null,
                             CancellationToken ct = default);
 }
 
 public sealed class CashUpService : ICashUpService
 {
-    /// Above this, closing the session needs a written reason (POS-023).
-    private const decimal VarianceReasonThreshold = 20m;
+    /// Any difference at all needs a written reason (POS-023): a till closed
+    /// at $0 with $20 expected used to slip under a $20 threshold.
+    private const decimal VarianceReasonThreshold = 0m;
+
+    /// Above this, a supervisor signs in to the close as well.
+    public const decimal SupervisorThreshold = 5m;
+
+    /// Closing this soon after opening is usually a mistake, so it is queried.
+    public const int ShortSessionMinutes = 5;
+
+    public const string NeedsReason = "POS-023";
+    public const string NeedsSupervisor = "POS-041";
+
+    public static bool IsShortSession(TillSession session, DateTime nowUtc) =>
+        (nowUtc - (session ?? throw new ArgumentNullException(nameof(session))).OpenedAtUtc)
+            .TotalMinutes < ShortSessionMinutes;
 
     private readonly ITillSessionRepository _sessions;
     private readonly ISaleRepository _sales;
@@ -177,7 +196,8 @@ public sealed class CashUpService : ICashUpService
     }
 
     public async Task<Result> CloseAsync(string? varianceReason,
-        Guid? sessionId = null, CancellationToken ct = default)
+        Guid? sessionId = null, Guid? authorisedBy = null,
+        CancellationToken ct = default)
     {
         // A cashier closes their own till; the pharmacist, the assistant,
         // the manager and the administrator close one for a cashier.
@@ -246,6 +266,26 @@ public sealed class CashUpService : ICashUpService
         var counted = declaration is null
             ? expected
             : lines.Aggregate(Money.Zero(), (sum, l) => sum + l.Declared);
+
+        // Checked here, not only on the screen: every route to a close keeps
+        // the same rule.
+        var off = lines.Sum(l => Math.Abs((l.Declared - l.Expected).Amount));
+
+        if (off > VarianceReasonThreshold && string.IsNullOrWhiteSpace(varianceReason))
+            return Result.Fail(NeedsReason,
+                $"The count is {off:N2} out. Say why before the session closes.");
+
+        // Nobody signs off their own shortfall, or the one they are closing.
+        if (authorisedBy == session.OpenedBy || authorisedBy == _user.Id)
+            authorisedBy = null;
+
+        if (off > SupervisorThreshold && authorisedBy is null)
+            return Result.Fail(NeedsSupervisor,
+                $"The count is {off:N2} out, more than {SupervisorThreshold:N2}. "
+                + "A supervisor - not whoever opened or is closing this till - must sign in to close it.");
+
+        if (authorisedBy is Guid supervisor)
+            varianceReason = $"{varianceReason} (authorised by {supervisor})";
 
         session.Close(_user.Id, counted, _clock.UtcNow,
             declaration is null

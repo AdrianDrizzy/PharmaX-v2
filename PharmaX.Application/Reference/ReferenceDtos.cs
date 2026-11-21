@@ -15,7 +15,8 @@ public enum ReferenceKind
     Branch,
     MedicalAidScheme,
     Prescriber,
-    DosageCode
+    DosageCode,
+    WarningCode
 }
 
 /// <summary>
@@ -41,6 +42,8 @@ public sealed record ReferenceLabels(string Plural, string Singular,
             new("Prescribers", "prescriber", "Practice number and contact"),
         ReferenceKind.DosageCode =>
             new("Dosage codes", "dosage code", "Notes"),
+        ReferenceKind.WarningCode =>
+            new("Warning codes", "warning code", "Notes"),
         _ => new("Items", "item", "Detail")
     };
 }

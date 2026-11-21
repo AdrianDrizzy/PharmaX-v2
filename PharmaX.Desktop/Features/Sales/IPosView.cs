@@ -32,6 +32,9 @@ public interface IPosView : Mvp.IView
     decimal? PromptDiscount(decimal lineTotal);
     Guid? PromptSupervisor(string reason);
     IReadOnlyList<PaymentDto>? PromptPayment(decimal amountDue);
+
+    /// <summary>USD or ZWG: which price list this sale is ringing.</summary>
+    string SellingCurrency { get; }
     string? PromptVoidReason();
 
     /// <summary>

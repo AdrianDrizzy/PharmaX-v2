@@ -83,6 +83,7 @@ internal static partial class GuideScreens
         ["stock"] = Of(() => new Reports.frmReports()),
         ["schemes"] = Of(() => new Reference.frmReferenceList(), () => new Reference.frmReferenceEdit()),
         ["dosage-codes"] = Of(() => new Reference.frmReferenceList(), () => new Reference.frmReferenceEdit()),
+        ["warning-codes"] = Of(() => new Reference.frmReferenceList(), () => new Reference.frmReferenceEdit()),
         ["branches"] = Of(() => new Reference.frmReferenceList(), () => new Reference.frmReferenceEdit()),
         ["tariffs"] = Of(() => new Reference.frmTariffList(), () => new Reference.frmTariffEdit(),
                          () => new Reference.frmReferenceEdit()),

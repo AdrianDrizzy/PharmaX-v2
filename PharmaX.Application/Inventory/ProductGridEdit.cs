@@ -11,6 +11,14 @@ namespace PharmaX.Application.Inventory;
 
 public sealed partial class ProductService
 {
+    /// Batch tracking turned on while stock sits on no batch.
+    public const string NeedsBatchForStock = "INV-044";
+
+    private static string NeedsBatchMessage(Product product) =>
+        $"{product.Description} has {product.QuantityOnHand:0.###} in stock. "
+        + "Enter the batch number and expiry of that stock first: it then "
+        + "becomes batch tracked.";
+
     public async Task<Result> ApplyCellEditAsync(ProductCellEditDto edit,
         CancellationToken ct = default)
     {
@@ -193,6 +201,11 @@ public sealed partial class ProductService
         if (!tracked && await HoldsStockOnABatchAsync(product.Id, ct))
             return Result.Fail("INV-036",
                 "Stock is still on a batch, so batch tracking has to stay on.");
+
+        // Loose stock would sit on no batch and print labels with no expiry.
+        // The batch row under the product turns tracking on as it records one.
+        if (tracked && product.QuantityOnHand > 0m)
+            return Result.Fail(NeedsBatchForStock, NeedsBatchMessage(product));
 
         _permissions.Demand(PermissionCode.ProductMaintain);
         product.SetBatchTracked(tracked);

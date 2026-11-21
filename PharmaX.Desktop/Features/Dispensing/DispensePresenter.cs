@@ -233,6 +233,21 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         var directions = View.PromptDirections(proposal.Value);
         if (directions is null) return;
 
+        // No batch in stock: the box in hand has one. Cancelled, the item
+        // goes on as before and what is missing is owed.
+        if (proposal.Value.NeedsBatchFromBox
+            && View.AskBatchFromBox(proposal.Value.Description) is { } box)
+        {
+            var found = await _dispensing.RecordFoundBatchAsync(
+                proposal.Value.ProductId, box.Batch, box.Expiry, directions.Quantity);
+
+            if (found.IsFailure)
+            {
+                View.ShowError(found.Error.Message);
+                return;
+            }
+        }
+
         var result = await _dispensing.AddItemAsync(
             _dispensingId, proposal.Value.ProductCode, directions);
 
@@ -395,9 +410,10 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
         // Cleared on purpose: the script is still issued, and Dispensary
         // > Labels prints them later. A trailer is a label too.
-        if (View.PrintLabels)
+        if (View.PrintLabels
+            && await CheckExpiriesAsync(result.Value.Labels) is { } toPrint)
         {
-            foreach (var label in result.Value.Labels)
+            foreach (var label in toPrint)
                 printed.Add(await _labels.PrintAsync(label));
 
             if (result.Value.Trailer is { } trailer && View.PrintTrailer)
@@ -420,10 +436,13 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
                             + "member to sign?"))
             claimForm = "\n\n" + await PrintClaimFormAsync(issued);
 
-        var labels = View.PrintLabels
-            ? DescribeLabels(printed)
-            : "No labels printed. Reprint them from Dispensary > Labels "
-              + "if they are needed.";
+        var labels = !View.PrintLabels
+            ? "No labels printed. Reprint them from Dispensary > Labels "
+              + "if they are needed."
+            : _labelsHeld
+                ? "Labels not printed: an item has no expiry. Print them from "
+                  + "Dispensary > Labels once it is known."
+                : DescribeLabels(printed);
 
         View.ShowInfo($"Issued. Script {result.Value.ScriptNumber}. "
                       + $"Co-payment {result.Value.CoPayment:N2} "
@@ -432,6 +451,37 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
 
         View.CloseView(true);
     });
+
+    private bool _labelsHeld;
+
+    /// <summary>
+    /// A label without an expiry never prints unnoticed: the pharmacist
+    /// types it in or prints without it, on the record under their name.
+    /// Null holds the labels back.
+    /// </summary>
+    private async Task<IReadOnlyList<LabelDto>?> CheckExpiriesAsync(
+        IReadOnlyList<LabelDto> labels)
+    {
+        var missing = LabelExpiryCheck.Missing(labels);
+        _labelsHeld = false;
+        if (missing.Count == 0) return labels;
+
+        if (View.ConfirmMissingExpiry(missing) is not { } typed)
+        {
+            _labelsHeld = true;
+            return null;
+        }
+
+        // Kept on the line as well as printed, so a reprint carries it.
+        foreach (var label in missing)
+            await _dispensing.RecordLabelExpiryAsync(_dispensingId, label.ItemNumber,
+                typed.TryGetValue(label.ItemNumber, out var d) ? d : null);
+
+        return labels.Select(l => typed.TryGetValue(l.ItemNumber, out var d)
+                ? l with { Expiry = d }
+                : l)
+            .ToList();
+    }
 
     /// <summary>
     /// Deals with every warning still standing. False if the pharmacist

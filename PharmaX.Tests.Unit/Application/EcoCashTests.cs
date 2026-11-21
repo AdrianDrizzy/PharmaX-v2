@@ -339,7 +339,7 @@ public class EcoCashTests
     /// A session with a 100.00 float, a 24.00 cash sale, a 24.00 EcoCash
     /// sale and a 20.00 cash payment off an account.
     /// </summary>
-    private static async Task<(SaleServiceBuilder, TillSession, CashUpService)>
+    internal static async Task<(SaleServiceBuilder, TillSession, CashUpService)>
         TradedSessionAsync(bool withCard = false)
     {
         var builder = new SaleServiceBuilder();

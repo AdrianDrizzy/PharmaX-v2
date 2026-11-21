@@ -90,10 +90,27 @@ public sealed class frmToFollow : PhxFormBase
 
         var result = await _dispensing.GiveOwedAsync(owed.DispensingId, owed.LineNo);
 
-        if (result.IsFailure) ShowError(result.Error.Message);
-        else if ((await _labels.PrintAsync(result.Value)) is { Printed: false } print)
+        if (result.IsFailure)
+        {
+            ShowError(result.Error.Message);
+        }
+        else if (await CheckExpiryAsync(owed.DispensingId, result.Value) is { } label
+                 && (await _labels.PrintAsync(label)) is { Printed: false } print)
+        {
             ShowError($"Given, but the label did not print: {print.Problem}");
+        }
 
         await LoadOwedAsync();
+    }
+
+    /// The same check the dispensing screen makes before a label prints.
+    private async Task<LabelDto?> CheckExpiryAsync(Guid dispensingId, LabelDto label)
+    {
+        if (await MissingExpiryPrompt.CheckAsync(this, _dispensing, dispensingId,
+                new[] { label }) is { } checkedLabels)
+            return checkedLabels[0];
+
+        ShowInfo("Given. The label was not printed: reprint it from Dispensary > Labels.");
+        return null;
     }
 }

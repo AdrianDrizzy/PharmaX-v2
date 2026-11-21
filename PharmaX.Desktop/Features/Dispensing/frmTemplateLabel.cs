@@ -18,6 +18,7 @@ public sealed class frmTemplateLabel : Form
 
     private readonly PharmacyImprint? _pharmacy;
     private readonly IReadOnlyDictionary<string, string> _codes;
+    private readonly IReadOnlyDictionary<string, string> _warnings;
 
     private readonly TextBox _medicine = new();
     private readonly ComboBox _supplier = new();
@@ -44,10 +45,12 @@ public sealed class frmTemplateLabel : Form
     private frmTemplateLabel(PharmacyImprint? pharmacy,
                              IReadOnlyDictionary<string, string> codes,
                              IReadOnlyList<string>? suppliers,
-                             TemplateLabelDto? again)
+                             TemplateLabelDto? again,
+                             IReadOnlyDictionary<string, string> warnings)
     {
         _pharmacy = pharmacy;
         _codes = codes;
+        _warnings = warnings;
 
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
@@ -331,7 +334,12 @@ public sealed class frmTemplateLabel : Form
             PharmacistName: "",
             ScriptNumber: "Template",
             DispensedOn: DateOnly.FromDateTime(_packedOn.Value),
-            Cautions: new[] { _warningOn.Checked ? _warning.Text.Trim() : "" },
+            Cautions: new[]
+            {
+                _warningOn.Checked
+                    ? DosageShorthand.Expand(_warning.Text, _warnings).Trim()
+                    : ""
+            },
             Price: price,
             Omit: Omissions());
     }
@@ -347,10 +355,12 @@ public sealed class frmTemplateLabel : Form
         PharmacyImprint? pharmacy,
         IReadOnlyDictionary<string, string>? codes = null,
         IReadOnlyList<string>? suppliers = null,
-        TemplateLabelDto? again = null)
+        TemplateLabelDto? again = null,
+        IReadOnlyDictionary<string, string>? warnings = null)
     {
         using var dialog = new frmTemplateLabel(pharmacy,
-            codes ?? DosageShorthand.Catalogue(), suppliers, again);
+            codes ?? DosageShorthand.Catalogue(), suppliers, again,
+            warnings ?? DosageShorthand.Catalogue(WarningCodes.Standard));
 
         return dialog.ShowDialog(owner) == DialogResult.OK
             ? (dialog.Sticker(), (int)dialog._stickers.Value)

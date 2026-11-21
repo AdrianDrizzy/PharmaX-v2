@@ -54,6 +54,7 @@ public static class DependencyInjection
                     Patients.PatientMergeService>();
         s.AddScoped<Reference.IReferenceDataService,
                     Reference.ReferenceDataService>();
+        s.AddScoped<History.IDayHistory, History.DayHistory>();
         s.AddScoped<Reference.ITariffService, Reference.TariffService>();
         s.AddScoped<IPatientService, PatientService>();
         s.AddScoped<Patients.IAttachmentService, Patients.AttachmentService>();

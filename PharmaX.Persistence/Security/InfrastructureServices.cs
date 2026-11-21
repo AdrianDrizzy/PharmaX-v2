@@ -9,13 +9,19 @@ namespace PharmaX.Persistence.Security;
 /// The wall clock. Everything that needs the time asks for IClock instead,
 /// so a test can decide what "now" is rather than waiting for it.
 /// </summary>
-public sealed class SystemClock : IClock
+public sealed class SystemClock : IClock, IClockCorrection
 {
-    public DateTime UtcNow => DateTime.UtcNow;
+    // How far this PC is behind the database server, measured at sign-in,
+    // so every till stamps sales with the same clock.
+    private long _offsetTicks;
+
+    public DateTime UtcNow => DateTime.UtcNow.AddTicks(Interlocked.Read(ref _offsetTicks));
 
     // Local, not UTC: an expiry date and a trading day are both local
     // facts, and at 01:00 in Johannesburg the UTC date is yesterday.
-    public DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+    public DateOnly Today => DateOnly.FromDateTime(UtcNow.ToLocalTime());
+
+    public void Correct(TimeSpan offset) => Interlocked.Exchange(ref _offsetTicks, offset.Ticks);
 }
 
 /// <summary>

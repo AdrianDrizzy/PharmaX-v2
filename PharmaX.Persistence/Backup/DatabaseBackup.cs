@@ -65,12 +65,16 @@ public sealed class DatabaseBackup : IDatabaseBackup
         }
     }
 
-    public async Task<string> BackUpAsync(string reason, CancellationToken ct = default)
+    public async Task<string> BackUpAsync(string reason,
+        BackupFormat format = BackupFormat.SqlZip, CancellationToken ct = default)
     {
         Directory.CreateDirectory(Folder);
 
         var name = string.Create(CultureInfo.InvariantCulture,
             $"pharmax-{DateTime.Now:yyyyMMdd-HHmmss}-{reason}");
+
+        if (format is BackupFormat.Excel or BackupFormat.Csv)
+            return await ExportTablesAsync(name, format, ct);
 
         string written;
 
@@ -98,6 +102,167 @@ public sealed class DatabaseBackup : IDatabaseBackup
                             written, new FileInfo(written).Length);
         return written;
     }
+
+    public async Task RestoreSqlAsync(string path, CancellationToken ct = default)
+    {
+        if (!_options.Database.IsShared)
+            throw new InvalidOperationException(
+                "An SQL restore is for the pharmacy's main computer, which holds the shared database.");
+
+        var sql = path;
+        string? extracted = null;
+
+        if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            using var zip = ZipFile.OpenRead(path);
+            var entry = zip.Entries.FirstOrDefault(e =>
+                e.Name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException("That zip has no SQL file in it.");
+
+            extracted = Path.Combine(Path.GetTempPath(), entry.Name);
+            entry.ExtractToFile(extracted, overwrite: true);
+            sql = extracted;
+        }
+
+        try
+        {
+            await RunClientAsync(sql, ct);
+        }
+        finally
+        {
+            if (extracted is not null) File.Delete(extracted);
+        }
+    }
+
+    private async Task<string> ExportTablesAsync(string name, BackupFormat format, CancellationToken ct)
+    {
+        var temp = Path.Combine(Path.GetTempPath(), name);
+        Directory.CreateDirectory(temp);
+
+        var connection = _db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(ct);
+
+        foreach (var entity in _db.Model.GetEntityTypes())
+        {
+            var table = entity.GetTableName();
+            if (string.IsNullOrEmpty(table)) continue;
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT * FROM " + Quote(table);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            var file = Path.Combine(temp, table + (format == BackupFormat.Excel ? ".xlsx" : ".csv"));
+
+            if (format == BackupFormat.Excel) WriteSheet(file, table, reader);
+            else WriteCsv(file, reader);
+        }
+
+        var written = Path.Combine(Folder, name + ".zip");
+        if (File.Exists(written)) File.Delete(written);
+        ZipFile.CreateFromDirectory(temp, written);
+        Directory.Delete(temp, recursive: true);
+        Prune();
+        return written;
+    }
+
+    private string Quote(string table) =>
+        _options.Database.IsShared
+            ? $"`{table.Replace("`", "``", StringComparison.Ordinal)}`"
+            : $"\"{table.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+
+    private static void WriteCsv(string file, System.Data.Common.DbDataReader reader)
+    {
+        using var writer = new StreamWriter(file);
+        var headers = Enumerable.Range(0, reader.FieldCount).Select(reader.GetName);
+        writer.WriteLine(string.Join(",", headers.Select(Csv)));
+
+        while (reader.Read())
+        {
+            var cells = Enumerable.Range(0, reader.FieldCount)
+                .Select(i => reader.IsDBNull(i) ? "" : Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture) ?? "");
+            writer.WriteLine(string.Join(",", cells.Select(Csv)));
+        }
+    }
+
+    private static string Csv(string value) =>
+        value.Contains('"', StringComparison.Ordinal) || value.Contains(',', StringComparison.Ordinal)
+        || value.Contains('\n', StringComparison.Ordinal)
+            ? "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
+            : value;
+
+    private static void WriteSheet(string file, string table, System.Data.Common.DbDataReader reader)
+    {
+        using var book = new ClosedXML.Excel.XLWorkbook();
+        var sheet = book.AddWorksheet(table.Length > 31 ? table[..31] : table);
+
+        for (var i = 0; i < reader.FieldCount; i++)
+            sheet.Cell(1, i + 1).Value = reader.GetName(i);
+
+        var row = 2;
+        while (reader.Read())
+        {
+            for (var i = 0; i < reader.FieldCount; i++)
+                sheet.Cell(row, i + 1).Value = reader.IsDBNull(i)
+                    ? ""
+                    : Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture) ?? "";
+            row++;
+        }
+
+        book.SaveAs(file);
+    }
+
+    private async Task RunClientAsync(string sqlFile, CancellationToken ct)
+    {
+        var login = new MySqlConnectionStringBuilder(_options.Database.SharedConnection);
+        var tool = ClientTool() ?? throw new InvalidOperationException(
+            "Neither mariadb nor mysql is installed on this computer.");
+
+        var defaults = Path.Combine(Path.GetTempPath(), $"pharmax-restore-{Guid.NewGuid():N}.cnf");
+        await File.WriteAllTextAsync(defaults, string.Join(Environment.NewLine,
+            "[client]", $"user={login.UserID}", $"password=\"{login.Password}\"",
+            $"host={login.Server}", $"port={login.Port}"), ct);
+
+        try
+        {
+            var start = new ProcessStartInfo(tool)
+            {
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            start.ArgumentList.Add($"--defaults-extra-file={defaults}");
+            start.ArgumentList.Add(login.Database);
+
+            using var process = Process.Start(start)
+                ?? throw new InvalidOperationException($"{tool} would not start.");
+
+            await using (var input = process.StandardInput)
+            {
+                var sql = await File.ReadAllTextAsync(sqlFile, ct);
+                await input.WriteAsync(sql);
+            }
+
+            var errors = await process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"The restore stopped ({Path.GetFileName(tool)}): {errors.Trim()}");
+        }
+        finally
+        {
+            File.Delete(defaults);
+        }
+    }
+
+    private static string? ClientTool() => DumpTool() is string dump
+        ? new[]
+        {
+            Path.Combine(Path.GetDirectoryName(dump)!, "mariadb.exe"),
+            Path.Combine(Path.GetDirectoryName(dump)!, "mysql.exe")
+        }.FirstOrDefault(File.Exists)
+        : null;
 
     private async Task DumpAsync(string file, CancellationToken ct)
     {

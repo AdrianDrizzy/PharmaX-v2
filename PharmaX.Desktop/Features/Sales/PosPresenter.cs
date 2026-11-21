@@ -157,7 +157,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
     /// </remarks>
     private Task OnScanAsync(string code) => GuardAsync(async () =>
     {
-        var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
+        var result = await _sales.AddLineAsync(_saleId, code, 1m, View.SellingCurrency);
 
         if (result.IsFailure)
         {
@@ -234,7 +234,7 @@ public sealed class PosPresenter : PresenterBase<IPosView>
 
         foreach (var code in codes)
         {
-            var result = await _sales.AddLineAsync(_saleId, code, quantity: 1m);
+            var result = await _sales.AddLineAsync(_saleId, code, 1m, View.SellingCurrency);
             if (result.IsFailure)
                 failed.Add(codes.Count == 1
                     ? result.Error.Message

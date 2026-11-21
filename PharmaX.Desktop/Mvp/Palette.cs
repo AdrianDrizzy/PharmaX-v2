@@ -240,8 +240,19 @@ public sealed record ThemeMode(string Id, string Name, Color Paper, Color Field,
         Color.FromArgb(242, 238, 255), true, Color.FromArgb(214, 92, 255),
         Color.FromArgb(255, 200, 87), Color.FromArgb(255, 84, 140));
 
+    /// Dark glass for a night dispensary, with one warm amber gleam.
+    public static ThemeMode Lumen { get; } = new("lumen", "Lumen",
+        Color.FromArgb(7, 20, 28), Color.FromArgb(16, 40, 51),
+        Color.FromArgb(232, 244, 242), true, Color.FromArgb(230, 179, 90),
+        Color.FromArgb(244, 187, 79), Color.FromArgb(255, 122, 144));
+
+    /// Cool paper, Bahnschrift, pill buttons and a short open fade.
+    public static ThemeMode Helix { get; } = new("helix", "Helix",
+        Color.FromArgb(236, 242, 244), Color.White,
+        Color.FromArgb(18, 32, 48), false, Color.FromArgb(0, 122, 140));
+
     public static IReadOnlyList<ThemeMode> All { get; } =
-        new[] { Light, Dark, Midnight, Aurora, Warm, FluentLight, FluentDark };
+        new[] { Light, Dark, Midnight, Aurora, Lumen, Helix, Warm, FluentLight, FluentDark };
 
     /// The mode a setting names, or Light.
     public static ThemeMode Resolve(string? id) =>

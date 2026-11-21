@@ -112,6 +112,7 @@ public static class DependencyInjection
 
         // Reports
         s.AddTransient<frmReports>();
+        s.AddTransient<Features.History.frmHistory>();
         s.AddTransient<ReportsPresenter>();
 
         // The day's receipts (everyone) and what a receipt prints (admin)

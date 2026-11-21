@@ -93,6 +93,7 @@ partial class frmMain
                 Item("Medical Aid Societies", "schemes"),
                 Item("Prescribers", "prescribers"),
                 Item("Dosage Codes", "dosage-codes"),
+                Item("Warning Codes", "warning-codes"),
                 Item("To Follow", "to-follow"),
                 Item("Pre-packs", "prepack"),
                 Item("Drug Returns", "drug-returns")),
@@ -144,7 +145,8 @@ partial class frmMain
                 Item("Day-End Posting", "day-end")),
 
             Menu("&Reports", "reports",
-                Item("Reports", "reports", Keys.F9)),
+                Item("Reports", "reports", Keys.F9),
+                Item("Day history", "day-history")),
 
             Menu("&Stocktake", "stocktake",
                 Item("New Stocktake", "stocktake-new"),
@@ -399,6 +401,7 @@ partial class frmMain
              "purchase-orders", "inventory"),
             ("Stocktake", "Count and post", "stocktake-capture", "stocktake"),
             ("Reports", "F9   Sales, stock, VAT", "reports", "reports"),
+            ("Day history", "What happened on a date", "day-history", "reports"),
             ("Trial balance", "The books, in balance", "trial-balance",
              "accounts"),
             ("Till session", "Ctrl+T   Float and cash up", "till", "till")

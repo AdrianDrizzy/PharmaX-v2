@@ -13,6 +13,13 @@ public partial class frmPOS : PhxFormBase, IPosView
     private readonly PosPresenter? _presenter;
     private readonly IAuthenticationService? _auth;
     private readonly ViewFactory? _views;
+    private readonly ComboBox _payIn = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Name = "cboPayIn",
+        Width = 110,
+        AccessibleName = "Pay in"
+    };
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.SaleCreate;
@@ -24,6 +31,13 @@ public partial class frmPOS : PhxFormBase, IPosView
 
         scanBar.CodeEntered += (_, code) => CodeScanned?.Invoke(this, code);
         KeyDown += OnFunctionKey;
+
+        _payIn.Items.AddRange(new object[] { "US dollar", "ZiG" });
+        _payIn.SelectedIndex = 0;
+        _payIn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _payIn.Location = new Point(scanBar.Width - 124, 14);
+        scanBar.Controls.Add(_payIn);
+        scanBar.Resize += (_, _) => _payIn.Left = scanBar.Width - 124;
     }
 
     /// Runtime. Resolved by the container.
@@ -179,6 +193,7 @@ public partial class frmPOS : PhxFormBase, IPosView
 
         var selected = SelectedLineNo;
 
+        _payIn.Enabled = lines.Count == 0;
         grdLines.Rows.Clear();
 
         foreach (var l in lines)
@@ -411,9 +426,12 @@ public partial class frmPOS : PhxFormBase, IPosView
             : null;
     }
 
+    public string SellingCurrency =>
+        _payIn.SelectedIndex == 1 ? "ZWG" : "USD";
+
     public IReadOnlyList<PaymentDto>? PromptPayment(decimal amountDue)
     {
-        using var dialog = new frmPayment(amountDue);
+        using var dialog = new frmPayment(amountDue, SellingCurrency);
         return dialog.ShowDialog(this) == DialogResult.OK
             ? dialog.Payments
             : null;

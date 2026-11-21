@@ -763,8 +763,15 @@ public sealed partial class DispenseFlow : GuidedFlow
         var printed = new List<string>();
         if (_printLabels && _labels is { } labels)
         {
+            // A label with no expiry is held, never printed blank: Dispensary
+            // > Labels asks for the expiry on the box when it is reprinted.
+            var missing = LabelExpiryCheck.Missing(issued.Value.Labels);
+
             foreach (var label in issued.Value.Labels)
-                printed.Add((await labels.PrintAsync(label, ct)).Describe($"Label for {label.ProductDescription}"));
+                printed.Add(missing.Contains(label)
+                    ? $"Label for {label.ProductDescription} not printed: no expiry. "
+                      + "Print it from Dispensary > Labels, where you can enter the expiry from the box."
+                    : (await labels.PrintAsync(label, ct)).Describe($"Label for {label.ProductDescription}"));
 
             if (_printTrailer && issued.Value.Trailer is { } trailer)
                 printed.Add((await labels.PrintTrailerAsync(trailer, ct)).Describe("The trailer"));

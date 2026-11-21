@@ -115,6 +115,105 @@ public class DispensePresenterTests
         _view.DidNotReceive().ShowError(Arg.Any<string>());
     }
 
+    [Fact]
+    public void A_cancelled_batch_prompt_adds_the_item_as_before()
+    {
+        Begun();
+        var productId = Guid.NewGuid();
+        var directions = new DirectionsDto(10m, "One daily");
+
+        _dispensing.ProposeItemAsync(_dispensingId, "OMZ", Arg.Any<CancellationToken>())
+            .Returns(Result<ItemProposalDto>.Ok(new ItemProposalDto(productId, "OMZ",
+                "Omeprazole", 10m, "", false, UnitsInPack: 28m) { NeedsBatchFromBox = true }));
+        _view.PromptDirections(Arg.Any<ItemProposalDto>()).Returns(directions);
+        _view.AskBatchFromBox("Omeprazole").Returns(((string, DateOnly)?)null);
+
+        Presenter().Attach(_view);
+        _view.ScriptRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.ProductScanned += Raise.Event<EventHandler<string>>(this, "OMZ");
+
+        _dispensing.DidNotReceive().RecordFoundBatchAsync(Arg.Any<Guid>(),
+            Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<decimal>(),
+            Arg.Any<CancellationToken>());
+        _dispensing.Received(1).AddItemAsync(_dispensingId, "OMZ", directions,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void A_batch_from_the_box_is_recorded_before_the_item()
+    {
+        Begun();
+        var productId = Guid.NewGuid();
+        var expiry = new DateOnly(2027, 6, 30);
+
+        _dispensing.ProposeItemAsync(_dispensingId, "OMZ", Arg.Any<CancellationToken>())
+            .Returns(Result<ItemProposalDto>.Ok(new ItemProposalDto(productId, "OMZ",
+                "Omeprazole", 30m, "", false, UnitsInPack: 28m) { NeedsBatchFromBox = true }));
+        _view.PromptDirections(Arg.Any<ItemProposalDto>()).Returns(new DirectionsDto(30m, "One daily"));
+        _view.AskBatchFromBox("Omeprazole").Returns(("B7", expiry));
+        _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 30m, Arg.Any<CancellationToken>())
+            .Returns(Result.Ok());
+
+        Presenter().Attach(_view);
+        _view.ScriptRequested += Raise.EventWith(this, EventArgs.Empty);
+        _view.ProductScanned += Raise.Event<EventHandler<string>>(this, "OMZ");
+
+        Received.InOrder(() =>
+        {
+            _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 30m, Arg.Any<CancellationToken>());
+            _dispensing.AddItemAsync(_dispensingId, "OMZ", Arg.Any<DirectionsDto>(), Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task A_label_without_an_expiry_is_held_when_the_pharmacist_cancels()
+    {
+        _view.ConfirmMissingExpiry(Arg.Any<IReadOnlyList<LabelDto>>())
+            .Returns((IReadOnlyDictionary<int, DateOnly>?)null);
+
+        await IssueAsync(labels: true, trailer: false, noExpiry: true);
+
+        await _printer.DidNotReceive().PrintAsync(
+            Arg.Any<LabelDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Printing_without_an_expiry_is_noted_with_the_items()
+    {
+        _view.ConfirmMissingExpiry(Arg.Any<IReadOnlyList<LabelDto>>())
+            .Returns(new Dictionary<int, DateOnly>());
+
+        await IssueAsync(labels: true, trailer: false, noExpiry: true);
+
+        await _printer.Received(1).PrintAsync(
+            Arg.Is<LabelDto>(l => l.Expiry == null), Arg.Any<CancellationToken>());
+        await _dispensing.Received(1).RecordLabelExpiryAsync(_dispensingId, 1, null,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task An_expiry_typed_in_is_printed_on_the_label()
+    {
+        var typed = new DateOnly(2027, 3, 31);
+        _view.ConfirmMissingExpiry(Arg.Any<IReadOnlyList<LabelDto>>())
+            .Returns(new Dictionary<int, DateOnly> { [1] = typed });
+
+        await IssueAsync(labels: true, trailer: false, noExpiry: true);
+
+        await _printer.Received(1).PrintAsync(
+            Arg.Is<LabelDto>(l => l.Expiry == typed), Arg.Any<CancellationToken>());
+        await _dispensing.Received(1).RecordLabelExpiryAsync(_dispensingId, 1, typed,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_label_with_its_expiry_prints_without_asking()
+    {
+        await IssueAsync(labels: true, trailer: false);
+
+        _view.DidNotReceive().ConfirmMissingExpiry(Arg.Any<IReadOnlyList<LabelDto>>());
+    }
+
     private DispensePresenter Presenter() =>
         new(_dispensing, _scripts, _patients, _printer,
             Substitute.For<IClaimFormService>(), Substitute.For<IClaimFormPrinter>(),
@@ -142,7 +241,8 @@ public class DispensePresenterTests
         return state;
     }
 
-    private async Task IssueAsync(bool labels, bool trailer)
+    private async Task IssueAsync(bool labels, bool trailer,
+        DateOnly? expiry = null, bool noExpiry = false)
     {
         var line = new DispensingLineDto(1, Guid.NewGuid(), "Amoxicillin",
             20m, "One three times a day", null, null, 10m, 0m, 10m, false);
@@ -166,7 +266,8 @@ public class DispensePresenterTests
         _dispensing.IssueAuthorityAsync(_dispensingId, Arg.Any<CancellationToken>())
             .Returns(Result<IssueAuthorityDto>.Ok(new IssueAuthorityDto(true, null)));
 
-        var label = new LabelDto("Ada", "Amoxicillin", 20m, "tds", null, null,
+        var label = new LabelDto("Ada", "Amoxicillin", 20m, "tds", null,
+            noExpiry ? null : expiry ?? new DateOnly(2027, 1, 31),
             "Pharm", "42", new DateOnly(2026, 10, 18), Array.Empty<string>());
         var bag = new TrailerLabelDto("42", "Ada", 1, Array.Empty<TrailerItemDto>(),
             "Dr Adams", new DateOnly(2026, 10, 18));

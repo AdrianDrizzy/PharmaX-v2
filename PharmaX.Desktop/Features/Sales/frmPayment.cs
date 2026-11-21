@@ -14,6 +14,7 @@ namespace PharmaX.Desktop.Features.Sales;
 public partial class frmPayment : Form
 {
     private readonly decimal _amountDue;
+    private readonly string _saleCurrency;
     private readonly List<PaymentDto> _payments = new();
 
     /// <summary>
@@ -71,11 +72,15 @@ public partial class frmPayment : Form
 
     public IReadOnlyList<PaymentDto> Payments => _payments;
 
-    public frmPayment(decimal amountDue)
+    public frmPayment(decimal amountDue, string? saleCurrency = null)
     {
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
         InitializeComponent();
+        _saleCurrency = string.Equals(saleCurrency, "ZWG", StringComparison.OrdinalIgnoreCase)
+            ? "ZWG" : "USD";
+        cboPayIn.Items.AddRange(new object[] { "US dollar", "ZiG" });
+        cboPayIn.SelectedIndex = _saleCurrency == "ZWG" ? 1 : 0;
 
         // A plain Form rather than PhxFormBase, so branded here.
         Text = WindowTitles.Brand(Text);
@@ -119,6 +124,9 @@ public partial class frmPayment : Form
         // the change and the receipt prints it. Accepting the amount due
         // as it is recorded no change, however much was given back.
         lblAmount.Text = Selected.Type == TenderType.Cash && !_isRefund ? "&Tendered" : "&Amount";
+
+        var pricedApart = Selected.Type is TenderType.Card or TenderType.EcoCash;
+        cboPayIn.Visible = pricedApart;
 
         txtReference.PlaceholderText = Selected.Type == TenderType.EcoCash
             ? "Optional - EcoCash transaction ID"
@@ -227,8 +235,18 @@ public partial class frmPayment : Form
             return;
         }
 
+        var currency = cboPayIn.Visible && cboPayIn.SelectedIndex == 1 ? "ZWG" : _saleCurrency;
+
+        if (!string.Equals(currency, _saleCurrency, StringComparison.OrdinalIgnoreCase))
+        {
+            lblError.Text = _saleCurrency == "ZWG"
+                ? "This sale is priced in ZiG. US dollars are a separate price list, not a conversion."
+                : "This sale is priced in US dollars. ZiG is a separate price list, not a conversion.";
+            return;
+        }
+
         _payments.Add(new PaymentDto(tender.Name, txtAmount.Amount ?? 0m,
-            reference.Length == 0 ? null : reference));
+            reference.Length == 0 ? null : reference, currency));
 
         txtReference.Clear();
         Redraw();

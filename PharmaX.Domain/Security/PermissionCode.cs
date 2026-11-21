@@ -267,6 +267,13 @@ public static class PermissionCode
     public const string DataImport = "adm.data.import";
     public const string Backup = "adm.backup";
 
+    /// <summary>
+    /// A day's goods received, orders, collections, dispensing, patients,
+    /// returns, products, sales and account movements. The administrator,
+    /// the pharmacist and the pharmacist assistant.
+    /// </summary>
+    public const string HistoryView = "hist.view";
+
     /// <summary>System Console, Control Variables and the pharmacy's particulars.</summary>
     public const string SystemConsole = "adm.system.console";
 
@@ -298,7 +305,8 @@ public static class PermissionCode
         UserRoleAssign, RolePermissions, SettingsChange, DispensingAmend, StockPrepack,
         StockRemove, StockCorrect, SessionPayOut, DispensingChargeAdjust,
         ReceiptHide, BranchMaintain, ReceiptTemplate, PrintSizes, DataImport, Backup,
-        SystemConsole, LabelTemplates, LabelDeactivate, CashUpScreen, EndOfDayScreen
+        SystemConsole, LabelTemplates, LabelDeactivate, CashUpScreen, EndOfDayScreen,
+        HistoryView
     };
 
     /// <summary>What the role-permissions screen shows beside the code.</summary>
@@ -352,6 +360,7 @@ public static class PermissionCode
         PrintSizes => "Print sizes",
         DataImport => "Import data",
         Backup => "Back up now",
+        HistoryView => "Day history",
         SystemConsole => "System console, control variables and pharmacy details",
         LabelTemplates => "Label templates",
         LabelDeactivate => "Deactivate or delete a label sticker",

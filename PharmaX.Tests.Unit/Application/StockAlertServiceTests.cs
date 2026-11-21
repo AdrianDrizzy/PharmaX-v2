@@ -7,6 +7,9 @@ using PharmaX.Domain.Inventory;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Security;
 using PharmaX.Tests.Unit.Fakes;
+using NSubstitute;
+using PharmaX.Application.Dispensing;
+using PharmaX.Domain.Dispensing;
 
 namespace PharmaX.Tests.Unit.Application;
 
@@ -224,6 +227,55 @@ public class StockAlertServiceTests
 
         await act.Should().ThrowAsync<PermissionDeniedException>();
     }
+    /// <summary>
+    /// A label printed with no expiry is found the same day, not at the
+    /// next stocktake.
+    /// </summary>
+    [Fact]
+    public async Task Todays_batch_tracked_line_with_no_batch_is_an_alert()
+    {
+        var builder = new AlertBuilder();
+        var product = builder.AddProduct("OMZ", "Omeprazole 20mg");
+        product.SetBatchTracked(true);
+
+        var dispensing = Dispensing.Begin(Guid.NewGuid(), Guid.NewGuid(),
+                                          Guid.NewGuid(), repeatNumber: 0);
+        dispensing.AddLine(DispensingLine.Create(productId: product.Id,
+            description: "Omeprazole 20mg", quantity: 28m, directions: "One daily",
+            tariffAmount: Money.Of(5m)));
+        dispensing.Issue(Guid.NewGuid(), "SC-001-000023", Noon);
+
+        builder.Dispensings.IssuedBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new[] { dispensing });
+
+        var alert = (await builder.Build().CurrentAsync()).Value
+            .Should().ContainSingle(a => a.Kind == AlertKind.DispensedWithoutExpiry).Subject;
+
+        alert.Summary.Should().Contain("SC-001-000023").And.Contain("no batch or expiry");
+        alert.Key.Should().Contain(dispensing.Lines[0].Id.ToString());
+    }
+
+    [Fact]
+    public async Task An_untracked_line_with_no_batch_is_not_an_alert()
+    {
+        var builder = new AlertBuilder();
+        var product = builder.AddProduct("PCM", "Paracetamol");
+
+        var dispensing = Dispensing.Begin(Guid.NewGuid(), Guid.NewGuid(),
+                                          Guid.NewGuid(), repeatNumber: 0);
+        dispensing.AddLine(DispensingLine.Create(productId: product.Id,
+            description: "Paracetamol", quantity: 10m, directions: "Two when needed",
+            tariffAmount: Money.Of(5m)));
+        dispensing.Issue(Guid.NewGuid(), "SC-001-000024", Noon);
+
+        builder.Dispensings.IssuedBetweenAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new[] { dispensing });
+
+        (await builder.Build().CurrentAsync()).Value.Should().BeEmpty();
+    }
+
 }
 
 internal sealed class AlertBuilder
@@ -237,6 +289,7 @@ internal sealed class AlertBuilder
     public FakeCurrentUser User { get; } = new();
     public FakeClock Clock { get; } = new(Noon);
     public bool Enabled { get; set; } = true;
+    public IDispensingRepository Dispensings { get; } = Substitute.For<IDispensingRepository>();
 
     public FakePermissionRepository Permissions { get; set; } =
         new(granted: new[] { PermissionCode.ProductRead });
@@ -266,5 +319,5 @@ internal sealed class AlertBuilder
                     ExpiryCriticalDays = 30
                 }
             },
-            Clock);
+            Clock, Dispensings);
 }

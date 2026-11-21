@@ -73,6 +73,9 @@ public sealed class frmMembership : PhxFormBase
             Text = "Close", DialogResult = DialogResult.Cancel,
             Location = new Point(436, 11), Size = new Size(90, 32)
         };
+        // Shown beside the shell, not as a dialog, so the cancel result
+        // alone leaves the window open. Escape presses this button.
+        close.Click += (_, _) => CloseView(false);
         band.Controls.Add(_activate);
         band.Controls.Add(close);
         Controls.Add(band);

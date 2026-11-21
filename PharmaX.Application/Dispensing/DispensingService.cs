@@ -148,6 +148,26 @@ public interface IDispensingService
     Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId, int lineNo,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// A batch-tracked item with no batch in stock: the batch and expiry
+    /// read off the box in the pharmacist's hand become a batch, so the
+    /// label carries them. Loose stock goes onto it first; anything
+    /// beyond that is recorded as found at dispensing.
+    /// </summary>
+    /// <param name="units">What is being handed over, in the dispensing's
+    /// units; whole packs of the product's own size go onto the batch.</param>
+    Task<Result> RecordFoundBatchAsync(Guid productId, string batchNumber,
+        DateOnly expiry, decimal units, CancellationToken ct = default);
+
+    /// <summary>
+    /// What the pharmacist decided for a label that had no expiry, item n
+    /// of the bag: an expiry typed from the box is kept on the line, so a
+    /// reprint carries it; none is recorded as printed without one. Both
+    /// go on the audit trail under the signed-in pharmacist's name.
+    /// </summary>
+    Task<Result> RecordLabelExpiryAsync(Guid dispensingId, int itemNumber,
+        DateOnly? expiry, CancellationToken ct = default);
+
     /// Scripts begun within the last 24 hours and kept to finish later;
     /// older ones are set aside first.
     Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
@@ -406,8 +426,15 @@ public sealed class DispensingService : IDispensingService
                 product.Description, item.Quantity, item.Directions,
                 FromScript: true);
 
+        // Nothing on a batch to hand over: the label would print with no
+        // expiry, so the screen asks for the one on the box instead.
+        var needsBatch = product.IsBatchTracked
+            && !(await _batches.ForProductAsync(product.Id, ct))
+                .Any(b => b.IsAvailableOn(_clock.Today) && b.QuantityOnHand > 0m);
+
         return Result<ItemProposalDto>.Ok(proposal with
         {
+            NeedsBatchFromBox = needsBatch,
             Unit = Assistant.Guided.Directions.UnitOf(product.PackSize, product.Description),
             UnitsInPack = unitsInPack,
             PackPrice = tariffed ? null : packPrice,
@@ -1216,6 +1243,80 @@ public sealed class DispensingService : IDispensingService
         return owed.OrderBy(o => o.Since).ToList();
     }
 
+    public async Task<Result> RecordLabelExpiryAsync(Guid dispensingId,
+        int itemNumber, DateOnly? expiry, CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        var line = dispensing?.Lines.OrderBy(l => l.LineNo)
+            .ElementAtOrDefault(itemNumber - 1);
+        if (line is null) return Result.Fail("DSP-000", "Dispensing not found.");
+
+        if (expiry is DateOnly typed)
+        {
+            if (typed <= _clock.Today)
+                return Result.Fail("DSP-061",
+                    $"{typed:dd/MM/yyyy} has passed. Do not hand over expired stock.");
+
+            line.RecordLabelExpiry(typed);
+            _audit.Applied("disp.label.expiry-entered", "Dispensing", dispensingId,
+                $"{line.Description}: expiry {typed:dd/MM/yyyy} typed from the box");
+        }
+        else
+        {
+            _audit.Applied("disp.label.no-expiry", "Dispensing", dispensingId,
+                $"{line.Description}: label printed without an expiry");
+        }
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
+    }
+
+    public async Task<Result> RecordFoundBatchAsync(Guid productId,
+        string batchNumber, DateOnly expiry, decimal units,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var number = (batchNumber ?? "").Trim();
+        if (number.Length is < 1 or > 50)
+            return Result.Fail("DSP-061", "Enter the batch number printed on the box.");
+
+        if (expiry <= _clock.Today)
+            return Result.Fail("DSP-061",
+                $"Batch {number} expired on {expiry:dd/MM/yyyy}. Do not hand it over.");
+
+        if (units <= 0m)
+            return Result.Fail("DSP-061", "Say how many are being handed over.");
+
+        var product = await _products.GetAsync(productId, ct);
+        if (product is null) return Result.Fail("DSP-001", "Product not found.");
+
+        // A recalled or quarantined batch in hand must not be handed over,
+        // and allocation would not take it anyway.
+        if ((await _batches.ForProductAsync(product.Id, ct)).FirstOrDefault(b =>
+                b.ExpiryDate == expiry && b.Status != Domain.Batches.BatchStatus.Available
+                && string.Equals(b.BatchNumber, number, StringComparison.OrdinalIgnoreCase))
+            is { } blocked)
+            return Result.Fail("DSP-061",
+                $"Batch {number} is {blocked.Status.ToString().ToLowerInvariant()}"
+                + (blocked.StatusReason is null ? "" : $" ({blocked.StatusReason})")
+                + ". Do not hand it over.");
+
+        // In the product's own packs: the script's pack size can differ.
+        var packs = Math.Ceiling(units / Math.Max(product.UnitsInPack, 1m));
+
+        await _stock.RecordFoundBatchAsync(product, number, expiry, packs, ct);
+
+        _audit.Applied("inv.stock.adjust", "Product", product.Id,
+            $"Found at dispensing: batch {number}, expiry {expiry:dd/MM/yyyy}, "
+            + $"{packs:0.###} pack(s)");
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
+    }
+
     public async Task<Result<LabelDto>> GiveOwedAsync(Guid dispensingId,
         int lineNo, CancellationToken ct = default)
     {
@@ -1263,6 +1364,9 @@ public sealed class DispensingService : IDispensingService
             ScriptNumber: script?.ScriptNumber ?? "",
             DispensedOn: _clock.Today,
             Cautions: Array.Empty<string>(),
+            // Numbered as on the bag, so an expiry typed for it finds its line.
+            ItemNumber: dispensing.Lines.OrderBy(l => l.LineNo).ToList().IndexOf(line) + 1,
+            ItemCount: dispensing.Lines.Count,
             PrescriberName: script?.PrescriberName,
             PrescriberNumber: script?.PrescriberNumber));
     }

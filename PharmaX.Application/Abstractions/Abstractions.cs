@@ -53,3 +53,21 @@ public interface IAuditWriter
     void Refused(string action, string entityType, Guid entityId,
                  string? reason = null);
 }
+
+/// <summary>The database server's own time, and its offset from UTC.</summary>
+public sealed record ServerTime(DateTime UtcNow, TimeSpan UtcOffset);
+
+/// <summary>
+/// The database server's clock. Null where there is no server to ask
+/// (a standalone computer) or it cannot be reached.
+/// </summary>
+public interface IServerClock
+{
+    Task<ServerTime?> ReadAsync(CancellationToken ct = default);
+}
+
+/// <summary>Sets how far this computer's clock is from the server's.</summary>
+public interface IClockCorrection
+{
+    void Correct(TimeSpan offset);
+}

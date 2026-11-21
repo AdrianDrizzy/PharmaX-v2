@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Import;
 using PharmaX.Desktop.Mvp;
 
@@ -17,6 +19,7 @@ namespace PharmaX.Desktop.Features.Admin;
 public sealed class frmDataImport : PhxFormBase
 {
     private readonly IDataImporter _importer;
+    private readonly IDatabaseBackup? _backup;
 
     private readonly TextBox _paths = new();
     private readonly Button _folder = new();
@@ -30,9 +33,10 @@ public sealed class frmDataImport : PhxFormBase
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.DataImport;
 
-    public frmDataImport(IDataImporter importer)
+    public frmDataImport(IDataImporter importer, IDatabaseBackup? backup = null)
     {
         _importer = importer;
+        _backup = backup;
 
         // Docked rather than placed: the window grows with the display's
         // scaling, and a control anchored inside a panel that is not yet
@@ -184,6 +188,46 @@ public sealed class frmDataImport : PhxFormBase
             return;
         }
 
+        var sql = paths.FirstOrDefault(IsSqlBackup);
+        if (sql is not null)
+        {
+            if (_backup is null)
+            {
+                ShowError("SQL restore is not available from this screen.");
+                return;
+            }
+
+            if (dryRun)
+            {
+                ShowInfo("Check does not run an SQL restore. Import replaces the database with that file.");
+                return;
+            }
+
+            if (!Confirm("Replace this database with " + Path.GetFileName(sql)
+                         + "?" + Environment.NewLine + Environment.NewLine
+                         + "Close the other tills first. This cannot be undone except from another backup."))
+                return;
+
+            try
+            {
+                SetBusy(true);
+                await _backup.RestoreSqlAsync(sql);
+                ShowInfo("Restored from " + sql);
+            }
+            catch (InvalidOperationException ex)
+            {
+                ShowError("The restore did not finish: " + ex.Message);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+
+            return;
+        }
+
+        var files = ExpandZips(paths);
+
         if (!dryRun && !Confirm(
                 "Import this data into this database?" + Environment.NewLine
                 + Environment.NewLine
@@ -200,7 +244,7 @@ public sealed class frmDataImport : PhxFormBase
         try
         {
             var progress = new Progress<string>(step => _progress.Text = step + "...");
-            var report = await Task.Run(() => _importer.ImportAsync(paths, dryRun, progress));
+            var report = await Task.Run(() => _importer.ImportAsync(files, dryRun, progress));
 
             _report.Text = report.Text;
 
@@ -233,5 +277,36 @@ public sealed class frmDataImport : PhxFormBase
 
         File.WriteAllText(path, report.Text);
         return path;
+    }
+
+    private static bool IsSqlBackup(string path)
+    {
+        if (path.EndsWith(".sql", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+            return false;
+
+        using var zip = ZipFile.OpenRead(path);
+        return zip.Entries.Any(e => e.Name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// A zip of spreadsheets is imported as the files inside it.
+    private static IReadOnlyList<string> ExpandZips(IReadOnlyList<string> paths)
+    {
+        var files = new List<string>();
+
+        foreach (var path in paths)
+        {
+            if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+            {
+                files.Add(path);
+                continue;
+            }
+
+            var dir = Path.Combine(Path.GetTempPath(), "pharmax-import-" + Guid.NewGuid().ToString("N"));
+            ZipFile.ExtractToDirectory(path, dir);
+            files.AddRange(Directory.GetFiles(dir));
+        }
+
+        return files;
     }
 }
