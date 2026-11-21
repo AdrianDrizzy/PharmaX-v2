@@ -405,6 +405,98 @@ public class ReceivingFlowTests : IClassFixture<PharmaXFixture>
 
     // ---- Steps -----------------------------------------------------------
 
+
+    /// <summary>
+    /// An expiry typed on a delivery used to stay on the delivery note
+    /// alone, so the label printed without one. Now the item starts
+    /// keeping batches from that delivery on.
+    /// </summary>
+    [Fact]
+    public async Task Untracked_product_received_with_batch_and_expiry_becomes_batch_tracked()
+    {
+        await SignInAsync();
+
+        var supplierId = await GivenASupplierAsync("AUTOTRK", "Auto Track Co");
+        var code = await GivenAProductAsync("AUTOTRK1", "Amlovar 10mg");
+
+        using (var scope = _fixture.NewScope())
+        {
+            var clock = PharmaXFixture.Resolve<IClock>(scope);
+            var result = await PharmaXFixture.Resolve<IReceivingService>(scope)
+                .ReceiveAsync(Receipt(supplierId, clock.Today,
+                    new GoodsReceiptLineEditDto(code, 6m, 10m, "AM-1",
+                        clock.Today.AddMonths(8))));
+
+            result.IsSuccess.Should().BeTrue(result.Error.Message);
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var product = await db.Products.AsNoTracking().SingleAsync(p => p.Code == code);
+
+            product.IsBatchTracked.Should().BeTrue();
+            var batch = await db.Batches.AsNoTracking().SingleAsync(b => b.ProductId == product.Id);
+            batch.BatchNumber.Should().Be("AM-1");
+            batch.QuantityOnHand.Should().Be(6m);
+        }
+    }
+
+    [Fact]
+    public async Task Untracked_product_received_with_expiry_but_no_batch_is_refused()
+    {
+        await SignInAsync();
+
+        var supplierId = await GivenASupplierAsync("NOBATCH2", "No Batch Two");
+        var code = await GivenAProductAsync("NOBATCH2", "Expiry only");
+
+        using (var scope = _fixture.NewScope())
+        {
+            var clock = PharmaXFixture.Resolve<IClock>(scope);
+            var result = await PharmaXFixture.Resolve<IReceivingService>(scope)
+                .ReceiveAsync(Receipt(supplierId, clock.Today,
+                    new GoodsReceiptLineEditDto(code, 6m, 10m, null,
+                        clock.Today.AddMonths(8))));
+
+            result.Error.Code.Should().Be("GRN-007");
+        }
+
+        using (var scope = _fixture.NewScope())
+            (await PharmaXFixture.Resolve<PharmaXDbContext>(scope).Products.AsNoTracking()
+                .SingleAsync(p => p.Code == code)).IsBatchTracked.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Auto_tracked_product_keeps_its_existing_unbatched_stock()
+    {
+        await SignInAsync();
+
+        var supplierId = await GivenASupplierAsync("KEEPSTK", "Keep Stock Co");
+        var code = await GivenAProductAsync("KEEPSTK1", "Has loose stock");
+
+        using (var scope = _fixture.NewScope())
+        {
+            var clock = PharmaXFixture.Resolve<IClock>(scope);
+            var receiving = PharmaXFixture.Resolve<IReceivingService>(scope);
+
+            (await receiving.ReceiveAsync(Receipt(supplierId, clock.Today,
+                new GoodsReceiptLineEditDto(code, 10m, 10m, null, null))))
+                .IsSuccess.Should().BeTrue();
+            (await receiving.ReceiveAsync(Receipt(supplierId, clock.Today,
+                new GoodsReceiptLineEditDto(code, 5m, 10m, "KS-1",
+                    clock.Today.AddMonths(8))))).IsSuccess.Should().BeTrue();
+        }
+
+        using (var scope = _fixture.NewScope())
+        {
+            var db = PharmaXFixture.Resolve<PharmaXDbContext>(scope);
+            var product = await db.Products.AsNoTracking().SingleAsync(p => p.Code == code);
+
+            product.QuantityOnHand.Should().Be(15m);
+            (await db.Batches.AsNoTracking().SingleAsync(b => b.ProductId == product.Id))
+                .QuantityOnHand.Should().Be(5m);
+        }
+    }
     private static GoodsReceiptEditDto Receipt(Guid supplierId,
         DateOnly receivedOn, params GoodsReceiptLineEditDto[] lines) =>
         new(supplierId, null, null, receivedOn, null, lines);

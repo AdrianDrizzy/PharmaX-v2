@@ -218,10 +218,21 @@ public sealed class ReceivingService : IReceivingService
             edit.SupplierInvoiceNumber);
 
         foreach (var (product, line) in resolved.Lines)
+        {
+            // An expiry typed on the delivery used to live on the delivery
+            // note alone, and the label printed without one.
+            if (line.ExpiryDate is not null && !product.IsBatchTracked)
+            {
+                product.SetBatchTracked(true);
+                _audit.Applied("inv.product.maintain", "Product", product.Id,
+                    $"Batch tracked: received with an expiry on {number}");
+            }
+
             receipt.AddLine(product.Id, product.Description, line.Quantity,
                 Money.Of(line.UnitCost), product.IsBatchTracked,
                 line.BatchNumber, line.ExpiryDate,
                 line.PurchaseOrderLineNo);
+        }
 
         if (edit.InvoiceTotal is decimal invoiced)
             receipt.RecordInvoiceTotal(Money.Of(invoiced));
@@ -414,12 +425,15 @@ public sealed class ReceivingService : IReceivingService
             // BR-INV-02, checked here as well as in the aggregate so the
             // screen can name the offending line before anything is
             // written rather than after.
-            if (product.IsBatchTracked)
+            // An expiry on an untracked item makes it batch tracked when
+            // the receipt posts, so it is held to the same rule here.
+            if (product.IsBatchTracked || line.ExpiryDate is not null)
             {
                 if (string.IsNullOrWhiteSpace(line.BatchNumber))
-                    return (resolved, new Error("GRN-007",
-                        $"{product.Description} is batch tracked: it needs "
-                        + "a batch number."));
+                    return (resolved, new Error("GRN-007", product.IsBatchTracked
+                        ? $"{product.Description} is batch tracked: it needs a batch number."
+                        : $"{product.Description}: enter the batch number that goes "
+                          + "with the expiry date."));
 
                 if (line.ExpiryDate is null)
                     return (resolved, new Error("GRN-008",
