@@ -157,6 +157,11 @@ public interface IDispensingService
     Task<Result> RecordFoundBatchAsync(Guid productId, string batchNumber,
         DateOnly expiry, decimal packs, CancellationToken ct = default);
 
+    /// Puts on the audit trail, under the signed-in pharmacist's name, what
+    /// was decided about labels that had no expiry.
+    Task NoteLabelExpiryAsync(Guid dispensingId, string note,
+        CancellationToken ct = default);
+
     /// Scripts begun within the last 24 hours and kept to finish later;
     /// older ones are set aside first.
     Task<IReadOnlyList<SuspendedDispensingDto>> SuspendedAsync(
@@ -1230,6 +1235,13 @@ public sealed class DispensingService : IDispensingService
         }
 
         return owed.OrderBy(o => o.Since).ToList();
+    }
+
+    public async Task NoteLabelExpiryAsync(Guid dispensingId, string note,
+        CancellationToken ct = default)
+    {
+        _audit.Applied("disp.label.no-expiry", "Dispensing", dispensingId, note);
+        await _uow.SaveChangesAsync(ct);
     }
 
     public async Task<Result> RecordFoundBatchAsync(Guid productId,

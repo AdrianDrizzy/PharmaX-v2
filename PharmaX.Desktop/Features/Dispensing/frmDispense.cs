@@ -383,6 +383,9 @@ public partial class frmDispense : PhxFormBase, IDispenseView
             + "batch number and expiry from the box, so the label carries them. "
             + "Cancel to owe it instead.");
 
+    public IReadOnlyDictionary<int, DateOnly>? ConfirmMissingExpiry(
+        IReadOnlyList<LabelDto> missing) => MissingExpiryPrompt.Ask(this, missing);
+
     public DirectionsDto? PromptDirections(ItemProposalDto proposal) =>
         frmItemPrompt.Ask(this, proposal, _dosage);
 

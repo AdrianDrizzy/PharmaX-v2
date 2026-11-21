@@ -53,6 +53,13 @@ public interface IDispenseView : Mvp.IView
     /// The batch number and expiry printed on the box; null if cancelled.
     (string Batch, DateOnly Expiry)? AskBatchFromBox(string productDescription);
 
+    /// <summary>
+    /// Labels about to print with no expiry. Null holds them back; an
+    /// empty answer prints them as they are; otherwise the expiries typed
+    /// in, by item number.
+    /// </summary>
+    IReadOnlyDictionary<int, DateOnly>? ConfirmMissingExpiry(IReadOnlyList<LabelDto> missing);
+
     /// Returns the pharmacist who authenticated, or null if cancelled.
     Guid? PromptPharmacistAuthorisation(string reasonShown);
 

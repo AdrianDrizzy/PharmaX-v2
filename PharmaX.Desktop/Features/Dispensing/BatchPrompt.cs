@@ -77,3 +77,37 @@ internal static class BatchPrompt
             : null;
     }
 }
+
+/// <summary>
+/// Labels about to print with no expiry: type the expiries in, print
+/// them as they are, or hold them back.
+/// </summary>
+internal static class MissingExpiryPrompt
+{
+    public static IReadOnlyDictionary<int, DateOnly>? Ask(IWin32Window owner,
+        IReadOnlyList<Application.Dispensing.Dtos.LabelDto> missing)
+    {
+        var names = string.Join("\n", missing.Select(l => "  " + l.ProductDescription));
+
+        var answer = MessageBox.Show(owner,
+            $"These labels have no expiry date:\n\n{names}\n\n"
+            + "Yes - type the expiry from the box onto the label.\n"
+            + "No - print without an expiry (recorded under your name).\n"
+            + "Cancel - do not print them now.",
+            WindowTitles.Brand("PharmaX - No expiry on the label"),
+            MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+
+        if (answer == DialogResult.Cancel) return null;
+
+        var typed = new Dictionary<int, DateOnly>();
+        if (answer == DialogResult.No) return typed;
+
+        // An expiry left blank prints without one, and is recorded as such.
+        foreach (var label in missing)
+            if (BatchPrompt.Ask(owner, $"Expiry printed on the box of {label.ProductDescription}:",
+                    askBatch: false, cancelText: "Print without") is { } box)
+                typed[label.ItemNumber] = box.Expiry;
+
+        return typed;
+    }
+}
