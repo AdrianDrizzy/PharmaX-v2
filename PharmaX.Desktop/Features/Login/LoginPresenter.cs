@@ -77,10 +77,16 @@ public sealed class LoginPresenter : PresenterBase<ILoginView>
     {
         if (_server is null) return null;
 
+        // Windows' time zone is cached for the life of the program; a zone
+        // fixed after the first refusal must be seen on the next try.
+        TimeZoneInfo.ClearCachedData();
+
         Application.Abstractions.ServerTime? server;
         try
         {
-            server = await _server.ReadAsync();
+            // An offline till should not wait the full connect timeout.
+            using var quick = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            server = await _server.ReadAsync(quick.Token);
         }
 #pragma warning disable CA1031 // any failure to reach the server means "skip the check"
         catch (Exception)

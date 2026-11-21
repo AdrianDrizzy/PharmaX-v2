@@ -32,4 +32,10 @@ public sealed class ClockCheckTests
     public void A_different_time_zone_is_blocked() =>
         Check(TimeSpan.Zero, TimeSpan.Zero).Should().Contain("time zone")
             .And.Contain("UTC+00:00").And.Contain("UTC+02:00");
+
+    /// A database server left on UTC (a Linux box, a container) says
+    /// nothing about the pharmacy's zone; only the clock is compared.
+    [Fact]
+    public void A_server_on_UTC_is_not_compared_for_time_zone() =>
+        ClockCheck.Problem(Server, Cat, new ServerTime(Server, TimeSpan.Zero)).Should().BeNull();
 }

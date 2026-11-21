@@ -275,10 +275,14 @@ public sealed class CashUpService : ICashUpService
             return Result.Fail(NeedsReason,
                 $"The count is {off:N2} out. Say why before the session closes.");
 
+        // Nobody signs off their own shortfall, or the one they are closing.
+        if (authorisedBy == session.OpenedBy || authorisedBy == _user.Id)
+            authorisedBy = null;
+
         if (off > SupervisorThreshold && authorisedBy is null)
             return Result.Fail(NeedsSupervisor,
                 $"The count is {off:N2} out, more than {SupervisorThreshold:N2}. "
-                + "A supervisor must sign in to close it.");
+                + "A supervisor - not whoever opened or is closing this till - must sign in to close it.");
 
         if (authorisedBy is Guid supervisor)
             varianceReason = $"{varianceReason} (authorised by {supervisor})";

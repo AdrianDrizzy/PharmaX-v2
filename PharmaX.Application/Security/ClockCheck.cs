@@ -13,7 +13,10 @@ public static class ClockCheck
     {
         ArgumentNullException.ThrowIfNull(server);
 
-        if (pcOffset != server.UtcOffset)
+        // shortcut: a server left on UTC (a Linux box, a container) says
+        // nothing about the pharmacy's zone, so only the clock is compared;
+        // add a site time zone setting if a pharmacy really trades on UTC.
+        if (server.UtcOffset != TimeSpan.Zero && pcOffset != server.UtcOffset)
             return $"This computer's time zone (UTC{Zone(pcOffset)}) is not the "
                    + $"server's (UTC{Zone(server.UtcOffset)}). Set the time zone in "
                    + "Windows, then sign in again.";

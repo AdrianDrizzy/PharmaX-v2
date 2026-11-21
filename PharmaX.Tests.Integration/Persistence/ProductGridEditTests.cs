@@ -37,7 +37,7 @@ public class ProductGridEditTests : IClassFixture<PharmaXFixture>
 
         var refused = await TryEditAsync(id, ProductCell.BatchTracked, "true");
 
-        refused.Error.Code.Should().Be("INV-037");
+        refused.Error.Code.Should().Be("INV-044");
         (await FetchAsync(id)).IsBatchTracked.Should().BeFalse();
     }
 

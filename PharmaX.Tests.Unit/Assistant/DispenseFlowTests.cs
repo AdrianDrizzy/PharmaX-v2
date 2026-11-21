@@ -345,6 +345,29 @@ public class DispenseFlowTests
         await _dispensing.DidNotReceive().IssueAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
     }
 
+    /// The Assistant's issue holds a label with no expiry back, the same
+    /// as the dispensing screen, and says where to print it.
+    [Fact]
+    public async Task A_label_without_an_expiry_is_held_by_the_assistant()
+    {
+        var printer = Substitute.For<ILabelPrinter>();
+        _dispensing.IssueAsync(DispensingId, Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Result<IssueResultDto>.Ok(new IssueResultDto("SC-001-000009", "D-1", 26.50m,
+                new[] { new LabelDto("John Moyo", "Omeprazole 20mg", 28m, "One daily", null, null,
+                    "Pharm", "SC-001-000009", new DateOnly(2026, 11, 21), Array.Empty<string>()) },
+                null)));
+
+        var flow = new DispenseFlow("amoxicillin 500mg", null, "John Moyo", _patients, _scripts,
+            _dispensing, _products, _reference,
+            Granting(new[] { PermissionCode.ScriptCapture, PermissionCode.ScriptDispense }),
+            Clock(), new GuidedTestKit.Prompts(null), () => null, printer);
+        await flow.StartAsync();
+        var said = await SayAsync(flow, ToCharges.Append("").Append("yes").ToArray());
+
+        await printer.DidNotReceive().PrintAsync(Arg.Any<LabelDto>(), Arg.Any<CancellationToken>());
+        said.Should().Contain("no expiry");
+    }
+
     [Fact]
     public async Task Cancel_after_the_charges_undoes_the_script_and_the_dispensing()
     {

@@ -38,7 +38,7 @@ public class ProductEditorStockTests : IClassFixture<PharmaXFixture>
             IsBatchTracked = true
         });
 
-        saved.Error.Code.Should().Be("INV-037");
+        saved.Error.Code.Should().Be("INV-044");
         (await FetchAsync(id)).IsBatchTracked.Should().BeFalse();
     }
 

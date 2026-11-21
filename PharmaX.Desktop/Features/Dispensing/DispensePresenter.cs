@@ -238,10 +238,8 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
         if (proposal.Value.NeedsBatchFromBox
             && View.AskBatchFromBox(proposal.Value.Description) is { } box)
         {
-            var packs = Math.Ceiling(directions.Quantity
-                                     / Math.Max(proposal.Value.UnitsInPack, 1m));
             var found = await _dispensing.RecordFoundBatchAsync(
-                proposal.Value.ProductId, box.Batch, box.Expiry, packs);
+                proposal.Value.ProductId, box.Batch, box.Expiry, directions.Quantity);
 
             if (found.IsFailure)
             {
@@ -474,16 +472,10 @@ public sealed class DispensePresenter : PresenterBase<IDispenseView>
             return null;
         }
 
-        var names = string.Join(", ", missing
-            .Where(l => !typed.ContainsKey(l.ItemNumber))
-            .Select(l => l.ProductDescription));
-        if (names.Length > 0)
-            await _dispensing.NoteLabelExpiryAsync(_dispensingId,
-                $"Label printed without an expiry: {names}");
-
-        foreach (var (item, expiry) in typed)
-            await _dispensing.NoteLabelExpiryAsync(_dispensingId,
-                $"Expiry {expiry:dd/MM/yyyy} typed onto the label for item {item}");
+        // Kept on the line as well as printed, so a reprint carries it.
+        foreach (var label in missing)
+            await _dispensing.RecordLabelExpiryAsync(_dispensingId, label.ItemNumber,
+                typed.TryGetValue(label.ItemNumber, out var d) ? d : null);
 
         return labels.Select(l => typed.TryGetValue(l.ItemNumber, out var d)
                 ? l with { Expiry = d }

@@ -12,7 +12,7 @@ namespace PharmaX.Application.Inventory;
 public sealed partial class ProductService
 {
     /// Batch tracking turned on while stock sits on no batch.
-    public const string NeedsBatchForStock = "INV-037";
+    public const string NeedsBatchForStock = "INV-044";
 
     private static string NeedsBatchMessage(Product product) =>
         $"{product.Description} has {product.QuantityOnHand:0.###} in stock. "

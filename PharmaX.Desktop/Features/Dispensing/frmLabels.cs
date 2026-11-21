@@ -773,6 +773,13 @@ public partial class frmLabels : PhxFormBase
     {
         if (_labels is null) return;
 
+        // A label held back at the issue for want of an expiry comes here
+        // to be printed: the same check, and the expiry kept on the line.
+        if (_dispensing is not null
+            && await _labels.BuildAsync(id) is { IsSuccess: true } built
+            && await MissingExpiryPrompt.CheckAsync(this, _dispensing, id, built.Value) is null)
+            return;
+
         var result = await _labels.ReprintAsync(id);
 
         if (result.IsFailure)

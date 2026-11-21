@@ -77,6 +77,12 @@ public sealed class DispensingLine : Entity
 
     private DispensingLine() { }
 
+    /// <summary>
+    /// The expiry read off the box for a label that had none, so a reprint
+    /// carries it. Never overwrites an expiry a batch already gave.
+    /// </summary>
+    public void RecordLabelExpiry(DateOnly expiry) => BatchExpiry ??= expiry;
+
     public static DispensingLine Create(Guid productId, string description,
         decimal quantity, string directions, Money tariffAmount,
         Guid? scriptItemId = null, Guid? batchId = null,

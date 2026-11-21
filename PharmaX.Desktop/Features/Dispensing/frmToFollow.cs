@@ -106,23 +106,11 @@ public sealed class frmToFollow : PhxFormBase
     /// The same check the dispensing screen makes before a label prints.
     private async Task<LabelDto?> CheckExpiryAsync(Guid dispensingId, LabelDto label)
     {
-        if (LabelExpiryCheck.Missing(new[] { label }).Count == 0) return label;
+        if (await MissingExpiryPrompt.CheckAsync(this, _dispensing, dispensingId,
+                new[] { label }) is { } checkedLabels)
+            return checkedLabels[0];
 
-        if (MissingExpiryPrompt.Ask(this, new[] { label }) is not { } typed)
-        {
-            ShowInfo("Given. The label was not printed: reprint it from Dispensary > Labels.");
-            return null;
-        }
-
-        if (typed.TryGetValue(label.ItemNumber, out var expiry))
-        {
-            await _dispensing.NoteLabelExpiryAsync(dispensingId,
-                $"Expiry {expiry:dd/MM/yyyy} typed onto the label for {label.ProductDescription}");
-            return label with { Expiry = expiry };
-        }
-
-        await _dispensing.NoteLabelExpiryAsync(dispensingId,
-            $"Label printed without an expiry: {label.ProductDescription}");
-        return label;
+        ShowInfo("Given. The label was not printed: reprint it from Dispensary > Labels.");
+        return null;
     }
 }

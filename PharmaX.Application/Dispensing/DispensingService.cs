@@ -154,13 +154,19 @@ public interface IDispensingService
     /// label carries them. Loose stock goes onto it first; anything
     /// beyond that is recorded as found at dispensing.
     /// </summary>
+    /// <param name="units">What is being handed over, in the dispensing's
+    /// units; whole packs of the product's own size go onto the batch.</param>
     Task<Result> RecordFoundBatchAsync(Guid productId, string batchNumber,
-        DateOnly expiry, decimal packs, CancellationToken ct = default);
+        DateOnly expiry, decimal units, CancellationToken ct = default);
 
-    /// Puts on the audit trail, under the signed-in pharmacist's name, what
-    /// was decided about labels that had no expiry.
-    Task NoteLabelExpiryAsync(Guid dispensingId, string note,
-        CancellationToken ct = default);
+    /// <summary>
+    /// What the pharmacist decided for a label that had no expiry, item n
+    /// of the bag: an expiry typed from the box is kept on the line, so a
+    /// reprint carries it; none is recorded as printed without one. Both
+    /// go on the audit trail under the signed-in pharmacist's name.
+    /// </summary>
+    Task<Result> RecordLabelExpiryAsync(Guid dispensingId, int itemNumber,
+        DateOnly? expiry, CancellationToken ct = default);
 
     /// Scripts begun within the last 24 hours and kept to finish later;
     /// older ones are set aside first.
@@ -1237,15 +1243,38 @@ public sealed class DispensingService : IDispensingService
         return owed.OrderBy(o => o.Since).ToList();
     }
 
-    public async Task NoteLabelExpiryAsync(Guid dispensingId, string note,
-        CancellationToken ct = default)
+    public async Task<Result> RecordLabelExpiryAsync(Guid dispensingId,
+        int itemNumber, DateOnly? expiry, CancellationToken ct = default)
     {
-        _audit.Applied("disp.label.no-expiry", "Dispensing", dispensingId, note);
+        _permissions.Demand(PermissionCode.ScriptDispense);
+
+        var dispensing = await _dispensings.GetAsync(dispensingId, ct);
+        var line = dispensing?.Lines.OrderBy(l => l.LineNo)
+            .ElementAtOrDefault(itemNumber - 1);
+        if (line is null) return Result.Fail("DSP-000", "Dispensing not found.");
+
+        if (expiry is DateOnly typed)
+        {
+            if (typed <= _clock.Today)
+                return Result.Fail("DSP-061",
+                    $"{typed:dd/MM/yyyy} has passed. Do not hand over expired stock.");
+
+            line.RecordLabelExpiry(typed);
+            _audit.Applied("disp.label.expiry-entered", "Dispensing", dispensingId,
+                $"{line.Description}: expiry {typed:dd/MM/yyyy} typed from the box");
+        }
+        else
+        {
+            _audit.Applied("disp.label.no-expiry", "Dispensing", dispensingId,
+                $"{line.Description}: label printed without an expiry");
+        }
+
         await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
     }
 
     public async Task<Result> RecordFoundBatchAsync(Guid productId,
-        string batchNumber, DateOnly expiry, decimal packs,
+        string batchNumber, DateOnly expiry, decimal units,
         CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.ScriptDispense);
@@ -1258,11 +1287,25 @@ public sealed class DispensingService : IDispensingService
             return Result.Fail("DSP-061",
                 $"Batch {number} expired on {expiry:dd/MM/yyyy}. Do not hand it over.");
 
-        if (packs <= 0m)
-            return Result.Fail("DSP-061", "Say how many packs are being handed over.");
+        if (units <= 0m)
+            return Result.Fail("DSP-061", "Say how many are being handed over.");
 
         var product = await _products.GetAsync(productId, ct);
         if (product is null) return Result.Fail("DSP-001", "Product not found.");
+
+        // A recalled or quarantined batch in hand must not be handed over,
+        // and allocation would not take it anyway.
+        if ((await _batches.ForProductAsync(product.Id, ct)).FirstOrDefault(b =>
+                b.ExpiryDate == expiry && b.Status != Domain.Batches.BatchStatus.Available
+                && string.Equals(b.BatchNumber, number, StringComparison.OrdinalIgnoreCase))
+            is { } blocked)
+            return Result.Fail("DSP-061",
+                $"Batch {number} is {blocked.Status.ToString().ToLowerInvariant()}"
+                + (blocked.StatusReason is null ? "" : $" ({blocked.StatusReason})")
+                + ". Do not hand it over.");
+
+        // In the product's own packs: the script's pack size can differ.
+        var packs = Math.Ceiling(units / Math.Max(product.UnitsInPack, 1m));
 
         await _stock.RecordFoundBatchAsync(product, number, expiry, packs, ct);
 
@@ -1321,6 +1364,9 @@ public sealed class DispensingService : IDispensingService
             ScriptNumber: script?.ScriptNumber ?? "",
             DispensedOn: _clock.Today,
             Cautions: Array.Empty<string>(),
+            // Numbered as on the bag, so an expiry typed for it finds its line.
+            ItemNumber: dispensing.Lines.OrderBy(l => l.LineNo).ToList().IndexOf(line) + 1,
+            ItemCount: dispensing.Lines.Count,
             PrescriberName: script?.PrescriberName,
             PrescriberNumber: script?.PrescriberNumber));
     }

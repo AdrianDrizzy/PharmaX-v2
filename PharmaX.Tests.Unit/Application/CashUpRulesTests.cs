@@ -72,6 +72,16 @@ public sealed class CashUpRulesTests
     }
 
     [Fact]
+    public async Task Nobody_authorises_their_own_shortfall()
+    {
+        var (builder, _, cashUp) = await EcoCashTests.TradedSessionAsync();
+        await cashUp.DeclareAsync(Cash, EcoCash(18.99m));
+
+        (await cashUp.CloseAsync("Wallet short", authorisedBy: builder.User.Id))
+            .Error.Code.Should().Be(CashUpService.NeedsSupervisor);
+    }
+
+    [Fact]
     public void A_session_closed_three_minutes_after_opening_is_short()
     {
         var opened = new DateTime(2026, 11, 21, 8, 0, 0, DateTimeKind.Utc);

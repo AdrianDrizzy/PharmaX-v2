@@ -43,12 +43,14 @@ internal static class BatchPrompt
             y += 34;
         }
 
-        var expiry = new DateTimePicker
+        // Starts blank on purpose: a made-up date that looks right is worse
+        // on a label than no date at all.
+        var expiry = new TextBox
         {
-            Location = new Point(120, y), Width = 180, Format = DateTimePickerFormat.Custom,
-            CustomFormat = "dd/MM/yyyy", Value = DateTime.Today.AddMonths(6),
-            AccessibleName = "Expiry date"
+            Location = new Point(120, y), Width = 180, MaxLength = 10,
+            PlaceholderText = "dd/mm/yyyy", AccessibleName = "Expiry date (dd/mm/yyyy)"
         };
+        DateOnly typed = default;
         form.Controls.Add(new Label { Text = "&Expiry", AutoSize = true,
                                       Location = new Point(16, y + 3) });
 
@@ -58,22 +60,37 @@ internal static class BatchPrompt
                                   Location = new Point(304, y + 46), Size = new Size(100, 32) };
         PhxTheme.MakePrimary(ok);
 
-        form.Controls.AddRange(new Control[] { text, expiry, ok, cancel });
+        var problem = new Label { AutoSize = true, Location = new Point(16, y + 26),
+                                  ForeColor = PhxTheme.ProblemText };
+
+        form.Controls.AddRange(new Control[] { text, expiry, problem, ok, cancel });
         form.AcceptButton = ok;
         form.CancelButton = cancel;
 
-        // A blank batch is not a batch; keep the box open until one is typed.
+        // A blank batch is not a batch, and the expiry must be a real date
+        // still to come; keep the box open until both are right.
         ok.Click += (_, _) =>
         {
             if (askBatch && batch.Text.Trim().Length == 0)
             {
                 form.DialogResult = DialogResult.None;
                 batch.Focus();
+                return;
+            }
+
+            if (!DateOnly.TryParseExact(expiry.Text.Trim(), new[] { "dd/MM/yyyy", "d/M/yyyy" },
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out typed)
+                || typed <= DateOnly.FromDateTime(DateTime.Today))
+            {
+                problem.Text = "Type the expiry printed on the box, still to come.";
+                form.DialogResult = DialogResult.None;
+                expiry.Focus();
             }
         };
 
         return form.ShowDialog(owner) == DialogResult.OK
-            ? (batch.Text.Trim(), DateOnly.FromDateTime(expiry.Value))
+            ? (batch.Text.Trim(), typed)
             : null;
     }
 }
@@ -84,6 +101,28 @@ internal static class BatchPrompt
 /// </summary>
 internal static class MissingExpiryPrompt
 {
+    /// <summary>
+    /// Asks about any label missing an expiry and records the answer on the
+    /// dispensing. The labels to print, with typed expiries in; null to
+    /// hold them back.
+    /// </summary>
+    public static async Task<IReadOnlyList<Application.Dispensing.Dtos.LabelDto>?> CheckAsync(
+        IWin32Window owner, Application.Dispensing.IDispensingService dispensing,
+        Guid dispensingId, IReadOnlyList<Application.Dispensing.Dtos.LabelDto> labels)
+    {
+        var missing = Application.Dispensing.LabelExpiryCheck.Missing(labels);
+        if (missing.Count == 0) return labels;
+
+        if (Ask(owner, missing) is not { } typed) return null;
+
+        foreach (var label in missing)
+            await dispensing.RecordLabelExpiryAsync(dispensingId, label.ItemNumber,
+                typed.TryGetValue(label.ItemNumber, out var d) ? d : null);
+
+        return labels.Select(l => typed.TryGetValue(l.ItemNumber, out var d)
+            ? l with { Expiry = d } : l).ToList();
+    }
+
     public static IReadOnlyDictionary<int, DateOnly>? Ask(IWin32Window owner,
         IReadOnlyList<Application.Dispensing.Dtos.LabelDto> missing)
     {

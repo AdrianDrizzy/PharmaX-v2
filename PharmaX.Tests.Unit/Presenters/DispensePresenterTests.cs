@@ -140,7 +140,7 @@ public class DispensePresenterTests
     }
 
     [Fact]
-    public void A_batch_from_the_box_is_recorded_in_whole_packs_before_the_item()
+    public void A_batch_from_the_box_is_recorded_before_the_item()
     {
         Begun();
         var productId = Guid.NewGuid();
@@ -151,7 +151,7 @@ public class DispensePresenterTests
                 "Omeprazole", 30m, "", false, UnitsInPack: 28m) { NeedsBatchFromBox = true }));
         _view.PromptDirections(Arg.Any<ItemProposalDto>()).Returns(new DirectionsDto(30m, "One daily"));
         _view.AskBatchFromBox("Omeprazole").Returns(("B7", expiry));
-        _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 2m, Arg.Any<CancellationToken>())
+        _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 30m, Arg.Any<CancellationToken>())
             .Returns(Result.Ok());
 
         Presenter().Attach(_view);
@@ -160,7 +160,7 @@ public class DispensePresenterTests
 
         Received.InOrder(() =>
         {
-            _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 2m, Arg.Any<CancellationToken>());
+            _dispensing.RecordFoundBatchAsync(productId, "B7", expiry, 30m, Arg.Any<CancellationToken>());
             _dispensing.AddItemAsync(_dispensingId, "OMZ", Arg.Any<DirectionsDto>(), Arg.Any<CancellationToken>());
         });
     }
@@ -187,9 +187,7 @@ public class DispensePresenterTests
 
         await _printer.Received(1).PrintAsync(
             Arg.Is<LabelDto>(l => l.Expiry == null), Arg.Any<CancellationToken>());
-        await _dispensing.Received(1).NoteLabelExpiryAsync(_dispensingId,
-            Arg.Is<string>(s => s.Contains("printed without an expiry", StringComparison.Ordinal)
-                                && s.Contains("Amoxicillin", StringComparison.Ordinal)),
+        await _dispensing.Received(1).RecordLabelExpiryAsync(_dispensingId, 1, null,
             Arg.Any<CancellationToken>());
     }
 
@@ -204,6 +202,8 @@ public class DispensePresenterTests
 
         await _printer.Received(1).PrintAsync(
             Arg.Is<LabelDto>(l => l.Expiry == typed), Arg.Any<CancellationToken>());
+        await _dispensing.Received(1).RecordLabelExpiryAsync(_dispensingId, 1, typed,
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
