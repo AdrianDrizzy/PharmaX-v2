@@ -23,6 +23,24 @@ public class ProductGridEditTests : IClassFixture<PharmaXFixture>
 
     public ProductGridEditTests(PharmaXFixture fixture) => _fixture = fixture;
 
+    /// <summary>
+    /// Stock already on the shelf would sit on no batch, and every label
+    /// for it would print without an expiry.
+    /// </summary>
+    [Fact]
+    public async Task Turning_tracking_on_with_stock_asks_for_a_batch()
+    {
+        await SignInAsync();
+
+        var id = await CreateAsync("PGE-TRKSTK", "Loose stock item", 5m);
+        await EditAsync(id, ProductCell.QuantityOnHand, "4");
+
+        var refused = await TryEditAsync(id, ProductCell.BatchTracked, "true");
+
+        refused.Error.Code.Should().Be("INV-037");
+        (await FetchAsync(id)).IsBatchTracked.Should().BeFalse();
+    }
+
     [Fact]
     public async Task A_cell_edits_the_catalogue_fields_the_list_shows()
     {

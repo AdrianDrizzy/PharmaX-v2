@@ -25,6 +25,24 @@ public class ProductEditorStockTests : IClassFixture<PharmaXFixture>
         _fixture = fixture;
 
     [Fact]
+    public async Task Ticking_batch_tracked_with_loose_stock_and_no_batch_is_refused()
+    {
+        await SignInAsync();
+
+        var id = await CreateAsync("PES-TRKSTK");
+        (await UpdateAsync(id, Edit(await FetchAsync(id)) with { QuantityOnHand = 6m }))
+            .IsSuccess.Should().BeTrue();
+
+        var saved = await UpdateAsync(id, Edit(await FetchAsync(id)) with
+        {
+            IsBatchTracked = true
+        });
+
+        saved.Error.Code.Should().Be("INV-037");
+        (await FetchAsync(id)).IsBatchTracked.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task The_editor_renumbers_discontinues_and_counts_a_product()
     {
         await SignInAsync();
