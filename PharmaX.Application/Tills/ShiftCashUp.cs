@@ -257,6 +257,22 @@ public static class ShiftTally
             session.ClosedBy is Guid by ? Name(by) : null, session.ClosingVarianceReason);
     }
 
+    /// EcoCash and card always present, at zero when the shift took none,
+    /// so a cash-up that omitted them cannot look as if they were never rung.
+    public static IReadOnlyList<TenderTotalDto> WithStatements(
+        IReadOnlyList<TenderTotalDto> tenders)
+    {
+        ArgumentNullException.ThrowIfNull(tenders);
+
+        var all = tenders.ToList();
+
+        foreach (var name in new[] { nameof(TenderType.EcoCash), nameof(TenderType.Card) })
+            if (all.TrueForAll(t => t.Tender != name))
+                all.Add(new TenderTotalDto(name, 0, 0m));
+
+        return all;
+    }
+
     /// Payments added up by tender, in the till's tender order.
     public static IReadOnlyList<TenderTotalDto> Combine(IEnumerable<TenderTotalDto> lines) =>
         lines.GroupBy(t => t.Tender, StringComparer.Ordinal)
@@ -337,7 +353,7 @@ public static class CashUpSlip
         lines.Add(rule);
 
         lines.Add("By tender");
-        foreach (var tender in shift.Tenders)
+        foreach (var tender in ShiftTally.WithStatements(shift.Tenders))
             Amount($"{ShiftTally.Label(tender.Tender)} ({tender.Count})", tender.Amount);
         lines.Add(rule);
 
@@ -375,12 +391,19 @@ public static class CashUpSlip
         Amount("Change given", shift.ChangeGiven);
         if (shift.PaidOut != 0m) Amount("Paid out", -shift.PaidOut);
         Amount("CASH IN DRAWER", shift.ExpectedCash);
+        // Repeated beside the variance: these two are declared off a
+        // statement, and a single "counted" total hid them in the drawer.
+        Amount("EcoCash", Statement(nameof(TenderType.EcoCash)));
+        Amount("Card", Statement(nameof(TenderType.Card)));
 
         if (shift.Declared is decimal declared)
         {
-            Amount("Counted at close", declared);
-            Amount("Variance", shift.Variance ?? 0m);
+            Amount("DECLARED", declared);
+            Amount("VARIANCE", shift.Variance ?? 0m);
         }
+
+        decimal Statement(string tender) =>
+            shift.Tenders.FirstOrDefault(t => t.Tender == tender)?.Amount ?? 0m;
 
         lines.Add(rule);
 

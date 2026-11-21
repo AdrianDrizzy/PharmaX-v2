@@ -159,3 +159,16 @@ public sealed class DosageCode : ReferenceEntry
         string? detail = null) =>
         Init(new DosageCode(), code, meaning, detail);
 }
+
+/// <summary>
+/// A short warning and the sentence the label prints: "DROWSY" is
+/// "May cause drowsiness. Do not drive." Typed like a dosage code.
+/// </summary>
+public sealed class WarningCode : ReferenceEntry
+{
+    private WarningCode() { }
+
+    public static WarningCode Create(string code, string meaning,
+        string? detail = null) =>
+        Init(new WarningCode(), code, meaning, detail);
+}

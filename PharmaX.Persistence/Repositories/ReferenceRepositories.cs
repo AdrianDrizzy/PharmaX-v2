@@ -34,6 +34,8 @@ public sealed class ReferenceRepository : IReferenceRepository
                 await Query(_db.Prescribers, term, includeInactive, filter, ct),
             ReferenceKind.DosageCode =>
                 await Query(_db.DosageCodes, term, includeInactive, filter, ct),
+            ReferenceKind.WarningCode =>
+                await Query(_db.WarningCodes, term, includeInactive, filter, ct),
             _ => Array.Empty<ReferenceEntry>()
         };
 
@@ -49,6 +51,7 @@ public sealed class ReferenceRepository : IReferenceRepository
                 await Fresh(_db.MedicalAidSchemes, id, ct),
             ReferenceKind.Prescriber => await Fresh(_db.Prescribers, id, ct),
             ReferenceKind.DosageCode => await Fresh(_db.DosageCodes, id, ct),
+            ReferenceKind.WarningCode => await Fresh(_db.WarningCodes, id, ct),
             _ => null
         };
 
@@ -98,6 +101,8 @@ public sealed class ReferenceRepository : IReferenceRepository
                 .FirstOrDefaultAsync(x => x.Code == normalised, ct),
             ReferenceKind.DosageCode => await _db.DosageCodes
                 .FirstOrDefaultAsync(x => x.Code == normalised, ct),
+            ReferenceKind.WarningCode => await _db.WarningCodes
+                .FirstOrDefaultAsync(x => x.Code == normalised, ct),
             _ => null
         };
     }
@@ -115,6 +120,7 @@ public sealed class ReferenceRepository : IReferenceRepository
                 await _db.MedicalAidSchemes.AddAsync(s, ct); break;
             case Prescriber p: await _db.Prescribers.AddAsync(p, ct); break;
             case DosageCode d: await _db.DosageCodes.AddAsync(d, ct); break;
+            case WarningCode w: await _db.WarningCodes.AddAsync(w, ct); break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(entry));
         }

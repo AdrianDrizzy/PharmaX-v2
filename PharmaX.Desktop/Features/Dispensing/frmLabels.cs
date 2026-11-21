@@ -203,6 +203,8 @@ public partial class frmLabels : PhxFormBase
     private readonly TemplateLabelHistory? _templates;
     private readonly Application.Suppliers.ISupplierService? _suppliers;
     private IReadOnlyDictionary<string, string> _dosage = DosageShorthand.Catalogue();
+    private IReadOnlyDictionary<string, string> _warnings =
+        DosageShorthand.Catalogue(WarningCodes.Standard);
     private bool _mayRepeatScripts;
 
     protected override async void OnShown(EventArgs e)
@@ -222,6 +224,7 @@ public partial class frmLabels : PhxFormBase
         try
         {
             _dosage = await _reference.CatalogueAsync();
+            _warnings = await _reference.WarningCatalogueAsync();
         }
 #pragma warning disable CA1031 // The standard codes still expand.
         catch (Exception)
@@ -305,7 +308,7 @@ public partial class frmLabels : PhxFormBase
 
         var suppliers = await SupplierNamesAsync();
 
-        if (frmTemplateLabel.Ask(this, _imprint, _dosage, suppliers) is not var (sticker, copies))
+        if (frmTemplateLabel.Ask(this, _imprint, _dosage, suppliers, warnings: _warnings) is not var (sticker, copies))
             return;
 
         try
@@ -346,7 +349,7 @@ public partial class frmLabels : PhxFormBase
 
         var suppliers = await SupplierNamesAsync();
 
-        if (frmTemplateLabel.Ask(this, _imprint, _dosage, suppliers, again)
+        if (frmTemplateLabel.Ask(this, _imprint, _dosage, suppliers, again, _warnings)
             is not var (sticker, copies))
             return;
 

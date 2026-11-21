@@ -439,9 +439,11 @@ public class PrintingTests
                                 new DateTime(2026, 9, 23, 18, 0, 0));
 
         z.Title.Should().Be("Z-read");
-        z.Lines.Should().Contain(l => l.Contains("1,500.00", StringComparison.Ordinal)
-                                      && l.Contains("1,480.00", StringComparison.Ordinal)
-                                      && l.Contains("-20.00", StringComparison.Ordinal));
+        z.Columns.Should().Be(32, "a 42-column line loses its right side on the till roll");
+        z.Lines.Should().OnlyContain(l => l.Length <= 32);
+        var text = string.Join('\n', z.Lines);
+        text.Should().Contain("1,500.00").And.Contain("1,480.00").And.Contain("-20.00");
+        text.Should().Contain("EcoCash").And.Contain("Card");
         z.Lines.Should().Contain("Variance reason: Change short");
     }
 }

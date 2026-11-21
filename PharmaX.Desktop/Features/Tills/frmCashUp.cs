@@ -54,7 +54,9 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
         ("Account", "Account payments"), ("Net", "Net takings"),
         ("Float", "Opening float"), ("Change", "Change given"),
         ("PaidOut", "Paid out"),
-        ("Drawer", "Cash in drawer"), ("Counted", "Counted at close"),
+        ("Drawer", "Cash in drawer"),
+        ("EcoCash", "EcoCash"), ("Card", "Card"),
+        ("Counted", "Declared, all tenders"),
         ("Variance", "Variance")
     };
 
@@ -395,12 +397,17 @@ public sealed class frmCashUp : PhxFormBase, ICashUpView
             : $"{M(-shift.PaidOut)}  ({shift.Payouts!.Count(p => !p.IsVoided)})";
         _figures["PaidOut"].ForeColor = shift.PaidOut > 0m ? PhxTheme.Negative : PhxTheme.Ink;
         _figures["Drawer"].Text = M(shift.ExpectedCash);
+        _figures["EcoCash"].Text = M(Tender("EcoCash"));
+        _figures["Card"].Text = M(Tender("Card"));
         _figures["Counted"].Text = shift.Declared is decimal d ? M(d) : "not yet counted";
         _figures["Variance"].Text = shift.Variance is decimal v ? M(v) : "-";
         _figures["Variance"].ForeColor = shift.Variance is < 0m ? PhxTheme.Negative : PhxTheme.Ink;
 
-        foreach (var t in shift.Tenders)
+        foreach (var t in ShiftTally.WithStatements(shift.Tenders))
             _tenders.Rows.Add(ShiftTally.Label(t.Tender), t.Count, t.Amount);
+
+        decimal Tender(string name) =>
+            shift.Tenders.FirstOrDefault(t => t.Tender == name)?.Amount ?? 0m;
 
         foreach (var c in shift.Cashiers)
             _cashiers.Rows.Add(c.Name, c.Sales, c.Net, c.Cash);

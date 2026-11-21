@@ -35,7 +35,8 @@ public sealed record ProductDto(
     // The batches still on the shelf, earliest expiry first. Filled by
     // the product service's GetAsync for the editor; null where a
     // caller built the DTO from the product alone.
-    IReadOnlyList<ProductBatchDto>? Batches = null)
+    IReadOnlyList<ProductBatchDto>? Batches = null,
+    decimal? ZigRetailPrice = null)
 {
     public static ProductDto From(Product p)
     {
@@ -46,7 +47,8 @@ public sealed record ProductDto(
             p.RetailPrice.Amount, p.CostPrice.Amount, p.VatRatePercent,
             p.TaxCode, p.Schedule, p.IsBatchTracked, p.IsActive,
             p.ReorderLevel, p.QuantityOnHand, p.PackSize, p.Barcodes,
-            p.DepartmentId, p.CategoryId, p.ManufacturerId, p.UnitsPerPack);
+            p.DepartmentId, p.CategoryId, p.ManufacturerId, p.UnitsPerPack,
+            ZigRetailPrice: p.ZigRetailAmount);
     }
 }
 
@@ -131,7 +133,12 @@ public sealed record ProductEditDto(
     // Why the stock on hand changed, where the edit changes it: required
     // then, and carried on the adjustment and the audit entry. A new
     // product's first stock is its opening stock when nothing is said.
-    string? StockReason = null);
+    string? StockReason = null,
+
+    // The ZiG shelf price. ReplaceZigPrice is set only by the product
+    // editor, so other saves do not wipe a price they never showed.
+    decimal? ZigRetailPrice = null,
+    bool ReplaceZigPrice = false);
 
 /// <summary>
 /// One batch row of the product editor. No batch id is a batch the

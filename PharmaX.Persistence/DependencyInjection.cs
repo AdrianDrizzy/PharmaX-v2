@@ -169,6 +169,8 @@ public static class DependencyInjection
         services.AddScoped<Application.Import.IDataImporter, Import.DataImporter>();
         services.AddScoped<Application.Home.IHomeCounts, Repositories.HomeCounts>();
         services.AddScoped<IDatabaseBackup, Backup.DatabaseBackup>();
+        services.AddScoped<PharmaX.Application.History.IDayHistoryStore,
+            History.DayHistoryStore>();
         services.AddScoped<ICurrencyChanger, CurrencyChanger>();
 
         return services;

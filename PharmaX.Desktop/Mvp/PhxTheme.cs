@@ -27,6 +27,11 @@ public static class PhxTheme
 
     public static Font Body { get; } = new("Segoe UI", 9.75f);
 
+    /// Helix only. Bahnschrift is on Windows 10 and later; Segoe UI if it is not.
+    private static readonly Font HelixBody = new(
+        FontFamily.Families.Any(f => f.Name == "Bahnschrift") ? "Bahnschrift" : "Segoe UI",
+        10.5f);
+
     public static Font Emphasis { get; } =
         new("Segoe UI", 9.75f, FontStyle.Bold);
 
@@ -264,6 +269,9 @@ public static class PhxTheme
 
         for (var i = 0; i < before.Length; i++)
             if (before[i] != after[i]) changes.TryAdd(before[i], after[i]);
+
+        // Lumen and Helix share one gleam. Any other mode drops it.
+        SyncSheen();
 
         if (changes.Count == 0) return;
 
@@ -754,25 +762,160 @@ public static class PhxTheme
     /// </summary>
     public static Panel HeaderBand(int height = BandHeight)
     {
-        var band = new Panel
-        {
-            BackColor = Band,
-            Dock = DockStyle.Top,
-            Height = height,
-            Padding = new Padding(Gutter, 8, Gutter, 8)
-        };
+        var band = new Header(height);
 
-        // The logo's orange along the foot of the band. Painted rather than
-        // docked, so it sits in the padding and no caller's layout moves.
-        // Swept from the brand into the highlight, left to right.
-        band.Paint += (_, e) =>
-        {
-            var line = new Rectangle(0, band.Height - 3, band.Width, 3);
-            using var brush = Sweep(line, Brand, Highlight);
-            e.Graphics.FillRectangle(brush, line);
-        };
+        // Weak, so a closed screen does not keep the shared gleam alive.
+        ForgetClosed();
+        _headers.Add(new WeakReference<Header>(band));
+        if (LumenSheen) StartSheen();
 
         return band;
+    }
+
+    // One clock for every header line, so they gleam together.
+    private static System.Windows.Forms.Timer? _sheen;
+    private static float _sheenAt;
+    private static readonly List<WeakReference<Header>> _headers = new();
+
+    /// Lumen or Helix, and not a remote session, where the timer would only stutter.
+    private static bool LumenSheen =>
+        Mode.Id is "lumen" or "helix" && !SystemInformation.TerminalServerSession;
+
+    private static void SyncSheen()
+    {
+        if (!LumenSheen)
+        {
+            StopSheen();
+            return;
+        }
+
+        if (RepaintHeaders()) StartSheen();
+    }
+
+    private static void StartSheen()
+    {
+        if (_sheen is not null || !LumenSheen) return;
+
+        _sheen = new System.Windows.Forms.Timer { Interval = 50 };
+        _sheen.Tick += OnSheen;
+        _sheen.Start();
+    }
+
+    private static void OnSheen(object? sender, EventArgs e)
+    {
+        if (!LumenSheen)
+        {
+            StopSheen();
+            return;
+        }
+
+        // A slow crossing, then a rest, then the same sweep again.
+        _sheenAt += 50f / 9000f;
+        if (_sheenAt >= 1f) _sheenAt = 0f;
+
+        if (!RepaintHeaders()) StopSheen();
+    }
+
+    private static void StopSheen()
+    {
+        var timer = _sheen;
+        if (timer is null) return;
+
+        _sheen = null;
+        _sheenAt = 0f;
+        timer.Stop();
+        timer.Tick -= OnSheen;
+        timer.Dispose();
+        RepaintHeaders();
+    }
+
+    private static void ForgetClosed()
+    {
+        for (var i = _headers.Count - 1; i >= 0; i--)
+            if (!_headers[i].TryGetTarget(out var band) || band.IsDisposed)
+                _headers.RemoveAt(i);
+    }
+
+    /// The foot of each header still open. False when none are.
+    private static bool RepaintHeaders()
+    {
+        ForgetClosed();
+
+        foreach (var reference in _headers)
+        {
+            if (!reference.TryGetTarget(out var band)) continue;
+
+            var depth = Mode.Id == "helix" ? 8 : 3;
+            band.Invalidate(new Rectangle(0, Math.Max(0, band.Height - depth),
+                band.Width, depth));
+        }
+
+        return _headers.Count > 0;
+    }
+
+    /// <summary>
+    /// The header band. Its line is painted, not docked, so it sits in
+    /// the padding and no caller's layout moves.
+    /// </summary>
+    private sealed class Header : Panel
+    {
+        public Header(int height)
+        {
+            BackColor = Band;
+            Dock = DockStyle.Top;
+            Height = height;
+            Padding = new Padding(Gutter, 8, Gutter, 8);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // The gleam repaints only this strip. Erasing it first flashes.
+            var strip = new Rectangle(0, Height - GleamDepth, Width, GleamDepth);
+            if (strip.Width > 0 && strip.Contains(e.ClipRectangle)) return;
+
+            base.OnPaintBackground(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            // Swept from the brand into the highlight, left to right.
+            var line = new Rectangle(0, Height - GleamDepth, Width, GleamDepth);
+            using (var brush = Sweep(line, Brand, Highlight))
+                e.Graphics.FillRectangle(brush, line);
+
+            if (LumenSheen) PaintGleam(e.Graphics, line);
+
+            base.OnPaint(e);
+        }
+
+        private void PaintGleam(Graphics graphics, Rectangle line)
+        {
+            // 0.72 of the cycle is the crossing; after that the line rests.
+            var crossing = _sheenAt / 0.72f;
+            if (crossing > 1f || line.Width < 2 || line.Height < 1) return;
+
+            var span = Math.Max(LogicalToDeviceUnits(72), line.Width / 7);
+            var x = (int)(crossing * (line.Width + span)) - span;
+            var gleam = Rectangle.Intersect(line,
+                new Rectangle(x, line.Y, span, line.Height));
+            if (gleam.Width < 1 || gleam.Height < 1) return;
+
+            var glass = Palette.Mix(Highlight, Color.White, 0.62);
+            using var sheen = new System.Drawing.Drawing2D.LinearGradientBrush(
+                new Rectangle(x, line.Y, Math.Max(2, span), Math.Max(2, line.Height)),
+                Color.FromArgb(0, glass), Color.FromArgb(0, glass), 0f);
+            sheen.InterpolationColors = new System.Drawing.Drawing2D.ColorBlend
+            {
+                Colors = new[]
+                {
+                    Color.FromArgb(0, glass),
+                    Color.FromArgb(190, glass),
+                    Color.FromArgb(0, glass)
+                },
+                Positions = new[] { 0f, 0.5f, 1f }
+            };
+            graphics.FillRectangle(sheen, gleam);
+        }
     }
 
     public static Panel FooterBand(int height = BandHeight) => new()
@@ -924,7 +1067,8 @@ public static class PhxTheme
         g.Clear(Behind(button));
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-        var radius = button.LogicalToDeviceUnits(4);
+        var helix = Mode.Id == "helix";
+        var radius = button.LogicalToDeviceUnits(helix ? 14 : 4);
 
         // The live primary is swept from the brand towards the highlight.
         var swept = filled && back == Accent && button.Enabled;
@@ -940,8 +1084,11 @@ public static class PhxTheme
 
             if (!filled || button.FlatAppearance.BorderSize > 0)
             {
-                using var pen = new Pen(filled && !button.FlatAppearance.BorderColor.IsEmpty
-                    ? button.FlatAppearance.BorderColor : Line);
+                using var pen = new Pen(
+                    filled && !button.FlatAppearance.BorderColor.IsEmpty
+                        ? button.FlatAppearance.BorderColor
+                        : helix ? Highlight : Line,
+                    helix ? 2 : 1);
                 g.DrawPath(pen, path);
             }
         }
@@ -1031,6 +1178,44 @@ public static class PhxTheme
             : AccentDisabled;
     }
 
+    /// How tall the header gleam is. Helix draws a band you can see.
+    private static int GleamDepth => Mode.Id == "helix" ? 8 : 3;
+
+    private static readonly System.Runtime.CompilerServices
+        .ConditionalWeakTable<Form, object> Faded = new();
+
+    /// A short fade as a Helix window opens. Remote sessions stay still.
+    private static void Fade(Form form)
+    {
+        if (Mode.Id != "helix" || SystemInformation.TerminalServerSession) return;
+        if (!Faded.TryAdd(form, Mark)) return;
+
+        form.Opacity = 0;
+        var timer = new System.Windows.Forms.Timer { Interval = 16 };
+        var step = 0;
+
+        timer.Tick += (_, _) =>
+        {
+            if (form.IsDisposed)
+            {
+                timer.Dispose();
+                return;
+            }
+
+            form.Opacity = Math.Min(1, ++step / 8d);
+            if (step < 8) return;
+
+            timer.Stop();
+            timer.Dispose();
+        };
+
+        form.Shown += (_, _) =>
+        {
+            if (!timer.Enabled && step == 0) timer.Start();
+        };
+        form.FormClosed += (_, _) => timer.Dispose();
+    }
+
     /// <summary>
     /// Applies the theme to a form and everything already on it. Called
     /// by PhxFormBase after InitializeComponent, so a screen gets this
@@ -1041,7 +1226,8 @@ public static class PhxTheme
         ArgumentNullException.ThrowIfNull(form);
 
         ScaleToDisplay(form);
-        form.Font = Body;
+        form.Font = Mode.Id == "helix" ? HelixBody : Body;
+        Fade(form);
 
         // From the theme's font, before the colours: scaling copies none.
         PhxZoom.Apply(form);

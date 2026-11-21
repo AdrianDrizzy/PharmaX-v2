@@ -39,6 +39,7 @@ public sealed class ReferenceDataSeeder
         await SeedChartOfAccountsAsync(ct);
         await SeedMedicalAidSocietiesAsync(ct);
         await SeedDosageCodesAsync(ct);
+        await SeedWarningCodesAsync(ct);
 
         await _db.SaveChangesAsync(ct);
     }
@@ -67,6 +68,17 @@ public sealed class ReferenceDataSeeder
         }
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task SeedWarningCodesAsync(CancellationToken ct)
+    {
+        var existing = await _db.WarningCodes.Select(d => d.Code).ToListAsync(ct);
+
+        foreach (var (code, meaning) in Application.Reference.WarningCodes.Standard)
+        {
+            if (existing.Contains(code, StringComparer.OrdinalIgnoreCase)) continue;
+            _db.WarningCodes.Add(Domain.Reference.WarningCode.Create(code, meaning));
+        }
     }
 
     private async Task SeedMedicalAidSocietiesAsync(CancellationToken ct)

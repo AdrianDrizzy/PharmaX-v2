@@ -14,6 +14,7 @@ partial class frmPayment
     private Label lblOutstandingValue = null!;
     private Label lblError = null!;
     private ComboBox cboTender = null!;
+    private ComboBox cboPayIn = null!;
     private MoneyTextBox txtAmount = null!;
     private TextBox txtReference = null!;
     private PhxGrid grdPayments = null!;
@@ -40,6 +41,7 @@ partial class frmPayment
         lblOutstandingValue = new Label();
         lblError = new Label();
         cboTender = new ComboBox();
+        cboPayIn = new ComboBox();
         txtAmount = new MoneyTextBox();
         txtReference = new TextBox();
         grdPayments = new PhxGrid();
@@ -67,8 +69,18 @@ partial class frmPayment
         cboTender.DropDownStyle = ComboBoxStyle.DropDownList;
         cboTender.Location = new Point(100, 52);
         cboTender.Name = "cboTender";
-        cboTender.Size = new Size(160, 23);
+        cboTender.Size = new Size(150, 23);
         cboTender.TabIndex = 0;
+
+        // Same row as the tender, in this layout pass, so display scaling
+        // moves it with the tender instead of leaving it on top of it.
+        cboPayIn.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboPayIn.Location = new Point(258, 52);
+        cboPayIn.Name = "cboPayIn";
+        cboPayIn.Size = new Size(120, 23);
+        cboPayIn.TabIndex = 1;
+        cboPayIn.Visible = false;
+        cboPayIn.AccessibleName = "Pay in";
 
         lblAmount.AutoSize = true;
         lblAmount.Location = new Point(16, 90);
@@ -78,7 +90,7 @@ partial class frmPayment
         txtAmount.Name = "txtAmount";
         txtAmount.PlaceholderText = "0.00";
         txtAmount.Size = new Size(160, 26);
-        txtAmount.TabIndex = 1;
+        txtAmount.TabIndex = 2;
 
         lblReference.AutoSize = true;
         lblReference.Location = new Point(16, 124);
@@ -88,12 +100,12 @@ partial class frmPayment
         txtReference.MaxLength = 100;
         txtReference.Name = "txtReference";
         txtReference.Size = new Size(240, 23);
-        txtReference.TabIndex = 2;
+        txtReference.TabIndex = 3;
 
         btnAdd.Location = new Point(356, 84);
         btnAdd.Name = "btnAdd";
         btnAdd.Size = new Size(124, 30);
-        btnAdd.TabIndex = 3;
+        btnAdd.TabIndex = 4;
         btnAdd.Text = "A&dd tender";
         btnAdd.UseVisualStyleBackColor = true;
 
@@ -148,7 +160,7 @@ partial class frmPayment
         ClientSize = new Size(496, 426);
         Controls.AddRange(new Control[]
         {
-            lblDue, lblDueValue, lblTender, cboTender, lblAmount, txtAmount,
+            lblDue, lblDueValue, lblTender, cboTender, cboPayIn, lblAmount, txtAmount,
             lblReference, txtReference, btnAdd, grdPayments, btnRemove,
             lblOutstanding, lblOutstandingValue, lblError, btnOk, btnCancel
         });

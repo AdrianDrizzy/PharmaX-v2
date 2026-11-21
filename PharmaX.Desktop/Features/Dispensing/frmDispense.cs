@@ -22,6 +22,8 @@ public partial class frmDispense : PhxFormBase, IDispenseView
     private readonly ViewFactory? _views;
     private readonly IServiceScopeFactory? _scopes;
     private IReadOnlyDictionary<string, string> _dosage = DosageShorthand.Catalogue();
+    private IReadOnlyDictionary<string, string> _warnings = WarningCodes.Standard
+        .ToDictionary(c => c.Code, c => c.Meaning, StringComparer.OrdinalIgnoreCase);
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ScriptDispense;
@@ -148,9 +150,9 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         try
         {
             using var scope = _scopes.CreateScope();
-            _dosage = await scope.ServiceProvider
-                .GetRequiredService<IReferenceRepository>()
-                .CatalogueAsync();
+            var reference = scope.ServiceProvider.GetRequiredService<IReferenceRepository>();
+            _dosage = await reference.CatalogueAsync();
+            _warnings = await reference.WarningCatalogueAsync();
         }
 #pragma warning disable CA1031 // The standard codes still expand.
         catch (Exception)
@@ -387,7 +389,7 @@ public partial class frmDispense : PhxFormBase, IDispenseView
         IReadOnlyList<LabelDto> missing) => MissingExpiryPrompt.Ask(this, missing);
 
     public DirectionsDto? PromptDirections(ItemProposalDto proposal) =>
-        frmItemPrompt.Ask(this, proposal, _dosage);
+        frmItemPrompt.Ask(this, proposal, _dosage, _warnings);
 
     public void ShowLabelScreen()
     {

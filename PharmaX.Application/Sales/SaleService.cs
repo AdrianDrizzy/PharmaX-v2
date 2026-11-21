@@ -48,6 +48,9 @@ public interface ISaleService
     Task<Result<SaleLineDto>> AddLineAsync(Guid saleId, string scannedCode,
         decimal quantity, CancellationToken ct = default);
 
+    Task<Result<SaleLineDto>> AddLineAsync(Guid saleId, string scannedCode,
+        decimal quantity, string currency, CancellationToken ct = default);
+
     Task<Result> SetLineQuantityAsync(Guid saleId, int lineNo,
         decimal quantity, CancellationToken ct = default);
 
@@ -242,8 +245,13 @@ public sealed class SaleService : ISaleService
         });
     }
 
+    public Task<Result<SaleLineDto>> AddLineAsync(Guid saleId,
+        string scannedCode, decimal quantity, CancellationToken ct = default) =>
+        AddLineAsync(saleId, scannedCode, quantity, currency: "", ct);
+
     public async Task<Result<SaleLineDto>> AddLineAsync(Guid saleId,
-        string scannedCode, decimal quantity, CancellationToken ct = default)
+        string scannedCode, decimal quantity, string currency,
+        CancellationToken ct = default)
     {
         _permissions.Demand(PermissionCode.SaleCreate);
 
@@ -270,7 +278,7 @@ public sealed class SaleService : ISaleService
             return Result<SaleLineDto>.Fail("POS-005",
                 "The quantity must be more than zero.");
 
-        var added = await AddProductAsync(sale, product, quantity, ct);
+        var added = await AddProductAsync(sale, product, quantity, currency, ct);
 
         if (added.IsFailure)
             return Result<SaleLineDto>.Fail(added.Error.Code,
@@ -292,13 +300,35 @@ public sealed class SaleService : ISaleService
     /// and the expiry - of what went into the bag.
     /// </remarks>
     private async Task<Result<SaleLine>> AddProductAsync(Sale sale,
-        Domain.Inventory.Product product, decimal quantity,
+        Domain.Inventory.Product product, decimal quantity, string? currency,
         CancellationToken ct)
     {
         if (RefuseScheduled(product) is Error scheduled)
             return Result<SaleLine>.Fail(scheduled.Code, scheduled.Message);
 
-        var price = product.ResolvePrice(sale.PatientId);
+        var wanted = string.IsNullOrWhiteSpace(currency)
+            ? product.RetailPrice.Currency
+            : currency.Trim().ToUpperInvariant();
+        var onTheSale = sale.Lines.Count == 0 ? null : sale.Lines[0].UnitPrice.Currency;
+
+        if (onTheSale is not null
+            && !string.Equals(onTheSale, wanted, StringComparison.OrdinalIgnoreCase))
+            return Result<SaleLine>.Fail("POS-024",
+                $"This sale is already in {onTheSale}. US dollars and ZiG are "
+                + "separate price lists. Finish this sale, or void the lines, "
+                + "before switching.");
+
+        var listed = product.ListedPrice(wanted, sale.PatientId);
+
+        if (listed is null)
+            return Result<SaleLine>.Fail("POS-023",
+                $"{product.Description} has no ZiG price. Add one on the "
+                + "product, or ring this sale in US dollars.");
+
+        var price = string.Equals(wanted, Domain.Primitives.Currencies.Zwg.Code,
+                StringComparison.OrdinalIgnoreCase)
+            ? new Domain.Pricing.PriceQuote(listed.Value, PriceSource.ZigList)
+            : product.ResolvePrice(sale.PatientId);
 
         if (!product.IsBatchTracked
             && RefuseShortStock(sale, product, quantity, exceptLine: null)
@@ -653,8 +683,25 @@ public sealed class SaleService : ISaleService
 
         // Change from cash where more was tendered than the sale comes
         // to (DEF-0019); the payments keep what stayed in the drawer.
+        var saleCurrency = sale.Lines.Count == 0
+            ? Domain.Primitives.Money.DefaultCurrency
+            : sale.Lines[0].UnitPrice.Currency;
+
+        foreach (var payment in payments)
+        {
+            var payCurrency = string.IsNullOrWhiteSpace(payment.Currency)
+                ? saleCurrency
+                : payment.Currency.Trim().ToUpperInvariant();
+
+            if (!string.Equals(payCurrency, saleCurrency, StringComparison.OrdinalIgnoreCase))
+                return Result<FinaliseDto>.Fail("POS-025",
+                    $"This sale is priced in {saleCurrency}. {payCurrency} is a "
+                    + "separate price list, not a conversion. Ring the items "
+                    + $"again in {payCurrency}.");
+        }
+
         sale.TakePayments(payments.Select(p => SalePayment.Create(
-            p.TenderType, Domain.Primitives.Money.Of(p.Amount), p.Reference)));
+            p.TenderType, Domain.Primitives.Money.Of(p.Amount, saleCurrency), p.Reference)));
 
         var number = await _numbering.NextAsync(DocumentSeries.Sale, ct);
         sale.Finalise(number, _clock.UtcNow);
@@ -887,7 +934,7 @@ public sealed class SaleService : ISaleService
                     "{0}: price now {1:N2} (quoted {2:N2}).",
                     line.Description, current.Amount, line.UnitPrice.Amount));
 
-            var result = await AddProductAsync(sale, product, line.Quantity, ct);
+            var result = await AddProductAsync(sale, product, line.Quantity, currency: null, ct);
 
             if (result.IsFailure)
             {

@@ -352,10 +352,46 @@ public sealed class Product : AuditableEntity
             new(RetailPrice, PriceSource.StandardRetail)
         };
 
-        foreach (var price in _prices.Where(p => p.AppliesTo(patientId)))
+        foreach (var price in _prices.Where(p =>
+                     p.Source != PriceSource.ZigList && p.AppliesTo(patientId)))
             candidates.Add(new PriceQuote(price.Amount, price.Source));
 
         return PricingPolicy.Resolve(candidates);
+    }
+
+    /// <summary>
+    /// The ZiG shelf price, kept beside the US dollar one. Null until
+    /// somebody types it. Never derived from the dollar price.
+    /// </summary>
+    public decimal? ZigRetailAmount =>
+        _prices.FirstOrDefault(p => p.Source == PriceSource.ZigList)?.Amount.Amount;
+
+    /// <summary>
+    /// The price for the list the till is ringing. USD (and the
+    /// installation currency) is the ordinary shelf price. ZWG is the
+    /// ZiG list, or null when that product has none.
+    /// </summary>
+    public Money? ListedPrice(string currency, Guid? patientId)
+    {
+        if (string.Equals(currency, Currencies.Zwg.Code, StringComparison.OrdinalIgnoreCase))
+            return _prices.FirstOrDefault(p => p.Source == PriceSource.ZigList)?.Amount;
+
+        if (string.Equals(currency, RetailPrice.Currency, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(currency, Currencies.Usd.Code, StringComparison.OrdinalIgnoreCase))
+            return ResolvePrice(patientId).Amount;
+
+        return null;
+    }
+
+    /// <summary>Replaces the ZiG price. Null or zero removes it.</summary>
+    public void SetZigRetail(decimal? amount)
+    {
+        foreach (var old in _prices.Where(p => p.Source == PriceSource.ZigList).ToList())
+            _prices.Remove(old);
+
+        if (amount is > 0m)
+            AddPrice(ProductPrice.Create(Id, Money.Of(amount.Value, Currencies.Zwg.Code),
+                PriceSource.ZigList));
     }
 }
 

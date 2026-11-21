@@ -31,11 +31,11 @@ public sealed record ImportResult(bool DryRun, bool Succeeded, string Text);
 public static class ImportFiles
 {
     public static IReadOnlyList<string> Extensions { get; } =
-        new[] { ".csv", ".tsv", ".tab", ".txt", ".xlsx", ".xlsm", ".json" };
+        new[] { ".csv", ".tsv", ".tab", ".txt", ".xlsx", ".xlsm", ".xls", ".json", ".sql", ".zip" };
 
     /// For an open-file dialog.
     public static string DialogFilter =>
-        "Data files (CSV, text, Excel, JSON)|"
+        "Data files (CSV, text, Excel, JSON, SQL, zip)|"
         + string.Join(";", Extensions.Select(e => "*" + e))
         + "|All files (*.*)|*.*";
 }

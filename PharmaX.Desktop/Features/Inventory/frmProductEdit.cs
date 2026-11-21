@@ -8,6 +8,7 @@ namespace PharmaX.Desktop.Features.Inventory;
 public partial class frmProductEdit : PhxFormBase, IProductEditView
 {
     private readonly ProductEditPresenter? _presenter;
+    private readonly PharmaX.Desktop.Controls.MoneyTextBox _zig = new() { Name = "txtZigPrice" };
 
     protected override string? RequiredPermission =>
         Domain.Security.PermissionCode.ProductRead;
@@ -16,6 +17,18 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
     public frmProductEdit()
     {
         InitializeComponent();
+
+        // Beside the US dollar price. Blank means this product has no ZiG price.
+        pnlFields.Controls.Add(new Label
+        {
+            AutoSize = true,
+            Location = new Point(310, 24 + 3 * Pitch),
+            Text = "&ZiG price"
+        });
+        _zig.Location = new Point(390, 20 + 3 * Pitch);
+        _zig.Size = new Size(100, 23);
+        _zig.AccessibleName = "ZiG price";
+        pnlFields.Controls.Add(_zig);
 
         // Where the product is filed, found by any word of the name.
         foreach (var combo in new[] { cboDepartment, cboCategory, cboManufacturer })
@@ -255,6 +268,7 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         txtDescription.Text = product.Description;
         txtGenericName.Text = product.GenericName ?? "";
         txtRetail.Amount = product.RetailPrice;
+        _zig.Amount = product.ZigRetailPrice;
         txtCost.Amount = product.CostPrice;
         txtVatRate.Amount = product.VatRatePercent;
         txtTaxCode.Text = product.TaxCode;
@@ -539,7 +553,9 @@ public partial class frmProductEdit : PhxFormBase, IProductEditView
         IsActive: chkActive.Checked,
         QuantityOnHand: CollectOnHand(),
         Batches: CollectBatches(),
-        StockReason: Blank(cboStockReason.Text));
+        StockReason: Blank(cboStockReason.Text),
+        ZigRetailPrice: _zig.Amount,
+        ReplaceZigPrice: true);
 
     /// A scanner ends a code with a return; a person types commas.
     private static readonly char[] BarcodeSeparators =

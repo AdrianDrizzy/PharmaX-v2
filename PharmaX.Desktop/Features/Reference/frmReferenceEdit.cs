@@ -15,7 +15,8 @@ public partial class frmReferenceEdit : PhxFormBase, IReferenceEditView
         Application.Security.IPermissionService permissions) =>
         Application.Security.PermissionServiceExtensions.HasAny(permissions,
             Domain.Security.PermissionCode.ReferenceMaintain,
-            Domain.Security.PermissionCode.BranchMaintain);
+            Domain.Security.PermissionCode.BranchMaintain,
+            Domain.Security.PermissionCode.ScriptDispense);
 
     /// Designer only. Never called at runtime.
     public frmReferenceEdit()
@@ -84,6 +85,9 @@ public partial class frmReferenceEdit : PhxFormBase, IReferenceEditView
                  "e.g. PR012345, 0242 123456 (optional)"),
             ReferenceKind.DosageCode =>
                 ("e.g. 1TDS", "e.g. Take one three times a day",
+                 "(optional)"),
+            ReferenceKind.WarningCode =>
+                ("e.g. DROWSY", "e.g. May cause drowsiness. Do not drive.",
                  "(optional)"),
             _ => ("e.g. ABC", "", "(optional)")
         };

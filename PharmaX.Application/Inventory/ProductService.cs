@@ -401,6 +401,12 @@ public sealed partial class ProductService : IProductService
                 $"{{\"productId\":\"{product.Id}\",\"retail\":{edit.RetailPrice}}}");
         }
 
+        if (edit.ReplaceZigPrice && product.ZigRetailAmount != edit.ZigRetailPrice)
+        {
+            _permissions.Demand(PermissionCode.PriceChange);
+            product.SetZigRetail(edit.ZigRetailPrice);
+        }
+
         if (code != product.Code)
         {
             product.ChangeCode(code);

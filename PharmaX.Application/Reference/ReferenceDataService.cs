@@ -94,7 +94,7 @@ public sealed class ReferenceDataService : IReferenceDataService
         ArgumentNullException.ThrowIfNull(edit);
 
         // Maintaining a list is a supervisor's job, not a cashier's.
-        _permissions.Demand(MaintainedBy(kind));
+        DemandMaintain(kind);
 
         var clash = await _repository.FindByCodeAsync(kind, edit.Code, ct);
 
@@ -118,7 +118,7 @@ public sealed class ReferenceDataService : IReferenceDataService
     {
         ArgumentNullException.ThrowIfNull(edit);
 
-        _permissions.Demand(MaintainedBy(kind));
+        DemandMaintain(kind);
 
         var entry = await _repository.GetAsync(kind, id, ct);
         if (entry is null) return Result.Fail("REF-000", NotFound(kind));
@@ -136,7 +136,7 @@ public sealed class ReferenceDataService : IReferenceDataService
     public async Task<Result> SetActiveAsync(ReferenceKind kind, Guid id,
         bool active, CancellationToken ct = default)
     {
-        _permissions.Demand(MaintainedBy(kind));
+        DemandMaintain(kind);
 
         var entry = await _repository.GetAsync(kind, id, ct);
         if (entry is null) return Result.Fail("REF-000", NotFound(kind));
@@ -170,6 +170,8 @@ public sealed class ReferenceDataService : IReferenceDataService
             Prescriber.Create(e.Code, e.Name, e.Detail),
         ReferenceKind.DosageCode =>
             DosageCode.Create(e.Code, e.Name, e.Detail),
+        ReferenceKind.WarningCode =>
+            WarningCode.Create(e.Code, e.Name, e.Detail),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
@@ -177,6 +179,16 @@ public sealed class ReferenceDataService : IReferenceDataService
         $"That {ReferenceLabels.For(kind).Singular} no longer exists.";
 
     // Branches are an administrator's list; the rest a supervisor's.
+    private void DemandMaintain(ReferenceKind kind)
+    {
+        if (kind == ReferenceKind.WarningCode
+            && (_permissions.Has(PermissionCode.ReferenceMaintain)
+                || _permissions.Has(PermissionCode.ScriptDispense)))
+            return;
+
+        _permissions.Demand(MaintainedBy(kind));
+    }
+
     private static string MaintainedBy(ReferenceKind kind) =>
         kind == ReferenceKind.Branch
             ? PermissionCode.BranchMaintain

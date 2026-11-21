@@ -28,11 +28,15 @@ public sealed class frmItemPrompt : Form
     private readonly Label _charge = new();
     private readonly ItemProposalDto _proposal;
     private readonly IReadOnlyDictionary<string, string> _codes;
+    private readonly IReadOnlyDictionary<string, string> _warnings;
+    private readonly TextBox _warning = new();
 
     private frmItemPrompt(ItemProposalDto proposal,
-                          IReadOnlyDictionary<string, string> codes)
+                          IReadOnlyDictionary<string, string> codes,
+                          IReadOnlyDictionary<string, string> warnings)
     {
         _codes = codes;
+        _warnings = warnings;
         _proposal = proposal;
         Icon = PhxIcons.AppIcon;
         PhxTheme.Follow(this);
@@ -95,6 +99,19 @@ public sealed class frmItemPrompt : Form
         _directions.PlaceholderText = "e.g. T1 TDS, or Take ONE tablet three times a day";
         _directions.TextChanged += (_, _) => ShowWording();
 
+        var warningCaption = new Label
+        {
+            AutoSize = true,
+            Location = new Point(16, 224),
+            Text = "&Warning"
+        };
+        _warning.Location = new Point(110, 220);
+        _warning.MaxLength = 120;
+        _warning.Name = "txtWarning";
+        _warning.Size = new Size(346, 23);
+        _warning.PlaceholderText = "e.g. DROWSY, or leave blank";
+        _warning.TextChanged += (_, _) => ShowWording();
+
         // The complete directions, as the label will print them, including
         // a sentence that wraps. The box scrolls rather than clipping.
         _reads.BackColor = SystemColors.Control;
@@ -111,14 +128,14 @@ public sealed class frmItemPrompt : Form
 
         _problem.AutoSize = false;
         _problem.ForeColor = PhxTheme.Negative;
-        _problem.Location = new Point(16, 228);
+        _problem.Location = new Point(16, 252);
         _problem.Name = "lblProblem";
         _problem.Size = new Size(270, 36);
 
         var ok = new Button
         {
             DialogResult = DialogResult.OK,
-            Location = new Point(300, 228),
+            Location = new Point(300, 252),
             Name = "btnOk",
             Size = new Size(75, 28),
             Text = "OK"
@@ -127,7 +144,7 @@ public sealed class frmItemPrompt : Form
         var cancel = new Button
         {
             DialogResult = DialogResult.Cancel,
-            Location = new Point(381, 228),
+            Location = new Point(381, 252),
             Name = "btnCancel",
             Size = new Size(75, 28),
             Text = "Cancel"
@@ -136,12 +153,12 @@ public sealed class frmItemPrompt : Form
         Controls.AddRange(new Control[]
         {
             item, quantityCaption, _quantity, _enter, _charge, directionsCaption,
-            _directions, _reads, _problem, ok, cancel
+            _directions, _reads, warningCaption, _warning, _problem, ok, cancel
         });
 
         AcceptButton = ok;
         CancelButton = cancel;
-        ClientSize = new Size(472, 274);
+        ClientSize = new Size(472, 298);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -186,9 +203,15 @@ public sealed class frmItemPrompt : Form
 
     private void ShowWording()
     {
-        var wording = LabelWording.Directions(Expanded());
+        var wording = LabelWording.Directions(LabelText());
 
         _reads.Text = wording.Length == 0 ? "" : wording;
+    }
+
+    private string LabelText()
+    {
+        var warning = DosageShorthand.Expand(_warning.Text, _warnings).Trim();
+        return warning.Length == 0 ? Expanded() : $"{Expanded()} {warning}";
     }
 
     /// <summary>
@@ -196,16 +219,18 @@ public sealed class frmItemPrompt : Form
     /// what the script says; null if cancelled.
     /// </summary>
     public static DirectionsDto? Ask(IWin32Window owner, ItemProposalDto proposal,
-        IReadOnlyDictionary<string, string>? codes = null)
+        IReadOnlyDictionary<string, string>? codes = null,
+        IReadOnlyDictionary<string, string>? warnings = null)
     {
         ArgumentNullException.ThrowIfNull(proposal);
 
         using var dialog = new frmItemPrompt(proposal,
-            codes ?? DosageShorthand.Catalogue());
+            codes ?? DosageShorthand.Catalogue(),
+            warnings ?? DosageShorthand.Catalogue(WarningCodes.Standard));
 
         return dialog.ShowDialog(owner) == DialogResult.OK
                && dialog.Quantity is decimal quantity
-            ? new DirectionsDto(quantity, dialog.Expanded())
+            ? new DirectionsDto(quantity, dialog.LabelText())
             : null;
     }
 }

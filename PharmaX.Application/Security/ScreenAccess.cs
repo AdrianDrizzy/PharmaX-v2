@@ -77,6 +77,8 @@ public static class ScreenAccess
             ["schemes"] = p => p.Has(PermissionCode.ReferenceMaintain),
             ["prescribers"] = p => p.Has(PermissionCode.ReferenceMaintain),
             ["dosage-codes"] = p => p.Has(PermissionCode.ReferenceMaintain),
+            ["warning-codes"] = p => p.HasAny(PermissionCode.ReferenceMaintain,
+                PermissionCode.ScriptDispense),
             ["drug-returns"] = p =>
                 p.Has(PermissionCode.ScriptDispense) && MayRefund(p),
 
@@ -132,6 +134,7 @@ public static class ScreenAccess
                 PermissionCode.ReportManagement,
                 PermissionCode.ReportFinancial,
                 PermissionCode.ReportClinical),
+            ["day-history"] = p => p.Has(PermissionCode.HistoryView),
 
             // Stocktake: counting is not posting.
             ["stocktake-new"] = p => p.Has(PermissionCode.StockTakeCapture),

@@ -111,3 +111,10 @@ public sealed class DosageCodeConfiguration
     public void Configure(EntityTypeBuilder<DosageCode> builder) =>
         ReferenceMapping.Configure(builder, "DosageCode");
 }
+
+public sealed class WarningCodeConfiguration
+    : IEntityTypeConfiguration<WarningCode>
+{
+    public void Configure(EntityTypeBuilder<WarningCode> builder) =>
+        ReferenceMapping.Configure(builder, "WarningCode");
+}
