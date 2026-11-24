@@ -148,4 +148,8 @@ public static class PharmacySettingKey
     /// reach puts every label on the same printer, through the same driver.
     /// </remarks>
     public const string LabelPrinter = "printer.dispensary-label";
+
+    /// "off" skips the stock-assistant window at sign-in. Missing, or
+    /// anything else, shows it — the way the program already starts.
+    public const string StockAssistant = "startup.stock-assistant";
 }

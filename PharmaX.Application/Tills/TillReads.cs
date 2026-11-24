@@ -39,15 +39,15 @@ public static class TillReads
         lines.Add(Rule());
 
         foreach (var tender in Statements(read.Expectations))
-        {
-            lines.Add(Label(tender.TenderType));
-            Amount(lines, "  Expected", tender.Expected);
-        }
+            Amount(lines, Label(tender.TenderType), tender.Expected);
 
         lines.Add(Rule());
         Amount(lines, "Total", read.GrandTotal);
 
         PaidOut(lines, payouts);
+        SalesTally(lines, session.OpeningFloat,
+            read.Expectations.Select(e => (e.TenderType, e.Expected, (decimal?)null)).ToList(),
+            PayoutDto.Total(payouts), counted: false);
 
         lines.Add("");
         lines.Add("Interim read. The session is still open.");
@@ -81,10 +81,15 @@ public static class TillReads
 
         foreach (var line in Statements(declaration.Variances))
         {
-            lines.Add(Label(line.TenderType));
-            Amount(lines, "  Expected", line.Expected);
-            Amount(lines, "  Declared", line.Declared);
-            Amount(lines, "  Variance", line.Variance);
+            var name = Label(line.TenderType);
+            Amount(lines, name, line.Expected);
+
+            // A tender that was counted as expected is one line. Declared
+            // and variance are only worth a line when they differ.
+            if (line.Variance == 0m) continue;
+
+            Amount(lines, "Declared", line.Declared, indent: 2);
+            Amount(lines, "Variance", line.Variance, indent: 2);
         }
 
         lines.Add(Rule());
@@ -92,6 +97,11 @@ public static class TillReads
         Amount(lines, "VARIANCE", declaration.TotalVariance);
 
         PaidOut(lines, payouts);
+        SalesTally(lines, session.OpeningFloat,
+            declaration.Variances
+                .Select(v => (v.TenderType, v.Expected, (decimal?)v.Declared))
+                .ToList(),
+            PayoutDto.Total(payouts), counted: true);
 
         if (!string.IsNullOrWhiteSpace(varianceReason))
         {
@@ -105,11 +115,13 @@ public static class TillReads
         return new PrintableDocument("Z-read", lines, CashUpSlip.Width);
     }
 
-    /// Cash, EcoCash and card, even at zero, then whatever else was taken.
+    /// <summary>
+    /// Cash, even at zero, then every other tender that has an amount.
+    /// A zero EcoCash, card or medical-aid line is left off: it only
+    /// lengthens the roll.
+    /// </summary>
     private static List<T> Statements<T>(IReadOnlyList<T> lines) where T : class
     {
-        // The two shapes share a tender name. Kept here so a read that
-        // recorded neither still prints the lines the cashier checks.
         static string Name(T row) => row switch
         {
             VarianceLineDto variance => variance.TenderType,
@@ -117,15 +129,22 @@ public static class TillReads
             _ => ""
         };
 
-        var all = lines.ToList();
-
-        foreach (var name in new[] { nameof(TenderType.Cash), nameof(TenderType.EcoCash), nameof(TenderType.Card) })
+        static bool HasAmount(T row) => row switch
         {
-            if (all.Exists(row => Name(row) == name)) continue;
+            VarianceLineDto variance => variance.TenderType == nameof(TenderType.Cash)
+                || variance.Expected != 0m || variance.Declared != 0m || variance.Variance != 0m,
+            TenderExpectationDto expected => expected.TenderType == nameof(TenderType.Cash)
+                || expected.Expected != 0m,
+            _ => true
+        };
 
+        var all = lines.Where(HasAmount).ToList();
+
+        if (!all.Exists(row => Name(row) == nameof(TenderType.Cash)))
+        {
             object blank = typeof(T) == typeof(VarianceLineDto)
-                ? new VarianceLineDto(name, 0m, 0m, 0m, false)
-                : new TenderExpectationDto(name, 0m, 0);
+                ? new VarianceLineDto(nameof(TenderType.Cash), 0m, 0m, 0m, false)
+                : new TenderExpectationDto(nameof(TenderType.Cash), 0m, 0);
             all.Add((T)blank);
         }
 
@@ -146,13 +165,14 @@ public static class TillReads
 
     private static string Rule() => new('-', CashUpSlip.Width);
 
-    private static void Amount(List<string> lines, string label, decimal value)
+    private static void Amount(List<string> lines, string label, decimal value, int indent = 0)
     {
         var amount = value.ToString("N2", CultureInfo.CurrentCulture);
-        var room = CashUpSlip.Width - amount.Length - 1;
+        var room = CashUpSlip.Width - amount.Length - 1 - indent;
         var pieces = SlipLayout.Wrap(label, Math.Max(1, room), Math.Max(1, room));
-        lines.AddRange(pieces.SkipLast(1));
-        lines.Add(pieces[^1].PadRight(room + 1) + amount);
+        var pad = new string(' ', indent);
+        lines.AddRange(pieces.SkipLast(1).Select(piece => pad + piece));
+        lines.Add(pad + pieces[^1].PadRight(room + 1) + amount);
     }
 
     /// <summary>
@@ -171,10 +191,92 @@ public static class TillReads
             Amount(lines, string.Format(CultureInfo.CurrentCulture, "{0:HH:mm} {1}: {2}",
                 p.PaidAtLocal, p.KindName, p.Note), -p.Amount);
 
-        lines.Add(Rule());
         Amount(lines, "Paid out", -PayoutDto.Total(paid));
-        lines.Add("Cash expected is after the money paid out.");
     }
+
+    /// <summary>
+    /// The shift's sales, in the same figure Daily Sales and Sales by day
+    /// use for this till.
+    /// </summary>
+    /// <remarks>
+    /// Cash expected is the drawer: the float is still in it, and drawings
+    /// and expenses have already left it. Taking the float out and adding
+    /// the paid-out money back leaves what was received for sales. The
+    /// other tenders never sat in the drawer, so they are already that
+    /// figure. Counted runs the same sum on what was declared, and the
+    /// difference is the variance.
+    /// </remarks>
+    private static void SalesTally(List<string> lines, decimal openingFloat,
+        IReadOnlyList<(string Tender, decimal Expected, decimal? Declared)> taken,
+        decimal paidOut, bool counted)
+    {
+        var rows = taken.ToList();
+
+        if (!rows.Exists(row => row.Tender == nameof(TenderType.Cash)))
+            rows.Add((nameof(TenderType.Cash), openingFloat - paidOut,
+                counted ? openingFloat - paidOut : null));
+
+        rows.Sort((a, b) => Rank(a.Tender).CompareTo(Rank(b.Tender)));
+
+        lines.Add("");
+        lines.Add("Sales tally");
+
+        var system = 0m;
+        var declaredSales = 0m;
+
+        foreach (var row in rows)
+        {
+            var cash = row.Tender == nameof(TenderType.Cash);
+            var received = cash ? row.Expected - openingFloat + paidOut : row.Expected;
+            var countedTender = cash
+                ? (row.Declared ?? row.Expected) - openingFloat + paidOut
+                : row.Declared ?? row.Expected;
+
+            // A tender with nothing on it is not printed. Its zero still
+            // adds nothing to the sales total.
+            if (!cash && received == 0m && countedTender == 0m)
+            {
+                system += received;
+                if (counted) declaredSales += row.Declared ?? 0m;
+                continue;
+            }
+
+            // The amount on the tender name is what adds into the sales
+            // total. The float and the drawings sit under cash, because
+            // they explain that figure and are not added again.
+            Amount(lines, cash ? "Cash sales" : Label(row.Tender), received);
+            system += received;
+
+            if (cash && openingFloat != 0m) Amount(lines, "Less float", -openingFloat, indent: 2);
+            if (cash && paidOut != 0m) Amount(lines, "Add paid out", paidOut, indent: 2);
+
+            if (counted && row.Declared is not null)
+            {
+                declaredSales += countedTender;
+                if (countedTender != received)
+                    Amount(lines, "Counted", countedTender, indent: 2);
+            }
+        }
+
+        lines.Add(Rule());
+        Amount(lines, "SALES TOTAL", system);
+
+        if (counted && declaredSales != system)
+        {
+            Amount(lines, "COUNTED", declaredSales);
+            Amount(lines, "DIFFERENCE", declaredSales - system);
+        }
+
+        lines.Add("Matches Daily Sales.");
+    }
+
+    private static int Rank(string tender) => tender switch
+    {
+        "Cash" => 0,
+        "EcoCash" => 1,
+        "Card" => 2,
+        _ => 3
+    };
 
     private static List<string> Header(TillSessionDto session) => new()
     {

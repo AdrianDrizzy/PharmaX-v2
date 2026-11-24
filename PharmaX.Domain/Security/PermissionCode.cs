@@ -75,6 +75,15 @@ public static class PermissionCode
     public const string ScriptDelete = "dsp.script.delete";
 
     /// <summary>
+    /// Deleting a script from Scripts, in any state: it leaves every list.
+    /// </summary>
+    /// <remarks>
+    /// Administrator only (24 November 2026). Apart from ScriptDelete, so a
+    /// manager trusted to clear the collect queue cannot remove prescriptions.
+    /// </remarks>
+    public const string ScriptRemove = "dsp.script.remove";
+
+    /// <summary>
     /// Capturing a prescription into Script Maintenance.
     /// </summary>
     /// <remarks>
@@ -295,7 +304,7 @@ public static class PermissionCode
     {
         SaleCreate, SaleTakePayment, SaleDiscountAboveLimit, ReturnAuthorise,
         SessionCloseOtherUser, SessionCashUp, ScriptAuthorise, ScriptReverse,
-        ScriptDelete, ScriptCapture, ScriptDispense, PatientMaintain,
+        ScriptDelete, ScriptRemove, ScriptCapture, ScriptDispense, PatientMaintain,
         PatientDeactivate, ProductRead, ProductDispensary, ProductMaintain,
         ProductDeactivate, PriceChange,
         StockTakeCapture, StockTakePost, SupplierMaintain,
@@ -325,6 +334,7 @@ public static class PermissionCode
         ScriptAuthorise => "Clinical authority",
         ScriptReverse => "Reverse a script",
         ScriptDelete => "Delete a script from collect",
+        ScriptRemove => "Delete a script",
         ScriptCapture => "Capture a script",
         ScriptDispense => "Dispense",
         DispensingAmend => "Correct a dispensed item",

@@ -13,20 +13,33 @@ public static class ClockCheck
     {
         ArgumentNullException.ThrowIfNull(server);
 
-        // shortcut: a server left on UTC (a Linux box, a container) says
-        // nothing about the pharmacy's zone, so only the clock is compared;
-        // add a site time zone setting if a pharmacy really trades on UTC.
-        if (server.UtcOffset != TimeSpan.Zero && pcOffset != server.UtcOffset)
-            return $"This computer's time zone (UTC{Zone(pcOffset)}) is not the "
-                   + $"server's (UTC{Zone(server.UtcOffset)}). Set the time zone in "
-                   + "Windows, then sign in again.";
+        // The pharmacy is Harare, Pretoria, whatever zone the database server
+        // was installed in. A Linux host left on UTC must not pull the tills
+        // onto UTC, and nobody gets to pick another zone.
+        if (pcOffset != PharmacyTime.Offset)
+            return $"This computer's time zone (UTC{Zone(pcOffset)}) is not "
+                   + "Harare, Pretoria (UTC+02:00). PharmaX sets that time zone, "
+                   + "and sign-in stays closed until it has.";
 
         var minutes = Math.Abs((pcUtc - server.UtcNow).TotalMinutes);
         return minutes > MaxMinutesOut
             ? $"This computer's clock is {Math.Round(minutes):0} minutes out from the "
-              + "server. Set the correct date and time in Windows, then sign in again."
+              + "server. Sign-in stays closed until Windows time matches the server. "
+              + "The time cannot be set to anything else."
             : null;
     }
+
+    /// <summary>
+    /// True when the PC clock moved by more than <see cref="MaxMinutesOut"/>
+    /// from the time PharmaX started. Elapsed is measured by a stopwatch,
+    /// which a change of the Windows clock does not move.
+    /// </summary>
+    public static bool Moved(DateTime startedUtc, TimeSpan elapsed, DateTime nowUtc) =>
+        (nowUtc - (startedUtc + elapsed)).Duration() > TimeSpan.FromMinutes(MaxMinutesOut);
+
+    public const string MovedMessage =
+        "This computer's clock was changed while PharmaX was open. "
+        + "No sale can be taken. Close PharmaX and leave the clock on Harare, Pretoria time.";
 
     private static string Zone(TimeSpan offset) =>
         (offset < TimeSpan.Zero ? "-" : "+")

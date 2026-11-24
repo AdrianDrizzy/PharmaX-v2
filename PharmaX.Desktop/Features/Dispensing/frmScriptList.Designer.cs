@@ -20,6 +20,8 @@ partial class frmScriptList
     private Button btnQuote = null!;
     private Button btnUseAgain = null!;
     private Button btnClose = null!;
+    private CheckBox chkShowCancelled = null!;
+    private Button btnDeleteScript = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -82,8 +84,27 @@ partial class frmScriptList
         txtSearch.Size = new Size(380, 23);
         txtSearch.TabIndex = 0;
 
+        // Cancelled scripts are done with; off by default so the list is
+        // what can still be dispensed against or used again.
+        chkShowCancelled = new CheckBox();
+        chkShowCancelled.AutoSize = true;
+        chkShowCancelled.Location = new Point(470, 50);
+        chkShowCancelled.Name = "chkShowCancelled";
+        chkShowCancelled.Text = "Show ca&ncelled";
+
+        // Up here, away from the everyday buttons: deleting is the
+        // administrator's, and not something to hit reaching for Refresh.
+        btnDeleteScript = new Button();
+        btnDeleteScript.Location = new Point(620, 44);
+        btnDeleteScript.Name = "btnDeleteScript";
+        btnDeleteScript.Size = new Size(120, 30);
+        btnDeleteScript.Text = "&Delete script";
+        btnDeleteScript.UseVisualStyleBackColor = true;
+        btnDeleteScript.Visible = false;
+
         pnlTop.Controls.AddRange(new Control[]
-            { lblCount, lblPatient, txtSearch, lblSearch });
+            { lblCount, lblPatient, txtSearch, lblSearch, chkShowCancelled,
+              btnDeleteScript });
         pnlTop.Dock = DockStyle.Top;
         pnlTop.Height = 80;
         pnlTop.Name = "pnlTop";

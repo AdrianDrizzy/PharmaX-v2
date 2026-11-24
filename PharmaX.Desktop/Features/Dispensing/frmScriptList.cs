@@ -35,6 +35,13 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
             EditScriptRequested?.Invoke(this, EventArgs.Empty);
         btnCancelScript.Click += (_, _) =>
             CancelScriptRequested?.Invoke(this, EventArgs.Empty);
+        btnDeleteScript.Click += (_, _) =>
+            DeleteScriptRequested?.Invoke(this, EventArgs.Empty);
+        chkShowCancelled.CheckedChanged += (_, _) =>
+        {
+            GridPager.Of(grdScripts)?.Restart();
+            ShowMatching();
+        };
         btnRefresh.Click += (_, _) =>
             RefreshRequested?.Invoke(this, EventArgs.Empty);
         btnChoose.Click += (_, _) =>
@@ -107,6 +114,9 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         if (!Application.Security.PermissionServiceExtensions.Has(
                 _permissions, Domain.Security.PermissionCode.ScriptReverse))
             btnCancelScript.Visible = false;
+
+        btnDeleteScript.Visible = Application.Security.PermissionServiceExtensions.Has(
+            _permissions, Domain.Security.PermissionCode.ScriptRemove);
     }
 
     public Guid? PatientId { get; private set; }
@@ -114,10 +124,12 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
 
     /// Called before ShowDialog: a script list only means anything in
     /// the context of one patient.
-    public void LoadForPatient(Guid patientId, bool asPicker = false)
+    public void LoadForPatient(Guid patientId, bool asPicker = false,
+                               Guid? select = null)
     {
         PatientId = patientId;
         IsPickerMode = asPicker;
+        _select = select;
 
         if (asPicker)
         {
@@ -147,8 +159,18 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         ArgumentNullException.ThrowIfNull(scripts);
 
         _all = scripts;
+
+        // Opened on one script (from Day history): shown even if cancelled.
+        if (_select is Guid id && scripts.Any(s => s.Id == id && s.Status == "Cancelled"))
+            chkShowCancelled.Checked = true;
+
         ShowMatching();
+
+        if (_select is Guid wanted) SelectScript(wanted);
+        _select = null;
     }
+
+    private Guid? _select;
 
     private static string Date(DateOnly date) =>
         date.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.CurrentCulture);
@@ -157,7 +179,10 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
     private void ShowMatching()
     {
         var search = txtSearch.Text.Trim();
-        var scripts = _all
+        var shown = chkShowCancelled.Checked
+            ? _all
+            : _all.Where(s => s.Status != "Cancelled").ToList();
+        var scripts = shown
             .Where(s => Application.Abstractions.SearchTerms.Matches(search,
                 s.ScriptNumber, s.Items, s.PrescriberName, Date(s.PrescribedOn),
                 s.Status))
@@ -178,8 +203,8 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
         }
 
         lblCount.Text = search.Length == 0
-            ? $"{_all.Count} script(s)"
-            : $"{scripts.Count} of {_all.Count} script(s)";
+            ? $"{shown.Count} script(s)"
+            : $"{scripts.Count} of {shown.Count} script(s)";
 
         // The suggestion names the medicines too, on one line.
         _suggestions.Offer(scripts.Select(s => new Suggestion(s.Id, s.ScriptNumber,
@@ -198,6 +223,15 @@ public partial class frmScriptList : PhxFormBase, IScriptListView
             + "marked cancelled; it is never deleted.",
             hint: "e.g. Prescriber wrote a new script");
 
+    public string? PromptDeleteReason(string scriptNumber) =>
+        frmTextPrompt.Ask(this, "Delete script",
+            $"Delete script {scriptNumber}? It leaves every list and cannot be "
+            + "brought back here. A dispensing still open on it is set aside; "
+            + "anything already issued and paid for stays in the history. "
+            + "Medicine already issued and waiting on Scripts to collect stays there; delete it from that screen.",
+            hint: "e.g. Captured twice by mistake");
+
+    public event EventHandler? DeleteScriptRequested;
     public event EventHandler? RefreshRequested;
     public event EventHandler? CaptureRequested;
     public event EventHandler? EditScriptRequested;

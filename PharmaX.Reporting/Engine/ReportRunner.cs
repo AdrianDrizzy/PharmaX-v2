@@ -146,7 +146,8 @@ public sealed class ReportRunner : IReportRunner
             ? string.Format(CultureInfo.CurrentCulture,
                 "{0:dd/MM/yyyy HH:mm} to {1:dd/MM/yyyy HH:mm}", from, to)
             : string.Format(CultureInfo.CurrentCulture,
-                "{0:dd/MM/yyyy} to {1:dd/MM/yyyy}", request.From, request.To);
+                "{0:dd/MM/yyyy} {2:HH:mm} to {1:dd/MM/yyyy} {3:HH:mm}",
+                request.From, request.To, PharmacyTime.Opens, PharmacyTime.Closes);
 
         var summary = string.Format(CultureInfo.CurrentCulture,
             "{0} | Branch {1} | {2}{3}",

@@ -359,6 +359,57 @@ public class ScriptLifecycleTests : IClassFixture<PharmaXFixture>
         stored.ReversalReason.Should().Be("Deleted from Scripts to collect.");
     }
 
+    /// Deleting a script is the administrator's, in any state: it leaves
+    /// the patient's scripts and the search, and a dispensing still open on
+    /// it is set aside rather than left under Suspended (24 November 2026).
+    [Fact]
+    public async Task Only_an_administrator_deletes_a_script_and_it_leaves_every_list()
+    {
+        await _steps.ProductAsync("SLRMV", "Removable tablets 30s", 60m,
+            schedule: 3, unitsPerPack: 30m, batches: new[] { ("SLRMV-A", 12, 4m) });
+
+        await _steps.SignInAsync("sl.pharm9", Role.Standard.Pharmacist);
+        var patientId = await _steps.PatientAsync("Removed", "Pat");
+        var scriptId = await _steps.ScriptAsync(patientId, ("SLRMV", 30m, "One daily"));
+        var number = await NumberOfAsync(scriptId);
+
+        Guid dispensingId;
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            dispensingId = (await PharmaXFixture.Resolve<IDispensingService>(scope)
+                .BeginAsync(scriptId)).Value.Id;
+
+            var refused = () => PharmaXFixture.Resolve<IScriptService>(scope)
+                .DeleteAsync(scriptId, "Captured twice");
+            await refused.Should().ThrowAsync<PermissionDeniedException>();
+        }
+
+        await _steps.SignInAsync("sl.admin9", Role.Standard.Administrator);
+
+        using (var scope = _steps.Fixture.NewScope())
+        {
+            var scripts = PharmaXFixture.Resolve<IScriptService>(scope);
+
+            (await scripts.DeleteAsync(scriptId, " ")).Error.Code.Should().Be("DSP-059");
+            (await scripts.DeleteAsync(scriptId, "Captured twice"))
+                .IsSuccess.Should().BeTrue();
+
+            (await scripts.ForPatientAsync(patientId)).Value
+                .Should().NotContain(s => s.Id == scriptId);
+            (await scripts.FindAsync(number, null)).Value
+                .Should().NotContain(s => s.Id == scriptId);
+        }
+
+        using var check = _steps.Fixture.NewScope();
+        var db = PharmaXFixture.Resolve<PharmaXDbContext>(check);
+
+        (await db.Scripts.AsNoTracking().SingleAsync(s => s.Id == scriptId))
+            .Status.Should().Be(ScriptStatus.Deleted, "the row stays for what was done against it");
+        (await db.Dispensings.AsNoTracking().SingleAsync(d => d.Id == dispensingId))
+            .Status.Should().Be(DispensingStatus.Abandoned);
+    }
+
     private async Task<IReadOnlyList<string?>> ReversedAsync(string reason)
     {
         using var scope = _steps.Fixture.NewScope();

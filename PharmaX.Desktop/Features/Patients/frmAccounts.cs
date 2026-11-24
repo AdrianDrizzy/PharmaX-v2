@@ -128,6 +128,13 @@ public sealed class frmAccounts : PhxFormBase, IAccountsView
     }
 
     public string SearchText => _search.Text.Trim();
+
+    /// Opens on one account, from Day history; the first load searches it.
+    public void FindAccount(string number)
+    {
+        _search.Text = number;
+        _debounce.Stop();
+    }
     public bool OwingOnly => _owingOnly.Checked;
 
     public AccountDto? Selected =>

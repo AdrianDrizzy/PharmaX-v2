@@ -141,6 +141,68 @@ public class TillPayoutTests
         }, 107.50m), payouts);
 
         x.Lines.Should().Contain(l => l.Contains("Drawings: Owner") && l.EndsWith("-30.00"));
+        x.Lines.Should().Contain(l => l.StartsWith("SALES TOTAL") && l.EndsWith("50.00"));
+    }
+
+    /// <summary>
+    /// Drawer 367, float 225, drawings 24, declared cash 354.
+    /// Sales are the drawer less the float, with the drawings added back.
+    /// </summary>
+    [Fact]
+    public void The_z_read_sales_tally_matches_the_day_s_sales()
+    {
+        var session = new TillSessionDto(Guid.NewGuid(), "3", "BUKHOSI MOYO",
+            new DateTime(2026, 11, 21, 23, 24, 0, DateTimeKind.Utc), 225m, "Closed", 0);
+
+        var declaration = new DeclarationDto(session.Id, 354m, -13m, new[]
+        {
+            new VarianceLineDto("Cash", 367m, 354m, -13m, true)
+        });
+
+        var closed = new DateTime(2026, 11, 21, 18, 23, 0);
+        var payouts = new[]
+        {
+            new PayoutDto(Guid.NewGuid(), session.Id, PayoutKind.Drawings, 21m, "SIR",
+                closed.AddMinutes(-6), "bk"),
+            new PayoutDto(Guid.NewGuid(), session.Id, PayoutKind.Drawings, 3m, "MAAM",
+                closed.AddMinutes(-5), "bk")
+        };
+
+        var z = TillReads.ZRead(session, declaration, "SHORTFALL", closed, payouts);
+
+        z.Lines.Should().OnlyContain(l => l.Length <= 32);
+        z.Lines.Should().Contain(l => l.StartsWith("SALES TOTAL") && l.EndsWith("166.00"),
+            "367 in the drawer, less the 225 float, plus the 24 paid out");
+        z.Lines.Should().Contain(l => l.StartsWith("COUNTED") && l.EndsWith("153.00"),
+            "354 declared, less the 225 float, plus the 24 paid out");
+        z.Lines.Should().Contain(l => l.StartsWith("DIFFERENCE") && l.EndsWith("-13.00"));
+        z.Lines.Should().Contain("Sales tally");
+        z.Lines.Should().Contain("Paid out of the drawer");
+        z.Lines.Should().Contain("Variance reason: SHORTFALL");
+        z.Lines.Should().Contain(l => l.Contains("Less float") && l.EndsWith("-225.00"));
+        z.Lines.Should().Contain(l => l.Contains("Add paid out") && l.EndsWith("24.00"));
+        z.Lines.Should().NotContain("EcoCash");
+        z.Lines.Should().NotContain("Card");
+    }
+
+    [Fact]
+    public void A_tender_with_an_amount_is_printed_and_a_zero_one_is_not()
+    {
+        var session = new TillSessionDto(Guid.NewGuid(), "3", "BUKHOSI MOYO",
+            new DateTime(2026, 11, 21, 23, 24, 0, DateTimeKind.Utc), 225m, "Closed", 0);
+
+        var z = TillReads.ZRead(session, new DeclarationDto(session.Id, 594m, -18.50m, new[]
+        {
+            new VarianceLineDto("Cash", 367m, 354m, -13m, true),
+            new VarianceLineDto("EcoCash", 80m, 80m, 0m, false),
+            new VarianceLineDto("Card", 0m, 0m, 0m, false),
+            new VarianceLineDto("MedicalAid", 120m, 120m, 0m, false)
+        }), null, new DateTime(2026, 11, 21, 20, 23, 0));
+
+        var text = string.Join('\n', z.Lines);
+        text.Should().Contain("EcoCash").And.Contain("Medical aid").And.Contain("80.00").And.Contain("120.00");
+        text.Should().NotContain("Card");
+        z.Lines.Should().Contain(l => l.StartsWith("SALES TOTAL") && l.EndsWith("342.00"));
     }
 
     [Fact]

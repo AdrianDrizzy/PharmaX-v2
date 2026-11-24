@@ -1,5 +1,6 @@
 using FluentAssertions;
 using PharmaX.Application.Reporting;
+using PharmaX.Application.Security;
 using PharmaX.Domain.Security;
 
 namespace PharmaX.Tests.Unit.Reporting;
@@ -42,9 +43,37 @@ public class SalesSummaryClockTests
             "001", new Dictionary<string, string?>(),
             new ReportProvenance("admin", DateTime.Now, "", ""));
 
-        request.FromUtc.ToLocalTime().TimeOfDay.Should().Be(TimeSpan.Zero);
-        request.ToExclusiveUtc.ToLocalTime().Date
-            .Should().Be(new DateTime(2026, 10, 22));
+        request.FromUtc.Should().Be(new DateTime(2026, 10, 21, 5, 0, 0, DateTimeKind.Utc),
+            "a trading day opens at 07:00 in Harare, which is 05:00 UTC");
+        request.ToExclusiveUtc.Should().Be(new DateTime(2026, 10, 21, 19, 0, 0, DateTimeKind.Utc),
+            "the last sale is before 21:00 in Harare, which is 19:00 UTC");
+    }
+
+    /// <summary>
+    /// 22/11/2026 on the transaction list started at 00:02. Sales are allowed from 07:00 to 21:00.
+    /// </summary>
+    [Fact]
+    public void A_trading_day_is_seven_in_the_morning_until_nine_at_night()
+    {
+        var request = new ResolvedRequest(
+            Preset(), new DateOnly(2026, 11, 22), new DateOnly(2026, 11, 22),
+            "001", new Dictionary<string, string?>(),
+            new ReportProvenance("admin", DateTime.Now, "", ""));
+
+        var justAfterMidnight = new DateTime(2026, 11, 21, 22, 2, 0, DateTimeKind.Utc);
+        var opening = new DateTime(2026, 11, 22, 5, 0, 0, DateTimeKind.Utc);
+        var closing = new DateTime(2026, 11, 22, 19, 0, 0, DateTimeKind.Utc);
+
+        request.FromUtc.Should().Be(opening);
+        request.ToExclusiveUtc.Should().Be(closing);
+        (justAfterMidnight >= request.FromUtc && justAfterMidnight < request.ToExclusiveUtc)
+            .Should().BeFalse();
+        PharmacyTime.IsOpen(justAfterMidnight).Should().BeFalse();
+        PharmacyTime.IsOpen(opening).Should().BeTrue();
+        PharmacyTime.IsOpen(new DateTime(2026, 11, 22, 6, 0, 0, DateTimeKind.Utc)).Should().BeTrue();
+        PharmacyTime.IsOpen(new DateTime(2026, 11, 22, 18, 0, 0, DateTimeKind.Utc)).Should().BeTrue();
+        PharmacyTime.IsOpen(closing.AddMinutes(-1)).Should().BeTrue();
+        PharmacyTime.IsOpen(closing).Should().BeFalse();
     }
 
     private static ResolvedRequest Window(DateTime from, DateTime to) =>

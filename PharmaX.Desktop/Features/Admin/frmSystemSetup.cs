@@ -40,6 +40,7 @@ public sealed class frmSystemSetup : PhxFormBase
     private readonly ComboBox _palettes = new();
     private readonly Label _paletteHint = new();
     private readonly ComboBox _themes = new();
+    private readonly CheckBox _stockAssistant = new();
 
     private readonly Panel _body = new();
     private readonly Branding _preview = new();
@@ -72,12 +73,13 @@ public sealed class frmSystemSetup : PhxFormBase
         BuildLogo();
         BuildColours();
         BuildPrices();
+        BuildStartup();
         BuildHeader();
         BuildButtons();
 
         AcceptButton = _save;
         CancelButton = _cancel;
-        ClientSize = new Size(600, 740);
+        ClientSize = new Size(600, 880);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -301,6 +303,32 @@ public sealed class frmSystemSetup : PhxFormBase
         _body.Controls.AddRange(new Control[] { _markup, _rounding, _dispensingRounding });
     }
 
+    /// The stock-assistant window that otherwise opens as soon as someone signs in.
+    private void BuildStartup()
+    {
+        _body.Controls.Add(new Label
+        {
+            AutoSize = false, Font = PhxTheme.Subheading,
+            Location = new Point(0, 650), Size = new Size(400, 24),
+            Text = "When PharmaX starts"
+        });
+
+        _stockAssistant.AutoSize = true;
+        _stockAssistant.Location = new Point(2, 682);
+        _stockAssistant.Name = "chkStockAssistant";
+        _stockAssistant.Text = "Show the stock assistant";
+
+        _body.Controls.Add(new Label
+        {
+            AutoSize = true, ForeColor = PhxTheme.Muted,
+            Location = new Point(22, 708), MaximumSize = new Size(530, 0),
+            Text = "The window that lists stock needing attention. Uncheck it and that "
+                   + "window stays closed. Stock alerts is still on the menu."
+        });
+
+        _body.Controls.Add(_stockAssistant);
+    }
+
     // "None" is saved as a step of 0: the price to the cent, never rounded up.
     private const string NoRounding = "None";
     private static readonly object[] Steps = { NoRounding, "0.01", "0.05", "0.10", "0.50", "1.00" };
@@ -420,6 +448,10 @@ public sealed class frmSystemSetup : PhxFormBase
         var dispensingStep = await Application.Dispensing.DispensingCharge.RoundToAsync(_pharmacy);
         _dispensingRounding.SelectedItem = StepText(dispensingStep);
         if (_dispensingRounding.SelectedIndex < 0) _dispensingRounding.SelectedIndex = _dispensingRounding.Items.Count - 1;
+
+        // Missing means on: a pharmacy that has never chosen keeps the window.
+        var popup = await _pharmacy.GetAsync(PharmacySettingKey.StockAssistant);
+        _stockAssistant.Checked = !string.Equals(popup, "off", StringComparison.OrdinalIgnoreCase);
 
         _currencies.Focus();
     }
@@ -629,6 +661,8 @@ public sealed class frmSystemSetup : PhxFormBase
             await _pharmacy.SetAsync(PharmacySettingKey.Rounding, StepValue(_rounding.SelectedItem));
             await _pharmacy.SetAsync(PharmacySettingKey.DispensingRounding,
                 StepValue(_dispensingRounding.SelectedItem));
+            await _pharmacy.SetAsync(PharmacySettingKey.StockAssistant,
+                _stockAssistant.Checked ? "on" : "off");
             var mode = _themes.SelectedItem as ThemeMode ?? PhxTheme.Mode;
             await _settings.SetAsync(WorkstationSettingKey.Theme, mode.Id);
             PhxTheme.Use(Palette.Resolve(palette.Id, _branding.Logo), mode);

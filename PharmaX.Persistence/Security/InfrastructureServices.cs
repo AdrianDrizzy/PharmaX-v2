@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using PharmaX.Application.Abstractions;
+using PharmaX.Application.Security;
 using PharmaX.Domain.Security;
 
 namespace PharmaX.Persistence.Security;
@@ -15,7 +17,17 @@ public sealed class SystemClock : IClock, IClockCorrection
     // so every till stamps sales with the same clock.
     private long _offsetTicks;
 
+    // The stopwatch does not follow a change of the Windows clock, so a
+    // cashier who sets the PC back to midnight is caught on the next sale.
+    private readonly DateTime _startedUtc = DateTime.UtcNow;
+    private readonly long _startedStamp = Stopwatch.GetTimestamp();
+
     public DateTime UtcNow => DateTime.UtcNow.AddTicks(Interlocked.Read(ref _offsetTicks));
+
+    public string? Changed() =>
+        ClockCheck.Moved(_startedUtc, Stopwatch.GetElapsedTime(_startedStamp), DateTime.UtcNow)
+            ? ClockCheck.MovedMessage
+            : null;
 
     // Local, not UTC: an expiry date and a trading day are both local
     // facts, and at 01:00 in Johannesburg the UTC date is yesterday.

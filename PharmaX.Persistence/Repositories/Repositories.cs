@@ -810,7 +810,7 @@ public sealed class ScriptRepository : IScriptRepository
         CancellationToken ct = default) =>
         await _db.Scripts
             .Include(s => s.Items)
-            .Where(s => s.PatientId == patientId)
+            .Where(s => s.PatientId == patientId && s.Status != ScriptStatus.Deleted)
             .OrderByDescending(s => s.PrescribedOn)
             .ToListAsync(ct);
 
@@ -818,7 +818,8 @@ public sealed class ScriptRepository : IScriptRepository
         DateTime? fromUtc, DateTime? toUtc, int take,
         CancellationToken ct = default)
     {
-        var query = _db.Scripts.AsNoTracking().Include(s => s.Items).AsQueryable();
+        var query = _db.Scripts.AsNoTracking().Include(s => s.Items)
+            .Where(s => s.Status != ScriptStatus.Deleted);
         var wanted = (term ?? "").Trim();
 
         if (wanted.Length > 0) query = query.Where(s => s.ScriptNumber.Contains(wanted));
