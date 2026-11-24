@@ -151,8 +151,18 @@ public sealed class frmReceipts : PhxFormBase
 
         // Set before the handler, so building the form loads nothing.
         picker.Value = DateTime.Today;
-        picker.ValueChanged += async (_, _) => await FirstPageAsync();
+        picker.ValueChanged += async (_, _) => { if (!_quiet) await FirstPageAsync(); };
     }
+
+    /// <summary>
+    /// Opens on one receipt, from Day history: its day, found by number.
+    /// </summary>
+    public void FindReceipt(DateOnly day, string number) => _opening = (day, number);
+
+    private (DateOnly Day, string Number)? _opening;
+
+    // Set while OnLoad fills the filters, so they load once, not three times at once.
+    private bool _quiet;
 
     private static void Place(Button button, string name, string text, int left, int width)
     {
@@ -172,6 +182,15 @@ public sealed class frmReceipts : PhxFormBase
         var mayHide = _history?.MayHide == true;
         _showHidden.Visible = mayHide;
         _hide.Visible = mayHide;
+
+        if (_opening is var (day, number))
+        {
+            _quiet = true;
+            _from.Value = _to.Value = day.ToDateTime(TimeOnly.MinValue);
+            _find.Text = number;
+            _typing.Stop();
+            _quiet = false;
+        }
 
         await LoadAsync();
         _find.Focus();

@@ -167,6 +167,15 @@ internal static class Program
 
         while (true)
         {
+            // Before the login window. A wrong zone puts a sale on the
+            // wrong morning, and the person at the till does not get to
+            // choose a different one.
+            if (WorkstationTime.Ensure() is string zone)
+            {
+                MessageBox.Show(zone, "PharmaX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             LoadPharmacy(host);
 
             // Authenticate before the shell opens. Local credentials, so

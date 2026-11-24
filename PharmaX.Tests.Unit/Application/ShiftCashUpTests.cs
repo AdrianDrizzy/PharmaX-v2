@@ -149,7 +149,7 @@ public class ShiftCashUpTests
         slip.Columns.Should().Be(32);
         slip.Lines.Should().OnlyContain(line => line.Length <= 32);
         slip.Lines.Should().Contain(l => l.StartsWith("CASH IN DRAWER") && l.EndsWith("165.00"));
-        slip.Lines.Should().Contain(l => l.StartsWith("EcoCash") && l.EndsWith("0.00"));
+        slip.Lines.Should().NotContain(l => l.StartsWith("EcoCash"));
         slip.Lines.Should().Contain(l => l.StartsWith("Card") && l.EndsWith("15.00"));
         slip.Lines.Should().Contain(l => l.Contains("Script 12345"));
         slip.Lines.Should().NotContain(l => l.Contains("Amoxicillin"));

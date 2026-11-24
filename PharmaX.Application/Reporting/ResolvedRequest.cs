@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using PharmaX.Application.Security;
 
 namespace PharmaX.Application.Reporting;
 
@@ -50,17 +51,19 @@ public sealed class ResolvedRequest
     public DateTime? FromClock { get; }
     public DateTime? ToClock { get; }
 
-    /// Half-open in UTC. A date range runs to the end of the last day.
+    /// Half-open in UTC. A date range is trading hours: 07:00 to 21:00 in
+    /// Harare on each chosen day. shortcut: a range of several days still
+    /// includes the nights between the first morning and the last evening.
     /// A clock range includes the end minute: 13:00 means through 13:00.
     public DateTime FromUtc =>
         FromClock is DateTime start
             ? AsUtc(start)
-            : From.ToDateTime(TimeOnly.MinValue).ToUniversalTime();
+            : PharmacyTime.StartUtc(From);
 
     public DateTime ToExclusiveUtc =>
         ToClock is DateTime end
             ? AsUtc(end.AddMinutes(1))
-            : To.AddDays(1).ToDateTime(TimeOnly.MinValue).ToUniversalTime();
+            : PharmacyTime.EndUtc(To);
 
     private static DateTime AsUtc(DateTime local) =>
         DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();

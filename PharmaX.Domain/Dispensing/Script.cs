@@ -4,7 +4,12 @@ using PharmaX.Domain.Primitives;
 
 namespace PharmaX.Domain.Dispensing;
 
-public enum ScriptStatus { Captured, PartiallyDispensed, Completed, Cancelled }
+/// <remarks>
+/// Deleted is an administrator taking the script off every list. The row
+/// stays, so the dispensings, sales and claims made against it keep the
+/// script they name; stored as text, so it needs no migration.
+/// </remarks>
+public enum ScriptStatus { Captured, PartiallyDispensed, Completed, Cancelled, Deleted }
 
 /// <summary>
 /// The prescription as written by the prescriber. Distinct from a
@@ -139,7 +144,7 @@ public sealed class Script : AuditableEntity
 
         RepeatsUsed--;
 
-        if (Status != ScriptStatus.Cancelled)
+        if (Status is not (ScriptStatus.Cancelled or ScriptStatus.Deleted))
             Status = RepeatsUsed == 0
                 ? ScriptStatus.Captured
                 : ScriptStatus.PartiallyDispensed;
@@ -152,7 +157,8 @@ public sealed class Script : AuditableEntity
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        if (Status is ScriptStatus.Completed or ScriptStatus.Cancelled)
+        if (Status is ScriptStatus.Completed or ScriptStatus.Cancelled
+            or ScriptStatus.Deleted)
             throw new DomainException(
                 "A completed or cancelled script cannot take new items.");
 
@@ -162,7 +168,7 @@ public sealed class Script : AuditableEntity
     }
 
     public bool IsValidOn(DateOnly day) =>
-        Status != ScriptStatus.Cancelled
+        Status is not (ScriptStatus.Cancelled or ScriptStatus.Deleted)
         && (ValidUntil is null || ValidUntil >= day);
 
     /// <summary>
@@ -210,7 +216,21 @@ public sealed class Script : AuditableEntity
         if (string.IsNullOrWhiteSpace(reason))
             throw new DomainException("Cancelling a script requires a reason.");
 
+        if (Status == ScriptStatus.Deleted)
+            throw new DomainException($"Script {ScriptNumber} has been deleted.");
+
         Status = ScriptStatus.Cancelled;
+    }
+
+    /// <summary>
+    /// Takes the script off every list, in whatever state it is in.
+    /// </summary>
+    public void Delete(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new DomainException("Deleting a script requires a reason.");
+
+        Status = ScriptStatus.Deleted;
     }
 }
 

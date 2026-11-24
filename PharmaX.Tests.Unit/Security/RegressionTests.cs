@@ -443,7 +443,7 @@ public class PrintingTests
         z.Lines.Should().OnlyContain(l => l.Length <= 32);
         var text = string.Join('\n', z.Lines);
         text.Should().Contain("1,500.00").And.Contain("1,480.00").And.Contain("-20.00");
-        text.Should().Contain("EcoCash").And.Contain("Card");
+        text.Should().NotContain("EcoCash").And.NotContain("Card");
         z.Lines.Should().Contain("Variance reason: Change short");
     }
 }

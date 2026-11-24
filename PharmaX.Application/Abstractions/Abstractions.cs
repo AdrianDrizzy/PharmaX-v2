@@ -4,6 +4,9 @@ public interface IClock
 {
     DateTime UtcNow { get; }
     DateOnly Today { get; }
+
+    /// <summary>Set when this PC's clock was moved after PharmaX started.</summary>
+    string? Changed() => null;
 }
 
 public interface ICurrentUser

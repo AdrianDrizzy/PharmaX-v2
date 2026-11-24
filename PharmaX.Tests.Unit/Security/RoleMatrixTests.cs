@@ -189,6 +189,13 @@ public class RoleMatrixTests
             .Where(r => As(r).Has(PermissionCode.ScriptDelete))
             .Should().BeEquivalentTo(Role.Standard.Administrator);
 
+    /// Deleting a script outright, in any state (24 November 2026).
+    [Fact]
+    public void Only_the_administrator_deletes_a_script() =>
+        Role.Standard.All
+            .Where(r => As(r).Has(PermissionCode.ScriptRemove))
+            .Should().BeEquivalentTo(Role.Standard.Administrator);
+
     /// <summary>
     /// Every role may open Print sizes by default so each till can match
     /// its own stock (16 November 2026).

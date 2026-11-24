@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PharmaX.Application.Abstractions;
 using PharmaX.Application.Alerts;
 using PharmaX.Application.Security;
 using PharmaX.Application.Suppliers;
@@ -31,6 +32,8 @@ public sealed partial class MainPresenter
 
     private async Task StockAssistantAsync()
     {
+        var showPopup = await StockPopupWantedAsync();
+
         string summary = "", drafts = "", missing = "";
 
         using (var scope = _scopes.CreateScope())
@@ -60,10 +63,21 @@ public sealed partial class MainPresenter
         if (drafts.Length == 0 && waiting.Count > 0)
             drafts = DraftNotice.Describe(waiting, justMade: false);
 
+        if (!showPopup) return;
         if (summary.Length == 0 && drafts.Length == 0 && missing.Length == 0) return;
 
         ShowStockAssistant(summary.Length > 0 ? "Stock needing attention" : "Purchase orders",
                            summary, drafts, missing);
+    }
+
+    private async Task<bool> StockPopupWantedAsync()
+    {
+        using var scope = _scopes.CreateScope();
+        var value = await scope.ServiceProvider
+            .GetRequiredService<IPharmacySettings>()
+            .GetAsync(PharmacySettingKey.StockAssistant);
+
+        return !string.Equals(value, "off", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task DraftNoticeAsync()

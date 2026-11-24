@@ -119,6 +119,13 @@ public interface IScriptService
 
     Task<Result> CancelAsync(Guid id, string reason,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes a script off every list, in any state. A dispensing still
+    /// being worked on is set aside; what was issued against it stays.
+    /// </summary>
+    Task<Result> DeleteAsync(Guid id, string reason,
+        CancellationToken ct = default);
 }
 
 public sealed class ScriptService : IScriptService
@@ -353,7 +360,7 @@ public sealed class ScriptService : IScriptService
 
         foreach (var script in await _scripts.ForPatientAsync(patientId, ct))
         {
-            if (script.Status == ScriptStatus.Cancelled) continue;
+            if (script.Status is ScriptStatus.Cancelled or ScriptStatus.Deleted) continue;
             rows.AddRange(await SuppliedFromAsync(script, dispensings, codes, ct));
         }
 
@@ -633,9 +640,45 @@ public sealed class ScriptService : IScriptService
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Fail("DSP-026", "Cancelling a script needs a reason.");
 
-        script.Cancel(reason);
+        try
+        {
+            script.Cancel(reason);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            return Result.Fail("DSP-026", ex.Message);
+        }
 
         _audit.Applied("dsp.script.reverse", "Script", script.Id, reason);
+
+        await _uow.SaveChangesAsync(ct);
+        return Result.Ok();
+    }
+
+    public async Task<Result> DeleteAsync(Guid id, string reason,
+        CancellationToken ct = default)
+    {
+        _permissions.Demand(PermissionCode.ScriptRemove);
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Fail("DSP-059", "Deleting a script needs a reason.");
+
+        var script = await _scripts.GetAsync(id, ct);
+        if (script is null) return Result.Fail("DSP-000", "Script not found.");
+
+        // Issued dispensings are sales and stock already moved, so they
+        // stay; one still open would otherwise sit under Suspended.
+        foreach (var open in (await _dispensings.ForPatientAsync(script.PatientId, ct))
+                 .Where(d => d.ScriptId == script.Id
+                             && d.Status == DispensingStatus.InProgress))
+        {
+            open.Abandon();
+            _audit.Applied("dsp.dispensing.abandon", "Dispensing", open.Id,
+                $"Script {script.ScriptNumber} deleted.");
+        }
+
+        script.Delete(reason);
+        _audit.Applied("dsp.script.remove", "Script", script.Id, reason.Trim());
 
         await _uow.SaveChangesAsync(ct);
         return Result.Ok();

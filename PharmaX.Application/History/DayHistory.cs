@@ -18,7 +18,20 @@ public enum HistorySubject
     Accounts
 }
 
-public sealed record HistoryLine(string Reference, string Detail);
+/// <summary>
+/// One row of a day's history. A document is the transaction; an item
+/// row under it is a product, or another fact that belongs to it.
+/// </summary>
+/// <param name="When">The local date and time, to the second.</param>
+/// <param name="Amount">Money, already formatted, where the row has any.</param>
+/// <param name="IsItem">True on a product or detail row under a document.</param>
+/// <param name="Id">On a document, the record its own window opens: the
+/// script, patient or product.</param>
+/// <param name="OwnerId">On a document, whose it is: the patient, supplier
+/// or account.</param>
+public sealed record HistoryLine(string Reference, string Detail,
+    string? When = null, string? Amount = null, bool IsItem = false,
+    Guid? Id = null, Guid? OwnerId = null);
 
 public interface IDayHistoryStore
 {

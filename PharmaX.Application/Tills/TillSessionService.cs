@@ -1,6 +1,7 @@
 using PharmaX.Application.Abstractions;
 using PharmaX.Application.Repositories;
 using PharmaX.Application.Results;
+using PharmaX.Application.Security;
 using PharmaX.Application.Tills.Dtos;
 using PharmaX.Domain.Primitives;
 using PharmaX.Domain.Tills;
@@ -82,6 +83,9 @@ public sealed class TillSessionService : ITillSessionService
     public async Task<Result<TillSessionDto>> OpenAsync(decimal openingFloat,
         CancellationToken ct = default)
     {
+        if (PharmacyTime.Block(_clock.UtcNow, _clock.Changed()) is string shut)
+            return Result<TillSessionDto>.Fail("POS-034", shut);
+
         var existing = await _sessions.CurrentAsync(ct);
 
         if (existing is not null)

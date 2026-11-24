@@ -353,8 +353,12 @@ public static class CashUpSlip
         lines.Add(rule);
 
         lines.Add("By tender");
-        foreach (var tender in ShiftTally.WithStatements(shift.Tenders))
+        foreach (var tender in shift.Tenders)
+        {
+            if (tender.Tender != nameof(TenderType.Cash) && tender.Amount == 0m) continue;
+
             Amount($"{ShiftTally.Label(tender.Tender)} ({tender.Count})", tender.Amount);
+        }
         lines.Add(rule);
 
         // Only where more than one person worked the till: whose takings
@@ -391,10 +395,12 @@ public static class CashUpSlip
         Amount("Change given", shift.ChangeGiven);
         if (shift.PaidOut != 0m) Amount("Paid out", -shift.PaidOut);
         Amount("CASH IN DRAWER", shift.ExpectedCash);
-        // Repeated beside the variance: these two are declared off a
-        // statement, and a single "counted" total hid them in the drawer.
-        Amount("EcoCash", Statement(nameof(TenderType.EcoCash)));
-        Amount("Card", Statement(nameof(TenderType.Card)));
+        // Beside the variance only when the shift took some: a zero line
+        // for a tender nobody used only lengthens the roll.
+        var ecoCash = Statement(nameof(TenderType.EcoCash));
+        var card = Statement(nameof(TenderType.Card));
+        if (ecoCash != 0m) Amount("EcoCash", ecoCash);
+        if (card != 0m) Amount("Card", card);
 
         if (shift.Declared is decimal declared)
         {

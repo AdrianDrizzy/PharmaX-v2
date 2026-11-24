@@ -13,6 +13,7 @@ public interface IScriptListView : IView
     void ShowPatient(string description);
     void ShowScripts(IReadOnlyList<ScriptDto> scripts);
     string? PromptCancelReason();
+    string? PromptDeleteReason(string scriptNumber);
 
     /// Moves the list onto one script, where it is there.
     void SelectScript(Guid scriptId);
@@ -25,6 +26,7 @@ public interface IScriptListView : IView
     event EventHandler? CaptureRequested;
     event EventHandler? EditScriptRequested;
     event EventHandler? CancelScriptRequested;
+    event EventHandler? DeleteScriptRequested;
     event EventHandler? ChooseRequested;
     event EventHandler? QuoteRequested;
 
@@ -80,6 +82,7 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
         View.CaptureRequested += (_, _) => Enqueue(CaptureAsync);
         View.EditScriptRequested += (_, _) => Enqueue(EditAsync);
         View.CancelScriptRequested += (_, _) => Enqueue(CancelAsync);
+        View.DeleteScriptRequested += (_, _) => Enqueue(DeleteAsync);
         View.QuoteRequested += (_, _) => Enqueue(QuoteAsync);
         View.UseAgainRequested += (_, _) => Enqueue(UseAgainAsync);
 
@@ -224,6 +227,30 @@ public sealed class ScriptListPresenter : PresenterBase<IScriptListView>
         if (string.IsNullOrWhiteSpace(reason)) return;
 
         var result = await _scripts.CancelAsync(id, reason);
+
+        if (result.IsFailure) View.ShowError(result.Error.Message);
+        await LoadAsync();
+    });
+
+    private Task DeleteAsync() => GuardAsync(async () =>
+    {
+        if (View.SelectedScriptId is not Guid id)
+        {
+            View.ShowInfo("Choose a script first.");
+            return;
+        }
+
+        var script = await _scripts.GetAsync(id);
+        if (script.IsFailure)
+        {
+            View.ShowError(script.Error.Message);
+            return;
+        }
+
+        var reason = View.PromptDeleteReason(script.Value.Script.ScriptNumber);
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        var result = await _scripts.DeleteAsync(id, reason);
 
         if (result.IsFailure) View.ShowError(result.Error.Message);
         await LoadAsync();

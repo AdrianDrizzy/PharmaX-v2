@@ -30,12 +30,26 @@ public sealed class ClockCheckTests
 
     [Fact]
     public void A_different_time_zone_is_blocked() =>
-        Check(TimeSpan.Zero, TimeSpan.Zero).Should().Contain("time zone")
-            .And.Contain("UTC+00:00").And.Contain("UTC+02:00");
+        Check(TimeSpan.Zero, TimeSpan.Zero).Should().Contain("Harare")
+            .And.Contain("UTC+00:00");
 
-    /// A database server left on UTC (a Linux box, a container) says
-    /// nothing about the pharmacy's zone; only the clock is compared.
+    /// A database server left on UTC must not pull the tills off Harare.
     [Fact]
-    public void A_server_on_UTC_is_not_compared_for_time_zone() =>
+    public void A_server_on_UTC_does_not_move_the_till_off_Harare() =>
         ClockCheck.Problem(Server, Cat, new ServerTime(Server, TimeSpan.Zero)).Should().BeNull();
+
+    [Fact]
+    public void A_till_on_UTC_is_blocked_even_when_the_server_is_too() =>
+        ClockCheck.Problem(Server, TimeSpan.Zero, new ServerTime(Server, TimeSpan.Zero))
+            .Should().Contain("Harare");
+
+    [Fact]
+    public void Setting_the_pc_clock_back_is_caught()
+    {
+        var started = new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc);
+        ClockCheck.Moved(started, TimeSpan.FromMinutes(30), started.AddHours(-6))
+            .Should().BeTrue();
+        ClockCheck.Moved(started, TimeSpan.FromMinutes(30), started.AddMinutes(31))
+            .Should().BeFalse();
+    }
 }

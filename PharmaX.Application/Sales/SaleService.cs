@@ -143,6 +143,9 @@ public sealed class SaleService : ISaleService
 
     public async Task<Result<SaleDto>> OpenAsync(CancellationToken ct = default)
     {
+        if (PharmacyTime.Block(_clock.UtcNow, _clock.Changed()) is string shut)
+            return Result<SaleDto>.Fail("POS-034", shut);
+
         _permissions.Demand(PermissionCode.SaleCreate);
 
         // Someone who does not take the money - the pharmacist assistant -
@@ -665,6 +668,9 @@ public sealed class SaleService : ISaleService
         if (sale.Status != SaleStatus.Open)
             return Result<FinaliseDto>.Fail("POS-015",
                 "This sale is not open. Recall it before taking payment.");
+
+        if (PharmacyTime.Block(_clock.UtcNow, _clock.Changed()) is string shut)
+            return Result<FinaliseDto>.Fail("POS-034", shut);
 
         // A medical aid pays its share through the claim raised when the
         // script is issued, and nowhere else. Taken at the till, it
